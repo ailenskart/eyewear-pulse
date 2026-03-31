@@ -54,13 +54,46 @@ function StatCard({ label, value, sub, icon }: { label: string; value: string; s
   );
 }
 
+function BrandAvatar({ name, size, className }: { name: string; size: number; className?: string }) {
+  const [useFallback, setUseFallback] = useState(false);
+  const domain = name.toLowerCase().replace(/[^a-z0-9]/g, '') + '.com';
+  const logoUrl = `https://logo.clearbit.com/${domain}?size=${size}`;
+  const fallbackUrl = `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}&size=${size}&background=6366f1&color=fff&bold=true`;
+  return <img src={useFallback ? fallbackUrl : logoUrl} alt={name} className={className} onError={() => setUseFallback(true)} />;
+}
+
+const EYEWEAR_IMAGES = [
+  'https://images.unsplash.com/photo-1511499767150-a48a237f0083?w=300&h=300&fit=crop',
+  'https://images.unsplash.com/photo-1572635196237-14b3f281503f?w=300&h=300&fit=crop',
+  'https://images.unsplash.com/photo-1577803645773-f96470509666?w=300&h=300&fit=crop',
+  'https://images.unsplash.com/photo-1509695507497-903c140c43b0?w=300&h=300&fit=crop',
+  'https://images.unsplash.com/photo-1574258495973-f010dfbb5371?w=300&h=300&fit=crop',
+  'https://images.unsplash.com/photo-1508296695146-257a814070b4?w=300&h=300&fit=crop',
+  'https://images.unsplash.com/photo-1473496169904-658ba7c44d8a?w=300&h=300&fit=crop',
+  'https://images.unsplash.com/photo-1556306535-38febf6782e7?w=300&h=300&fit=crop',
+  'https://images.unsplash.com/photo-1591076482161-42ce6da69f67?w=300&h=300&fit=crop',
+  'https://images.unsplash.com/photo-1617714651429-0b1b3eb1f4f6?w=300&h=300&fit=crop',
+  'https://images.unsplash.com/photo-1523170335258-f5ed11844a49?w=300&h=300&fit=crop',
+  'https://images.unsplash.com/photo-1625591340248-b5d2bbb5e340?w=300&h=300&fit=crop',
+  'https://images.unsplash.com/photo-1604772659841-a1612db7000f?w=300&h=300&fit=crop',
+  'https://images.unsplash.com/photo-1516642499231-b82aca76f961?w=300&h=300&fit=crop',
+  'https://images.unsplash.com/photo-1529590003495-b2646e2718bf?w=300&h=300&fit=crop',
+  'https://images.unsplash.com/photo-1614715838608-dd527c46231d?w=300&h=300&fit=crop',
+  'https://images.unsplash.com/photo-1605100804763-247f67b3557e?w=300&h=300&fit=crop',
+  'https://images.unsplash.com/photo-1595950653106-6c9ebd614d3a?w=300&h=300&fit=crop',
+];
+
+function getEyewearImages(handle: string, count: number): string[] {
+  const seed = handle.split('').reduce((a, c) => a + c.charCodeAt(0), 0);
+  return Array.from({ length: count }, (_, i) => EYEWEAR_IMAGES[(seed + i * 3) % EYEWEAR_IMAGES.length]);
+}
+
 function BrandCard({ brand, onClick }: { brand: Brand; onClick: () => void }) {
   const engagement = ((brand.avgLikes / brand.followerEstimate) * 100).toFixed(1);
-  const avatarUrl = `https://ui-avatars.com/api/?name=${encodeURIComponent(brand.name)}&size=80&background=6366f1&color=fff&bold=true`;
   return (
     <div onClick={onClick} className="card-hover cursor-pointer rounded-xl border border-[var(--border)] bg-[var(--bg-card)] p-4 animate-fade-in">
       <div className="flex items-start gap-3">
-        <img src={avatarUrl} alt={brand.name} className="w-12 h-12 rounded-full flex-shrink-0" />
+        <BrandAvatar name={brand.name} size={80} className="w-12 h-12 rounded-full flex-shrink-0" />
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2">
             <h3 className="font-semibold text-sm truncate">{brand.name}</h3>
@@ -99,15 +132,8 @@ function BrandCard({ brand, onClick }: { brand: Brand; onClick: () => void }) {
 
 function BrandModal({ brand, onClose }: { brand: Brand; onClose: () => void }) {
   const engagement = ((brand.avgLikes / brand.followerEstimate) * 100).toFixed(2);
-  const avatarUrl = `https://ui-avatars.com/api/?name=${encodeURIComponent(brand.name)}&size=150&background=6366f1&color=fff&bold=true`;
   const igUrl = `https://www.instagram.com/${brand.handle}/`;
-
-  // Generate sample post thumbnails
-  const seed = brand.handle.split('').reduce((a, c) => a + c.charCodeAt(0), 0);
-  const thumbnails = Array.from({ length: 9 }, (_, i) => {
-    const id = (seed + i * 37) % 1000;
-    return `https://picsum.photos/seed/${brand.handle}${i}/300/300`;
-  });
+  const thumbnails = getEyewearImages(brand.handle, 9);
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4" onClick={onClose}>
@@ -118,7 +144,7 @@ function BrandModal({ brand, onClose }: { brand: Brand; onClose: () => void }) {
         {/* Header */}
         <div className="p-6 border-b border-[var(--border)]">
           <div className="flex items-center gap-4">
-            <img src={avatarUrl} alt={brand.name} className="w-20 h-20 rounded-full" />
+            <BrandAvatar name={brand.name} size={150} className="w-20 h-20 rounded-full" />
             <div>
               <h2 className="text-xl font-bold">{brand.name}</h2>
               <p className="text-sm text-[var(--text-muted)]">@{brand.handle}</p>
@@ -144,7 +170,7 @@ function BrandModal({ brand, onClose }: { brand: Brand; onClose: () => void }) {
           </div>
           <div className="text-center">
             <div className="text-2xl font-bold text-[var(--accent-light)]">{engagement}%</div>
-            <div className="text-xs text-[var(--text-muted)]">Engagement</div>
+     <div className="text-xs text-[var(--text-muted)]">Engagement</div>
           </div>
           <div className="text-center">
             <div className="text-2xl font-bold text-[var(--accent-light)]">{brand.postsPerWeek}/wk</div>
@@ -296,7 +322,7 @@ export default function Dashboard() {
   }, [allBrands]);
 
   const categoryEngagement = useMemo(() => {
-    const map: Record<string, { totalEng: number; count: number; avgPrice: number }> = {};
+    const map: Record<string, { totalEng: number; count: number; avgPrice: number}> = {};
     allBrands.forEach(b => {
       if (!map[b.category]) map[b.category] = { totalEng: 0, count: 0, avgPrice: 0 };
       map[b.category].totalEng += (b.avgLikes / b.followerEstimate) * 100;
@@ -430,7 +456,7 @@ export default function Dashboard() {
         {/* Content */}
         {activeTab === 'grid' && (
           <>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4\">
               {data?.brands.map((brand, i) => (
                 <div key={brand.id} style={{ animationDelay: `${i * 30}ms` }}>
                   <BrandCard brand={brand} onClick={() => setSelectedBrand(brand)} />
@@ -491,8 +517,7 @@ export default function Dashboard() {
             </div>
 
             {/* Row 2: Top Brands + Price */}
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-              <div className="lg:col-span-2 bg-[var(--bg-card)] rounded-2xl border border-[var(--border)] p-5">
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">\n              <div className="lg:col-span-2 bg-[var(--bg-card)] rounded-2xl border border-[var(--border)] p-5">
                 <h3 className="text-sm font-semibold mb-4">Top 20 Brands by Followers</h3>
                 <ResponsiveContainer width="100%" height={350}>
                   <BarChart data={topBrands}>
@@ -589,8 +614,7 @@ export default function Dashboard() {
                 { title: 'Sport-Luxe Wraps', trend: 'Rising', pct: '+28%', desc: 'Athletic wraparound frames crossing into fashion territory. Y2K nostalgia fueling the trend.', color: '#22c55e' },
                 { title: 'Eco-Materials', trend: 'Rising', pct: '+41%', desc: 'Bio-acetate, recycled titanium, and ocean plastic frames. Sustainability becoming a key selling point.', color: '#22c55e' },
               ].map((t, i) => (
-                <div key={i} className="bg-[var(--bg-card)] rounded-2xl border border-[var(--border)] p-5 card-hover">
-                  <div className="flex items-center justify-between mb-2">
+                <div key={i} className="bg-[var(--bg-card)] rounded-2xl border border-[var(--border)] p-5 card-hover">\n                  <div className="flex items-center justify-between mb-2">
                     <span className="text-xs font-semibold px-2 py-0.5 rounded-full" style={{ background: t.color + '20', color: t.color }}>{t.trend}</span>
                     <span className="text-lg font-bold" style={{ color: t.color }}>{t.pct}</span>
                   </div>
@@ -641,7 +665,7 @@ export default function Dashboard() {
                     { name: 'Colored/Patterned', pct: 12, color: '#c4b5fd' },
                     { name: 'Chain-link Detail', pct: 8, color: '#818cf8' },
                   ].map(item => (
-                    <div key={item.name}>
+             <div key={item.name}>
                       <div className="flex items-center justify-between mb-1">
                         <span className="text-xs text-[var(--text-secondary)]">{item.name}</span>
                         <span className="text-xs font-semibold" style={{ color: item.color }}>{item.pct}%</span>
