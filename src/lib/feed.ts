@@ -55,6 +55,8 @@ interface RawPost {
   type?: string;
   videoUrl?: string;
   inputUrl?: string;
+  localImage?: string;
+  blobUrl?: string;
 }
 
 function transformPosts(): Post[] {
@@ -65,15 +67,15 @@ function transformPosts(): Post[] {
     const handle = p.ownerUsername || '';
     if (!handle) continue;
 
-    // Get image URL — prefer local downloaded image, then carousel, then displayUrl
-    const imageUrl = (p as RawPost & { localImage?: string }).localImage
+    // Get image URL — prefer Vercel Blob, then local, then IG CDN
+    const imageUrl = p.blobUrl
+      || p.localImage
       || ((p.images && p.images.length > 0) ? p.images[0] : (p.displayUrl || ''));
     if (!imageUrl) continue;
 
     // Find brand info
     let brand = brandByHandle.get(handle);
     if (!brand) {
-      // Try to find by checking if any brand handle matches
       for (const [h, b] of brandByHandle) {
         if (handle.includes(h) || h.includes(handle)) {
           brand = b;
@@ -81,14 +83,9 @@ function transformPosts(): Post[] {
         }
       }
     }
-    if (!brand) {
-      // Use post's inputUrl to find the brand
-      if (p.inputUrl) {
-        const match = p.inputUrl.match(/instagram\.com\/([^/]+)/);
-        if (match) {
-          brand = brandByHandle.get(match[1]);
-        }
-      }
+    if (!brand && p.inputUrl) {
+      const match = p.inputUrl.match(/instagram\.com\/([^/]+)/);
+      if (match) brand = brandByHandle.get(match[1]);
     }
     if (!brand) {
       brand = {
@@ -100,8 +97,9 @@ function transformPosts(): Post[] {
       };
     }
 
-    const likes = p.likesCount || 0;
-    const comments = p.commentsCount || 0;
+    // Fix -1 likes: treat negative values as 0
+    const likes = Math.max(0, p.likesCount || 0);
+    const comments = Math.max(0, p.commentsCount || 0);
 
     posts.push({
       id: p.id || p.shortCode || `${handle}_${posts.length}`,
@@ -119,8 +117,18 @@ function transformPosts(): Post[] {
     });
   }
 
-  // Sort by most recent
-  posts.sort((a, b) => new Date(b.postedAt).getTime() - new Date(a.postedAt).getTime());
+  // Default sort: D2C first, then by recency, then by likes
+  posts.sort((a, b) => {
+    // D2C brands get priority
+    const aIsD2C = a.brand.category === 'D2C' ? 1 : 0;
+    const bIsD2C = b.brand.category === 'D2C' ? 1 : 0;
+    if (aIsD2C !== bIsD2C) return bIsD2C - aIsD2C;
+    // Then by recency
+    const timeDiff = new Date(b.postedAt).getTime() - new Date(a.postedAt).getTime();
+    if (timeDiff !== 0) return timeDiff;
+    // Then by likes
+    return b.likes - a.likes;
+  });
 
   return posts;
 }

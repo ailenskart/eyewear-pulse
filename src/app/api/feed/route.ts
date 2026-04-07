@@ -33,6 +33,9 @@ export async function GET(request: NextRequest) {
     );
   }
 
+  // D2C boost helper
+  const d2cBoost = (p: typeof filtered[0]) => p.brand.category === 'D2C' ? 1 : 0;
+
   switch (sortBy) {
     case 'likes':
       filtered.sort((a, b) => b.likes - a.likes);
@@ -45,7 +48,14 @@ export async function GET(request: NextRequest) {
       break;
     case 'recent':
     default:
-      filtered.sort((a, b) => new Date(b.postedAt).getTime() - new Date(a.postedAt).getTime());
+      // D2C first, then by recency, then by likes
+      filtered.sort((a, b) => {
+        const d2cDiff = d2cBoost(b) - d2cBoost(a);
+        if (d2cDiff !== 0) return d2cDiff;
+        const timeDiff = new Date(b.postedAt).getTime() - new Date(a.postedAt).getTime();
+        if (timeDiff !== 0) return timeDiff;
+        return b.likes - a.likes;
+      });
       break;
   }
 
