@@ -6,13 +6,9 @@ export async function GET(request: NextRequest) {
 
   const category = searchParams.get('category');
   const region = searchParams.get('region');
-  const style = searchParams.get('style');
-  const material = searchParams.get('material');
-  const color = searchParams.get('color');
-  const type = searchParams.get('type');
   const brand = searchParams.get('brand');
   const search = searchParams.get('search');
-  const sortBy = searchParams.get('sortBy') || 'recent'; // recent | likes | engagement | comments
+  const sortBy = searchParams.get('sortBy') || 'recent';
   const page = parseInt(searchParams.get('page') || '1');
   const limit = parseInt(searchParams.get('limit') || '40');
 
@@ -24,18 +20,6 @@ export async function GET(request: NextRequest) {
   if (region && region !== 'All') {
     filtered = filtered.filter(p => p.brand.region === region);
   }
-  if (style && style !== 'All') {
-    filtered = filtered.filter(p => p.style === style);
-  }
-  if (material && material !== 'All') {
-    filtered = filtered.filter(p => p.material === material);
-  }
-  if (color && color !== 'All') {
-    filtered = filtered.filter(p => p.color === color);
-  }
-  if (type && type !== 'All') {
-    filtered = filtered.filter(p => p.type === type);
-  }
   if (brand) {
     filtered = filtered.filter(p => p.brand.handle === brand);
   }
@@ -45,14 +29,10 @@ export async function GET(request: NextRequest) {
       p.brand.name.toLowerCase().includes(s) ||
       p.brand.handle.toLowerCase().includes(s) ||
       p.caption.toLowerCase().includes(s) ||
-      p.hashtags.some(h => h.includes(s)) ||
-      p.style.toLowerCase().includes(s) ||
-      p.material.toLowerCase().includes(s) ||
-      p.color.toLowerCase().includes(s)
+      p.hashtags.some(h => h.toLowerCase().includes(s))
     );
   }
 
-  // Sort
   switch (sortBy) {
     case 'likes':
       filtered.sort((a, b) => b.likes - a.likes);

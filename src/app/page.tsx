@@ -5,7 +5,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 /* ---------- types ---------- */
 interface Post {
   id: string;
-  brand: { id: number; name: string; handle: string; category: string; region: string; priceRange: string };
+  brand: { name: string; handle: string; category: string; region: string; priceRange: string };
   imageUrl: string;
   caption: string;
   likes: number;
@@ -13,21 +13,19 @@ interface Post {
   engagement: number;
   hashtags: string[];
   postedAt: string;
+  postUrl: string;
   type: string;
-  style: string;
-  material: string;
-  color: string;
+  isVideo: boolean;
 }
 
 interface FeedStats {
   totalPosts: number;
   totalBrands: number;
   avgEngagement: number;
-  topStyles: Array<{ name: string; count: number }>;
-  topMaterials: Array<{ name: string; count: number }>;
-  topColors: Array<{ name: string; count: number }>;
   topHashtags: Array<{ name: string; count: number }>;
   contentMix: Array<{ name: string; count: number }>;
+  byCategory: Array<{ name: string; count: number }>;
+  byRegion: Array<{ name: string; count: number }>;
 }
 
 interface FeedResponse {
@@ -41,7 +39,7 @@ interface FeedResponse {
 /* ---------- constants ---------- */
 const CATEGORIES = ['All', 'Luxury', 'D2C', 'Sports', 'Fast Fashion', 'Independent', 'Heritage', 'Streetwear', 'Sustainable', 'Tech', 'Kids', 'Celebrity'];
 const REGIONS = ['All', 'North America', 'Europe', 'Asia Pacific', 'South Asia', 'Middle East', 'Latin America', 'Africa', 'Southeast Asia', 'East Asia', 'Oceania'];
-const STYLES = ['All', 'Oversized', 'Cat-Eye', 'Aviator', 'Round', 'Square', 'Geometric', 'Rimless', 'Wrap', 'Shield', 'Rectangular', 'Wayfarer'];
+// Removed STYLES - no longer using generated style data
 const SORT_OPTIONS = [
   { key: 'recent', label: 'Recent' },
   { key: 'likes', label: 'Most Liked' },
@@ -113,10 +111,12 @@ function PostCard({ post, onClick }: { post: Post; onClick: () => void }) {
         <span className="text-white text-[10px] font-semibold">{post.brand.name}</span>
       </div>
 
-      {/* Style tag */}
-      <div className="absolute top-2 right-2 bg-[var(--accent)]/80 backdrop-blur-sm text-white text-[10px] font-medium px-2 py-0.5 rounded-full">
-        {post.style}
-      </div>
+      {/* Type tag */}
+      {post.isVideo && (
+        <div className="absolute top-2 right-2 bg-[var(--accent)]/80 backdrop-blur-sm text-white text-[10px] font-medium px-2 py-0.5 rounded-full">
+          Video
+        </div>
+      )}
 
       {/* Bottom info */}
       <div className="p-3">
@@ -124,7 +124,7 @@ function PostCard({ post, onClick }: { post: Post; onClick: () => void }) {
         <div className="flex items-center justify-between mt-2">
           <div className="flex items-center gap-1.5">
             <span className="text-[10px] px-1.5 py-0.5 rounded bg-[var(--bg-secondary)] text-[var(--text-muted)]">{post.brand.category}</span>
-            <span className="text-[10px] px-1.5 py-0.5 rounded bg-[var(--bg-secondary)] text-[var(--text-muted)]">{post.material}</span>
+            <span className="text-[10px] px-1.5 py-0.5 rounded bg-[var(--bg-secondary)] text-[var(--text-muted)]">{post.type}</span>
           </div>
           <span className="text-[10px] text-[var(--text-muted)]">{timeAgo(post.postedAt)}</span>
         </div>
@@ -185,47 +185,45 @@ function PostModal({ post, onClose }: { post: Post; onClose: () => void }) {
             </div>
           </div>
 
-          {/* Design attributes */}
+          {/* Post details */}
           <div className="p-5 border-b border-[var(--border)]">
-            <h4 className="text-xs font-semibold uppercase tracking-wider text-[var(--text-muted)] mb-3">Design Attributes</h4>
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <div className="text-[10px] text-[var(--text-muted)]">Frame Style</div>
-                <div className="text-sm font-medium">{post.style}</div>
-              </div>
-              <div>
-                <div className="text-[10px] text-[var(--text-muted)]">Material</div>
-                <div className="text-sm font-medium">{post.material}</div>
-              </div>
-              <div>
-                <div className="text-[10px] text-[var(--text-muted)]">Color</div>
-                <div className="text-sm font-medium">{post.color}</div>
-              </div>
-              <div>
                 <div className="text-[10px] text-[var(--text-muted)]">Content Type</div>
-                <div className="text-sm font-medium capitalize">{post.type}</div>
+                <div className="text-sm font-medium">{post.type}</div>
+              </div>
+              <div>
+                <div className="text-[10px] text-[var(--text-muted)]">Price Range</div>
+                <div className="text-sm font-medium">{post.brand.priceRange}</div>
+              </div>
+              <div>
+                <div className="text-[10px] text-[var(--text-muted)]">Region</div>
+                <div className="text-sm font-medium">{post.brand.region}</div>
+              </div>
+              <div>
+                <div className="text-[10px] text-[var(--text-muted)]">Posted</div>
+                <div className="text-sm font-medium">{timeAgo(post.postedAt)}</div>
               </div>
             </div>
           </div>
 
-          {/* Price + Time */}
-          <div className="p-5 flex items-center justify-between">
-            <div className="flex gap-2">
-              <span className="text-xs px-2 py-1 rounded-full bg-[var(--bg-card)] text-[var(--text-secondary)]">{post.brand.priceRange}</span>
-              <span className="text-xs px-2 py-1 rounded-full bg-[var(--bg-card)] text-[var(--text-secondary)]">{post.type}</span>
-            </div>
-            <span className="text-xs text-[var(--text-muted)]">{timeAgo(post.postedAt)}</span>
-          </div>
-
-          {/* IG link */}
-          <div className="p-5 pt-0">
+          {/* IG links */}
+          <div className="p-5 space-y-2">
             <a
-              href={`https://www.instagram.com/${post.brand.handle}/`}
+              href={post.postUrl}
               target="_blank"
               rel="noopener noreferrer"
               className="block w-full py-2.5 rounded-xl bg-gradient-to-r from-[#833AB4] via-[#FD1D1D] to-[#F77737] text-white text-sm font-semibold text-center hover:opacity-90 transition-opacity"
             >
-              View @{post.brand.handle} on Instagram
+              View Post on Instagram
+            </a>
+            <a
+              href={`https://www.instagram.com/${post.brand.handle}/`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="block w-full py-2.5 rounded-xl border border-[var(--border)] text-[var(--text-secondary)] text-sm font-semibold text-center hover:bg-[var(--bg-card)] transition-colors"
+            >
+              View @{post.brand.handle} Profile
             </a>
           </div>
         </div>
@@ -265,7 +263,7 @@ export default function Dashboard() {
   const [search, setSearch] = useState('');
   const [category, setCategory] = useState('All');
   const [region, setRegion] = useState('All');
-  const [style, setStyle] = useState('All');
+  // style filter removed — using real scraped data now
   const [sortBy, setSortBy] = useState('recent');
   const [page, setPage] = useState(1);
   const [selectedPost, setSelectedPost] = useState<Post | null>(null);
@@ -277,7 +275,7 @@ export default function Dashboard() {
     setLoading(true);
     try {
       const params = new URLSearchParams({
-        category, region, style, sortBy,
+        category, region, sortBy,
         search, page: String(page), limit: '40',
       });
       const res = await fetch(`/api/feed?${params}`);
@@ -287,7 +285,7 @@ export default function Dashboard() {
       console.error('Failed to fetch:', e);
     }
     setLoading(false);
-  }, [category, region, style, sortBy, search, page]);
+  }, [category, region, sortBy, search, page]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
@@ -381,10 +379,6 @@ export default function Dashboard() {
                   <span className="text-xs text-[var(--text-muted)] font-medium w-16">Region</span>
                   {REGIONS.map(r => <FilterChip key={r} label={r} active={region === r} onClick={() => { setRegion(r); setPage(1); }} />)}
                 </div>
-                <div className="flex items-center gap-2 flex-wrap">
-                  <span className="text-xs text-[var(--text-muted)] font-medium w-16">Style</span>
-                  {STYLES.map(s => <FilterChip key={s} label={s} active={style === s} onClick={() => { setStyle(s); setPage(1); }} />)}
-                </div>
               </div>
             )}
 
@@ -438,44 +432,44 @@ export default function Dashboard() {
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
               <div className="rounded-2xl p-5 border border-[var(--border)] bg-[var(--bg-card)]">
                 <div className="text-3xl font-bold bg-gradient-to-r from-[var(--accent)] to-[var(--accent-light)] bg-clip-text text-transparent">{formatNumber(stats.totalPosts)}</div>
-                <div className="text-xs text-[var(--text-muted)] mt-1">Total Posts Analyzed</div>
+                <div className="text-xs text-[var(--text-muted)] mt-1">Real Posts Scraped</div>
               </div>
               <div className="rounded-2xl p-5 border border-[var(--border)] bg-[var(--bg-card)]">
                 <div className="text-3xl font-bold bg-gradient-to-r from-[var(--accent)] to-[var(--accent-light)] bg-clip-text text-transparent">{stats.totalBrands}</div>
-                <div className="text-xs text-[var(--text-muted)] mt-1">Brands Tracked</div>
+                <div className="text-xs text-[var(--text-muted)] mt-1">Instagram Accounts</div>
               </div>
               <div className="rounded-2xl p-5 border border-[var(--border)] bg-[var(--bg-card)]">
                 <div className="text-3xl font-bold bg-gradient-to-r from-emerald-400 to-emerald-300 bg-clip-text text-transparent">{stats.avgEngagement}%</div>
                 <div className="text-xs text-[var(--text-muted)] mt-1">Avg Engagement</div>
               </div>
               <div className="rounded-2xl p-5 border border-[var(--border)] bg-[var(--bg-card)]">
-                <div className="text-3xl font-bold bg-gradient-to-r from-amber-400 to-amber-300 bg-clip-text text-transparent">{stats.topStyles.length}</div>
-                <div className="text-xs text-[var(--text-muted)] mt-1">Frame Styles Tracked</div>
+                <div className="text-3xl font-bold bg-gradient-to-r from-amber-400 to-amber-300 bg-clip-text text-transparent">{stats.topHashtags.length}</div>
+                <div className="text-xs text-[var(--text-muted)] mt-1">Trending Hashtags</div>
               </div>
             </div>
 
-            {/* Trending Styles */}
+            {/* Posts by Category */}
             <div className="bg-[var(--bg-card)] rounded-2xl border border-[var(--border)] p-5">
-              <h3 className="text-sm font-semibold mb-4">Trending Frame Styles</h3>
+              <h3 className="text-sm font-semibold mb-4">Posts by Brand Category</h3>
               <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
-                {stats.topStyles.map((s, i) => (
+                {stats.byCategory.map((s, i) => (
                   <TrendBadge key={s.name} label={s.name} count={s.count} total={stats.totalPosts} color={ACCENT_COLORS[i % ACCENT_COLORS.length]} />
                 ))}
               </div>
             </div>
 
-            {/* Materials + Colors side by side */}
+            {/* Category + Region side by side */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
               <div className="bg-[var(--bg-card)] rounded-2xl border border-[var(--border)] p-5">
-                <h3 className="text-sm font-semibold mb-4">Materials in Posts</h3>
+                <h3 className="text-sm font-semibold mb-4">Posts by Category</h3>
                 <div className="space-y-3">
-                  {stats.topMaterials.map((m, i) => {
+                  {stats.byCategory.map((m, i) => {
                     const pct = (m.count / stats.totalPosts * 100);
                     return (
                       <div key={m.name}>
                         <div className="flex items-center justify-between mb-1">
                           <span className="text-xs text-[var(--text-secondary)]">{m.name}</span>
-                          <span className="text-xs font-semibold" style={{ color: ACCENT_COLORS[i % ACCENT_COLORS.length] }}>{pct.toFixed(0)}%</span>
+                          <span className="text-xs font-semibold" style={{ color: ACCENT_COLORS[i % ACCENT_COLORS.length] }}>{pct.toFixed(0)}% ({m.count})</span>
                         </div>
                         <div className="h-2 rounded-full bg-[var(--bg-secondary)]">
                           <div className="h-full rounded-full transition-all duration-700" style={{ width: `${pct}%`, background: ACCENT_COLORS[i % ACCENT_COLORS.length] }} />
@@ -487,27 +481,18 @@ export default function Dashboard() {
               </div>
 
               <div className="bg-[var(--bg-card)] rounded-2xl border border-[var(--border)] p-5">
-                <h3 className="text-sm font-semibold mb-4">Color Trends</h3>
+                <h3 className="text-sm font-semibold mb-4">Posts by Region</h3>
                 <div className="space-y-3">
-                  {stats.topColors.map((c, i) => {
+                  {stats.byRegion.map((c, i) => {
                     const pct = (c.count / stats.totalPosts * 100);
-                    const colorMap: Record<string, string> = {
-                      'Black': '#1a1a1a', 'Tortoise': '#C4894A', 'Crystal': '#E8E8E8', 'Gold': '#D4A843',
-                      'Silver': '#C0C0C0', 'Navy': '#1B3A5C', 'Burgundy': '#722F37', 'Green': '#4A7C59',
-                      'Pink': '#E8A0BF', 'Blue': '#4F86C6', 'Brown': '#8B6914', 'White': '#F5F5F5',
-                      'Red': '#CC3333', 'Champagne': '#D4C5A9', 'Olive': '#6B6E4E',
-                    };
                     return (
                       <div key={c.name}>
                         <div className="flex items-center justify-between mb-1">
-                          <div className="flex items-center gap-2">
-                            <div className="w-3 h-3 rounded-full border border-[var(--border)]" style={{ background: colorMap[c.name] || ACCENT_COLORS[i] }} />
-                            <span className="text-xs text-[var(--text-secondary)]">{c.name}</span>
-                          </div>
-                          <span className="text-xs font-semibold text-[var(--text-secondary)]">{pct.toFixed(0)}%</span>
+                          <span className="text-xs text-[var(--text-secondary)]">{c.name}</span>
+                          <span className="text-xs font-semibold" style={{ color: ACCENT_COLORS[i % ACCENT_COLORS.length] }}>{pct.toFixed(0)}% ({c.count})</span>
                         </div>
                         <div className="h-2 rounded-full bg-[var(--bg-secondary)]">
-                          <div className="h-full rounded-full transition-all duration-700" style={{ width: `${pct}%`, background: colorMap[c.name] || ACCENT_COLORS[i] }} />
+                          <div className="h-full rounded-full transition-all duration-700" style={{ width: `${pct}%`, background: ACCENT_COLORS[i % ACCENT_COLORS.length] }} />
                         </div>
                       </div>
                     );
@@ -551,10 +536,10 @@ export default function Dashboard() {
                 <div>
                   <h3 className="font-semibold text-sm mb-1">Key Takeaways</h3>
                   <p className="text-xs text-[var(--text-secondary)] leading-relaxed">
-                    Product shots and lifestyle content dominate eyewear feeds. High-engagement posts tend to feature bold frame styles
-                    (Oversized, Geometric) in trending materials (Acetate, Bio-Acetate). Campaign and collaboration content
-                    drives the highest engagement rates. The most successful brands post 4-6 times per week with a mix of
-                    product, lifestyle, and behind-the-scenes content. Use the Feed view to explore what&apos;s working visually.
+                    All data is scraped live from real Instagram accounts using the Apify Instagram Scraper.
+                    Every post, caption, like count, and comment count you see is real — pulled directly from {stats.totalBrands} eyewear brand
+                    accounts across the globe. Use the Feed view to explore what top eyewear brands are actually posting and
+                    what&apos;s driving the most engagement. Filter by category or region to find patterns.
                   </p>
                 </div>
               </div>
