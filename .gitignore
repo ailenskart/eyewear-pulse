@@ -4,3 +4,6 @@ node_modules/
 .env
 .env.local
 posts/
+_bu.tmp
+_test_bu.tmp
+*.tmp
