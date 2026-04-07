@@ -65,8 +65,9 @@ function transformPosts(): Post[] {
     const handle = p.ownerUsername || '';
     if (!handle) continue;
 
-    // Get image URL — prefer first image from carousel, then displayUrl
-    const imageUrl = (p.images && p.images.length > 0) ? p.images[0] : (p.displayUrl || '');
+    // Get image URL — prefer local downloaded image, then carousel, then displayUrl
+    const imageUrl = (p as RawPost & { localImage?: string }).localImage
+      || ((p.images && p.images.length > 0) ? p.images[0] : (p.displayUrl || ''));
     if (!imageUrl) continue;
 
     // Find brand info

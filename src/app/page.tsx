@@ -67,6 +67,9 @@ function timeAgo(dateStr: string): string {
 
 function PostCard({ post, onClick }: { post: Post; onClick: () => void }) {
   const [hovered, setHovered] = useState(false);
+  const [imgError, setImgError] = useState(false);
+
+  const fallbackImg = `https://ui-avatars.com/api/?name=${encodeURIComponent(post.brand.name)}&size=600&background=1e1b4b&color=a78bfa&bold=true&font-size=0.25&length=8`;
 
   return (
     <div
@@ -76,12 +79,13 @@ function PostCard({ post, onClick }: { post: Post; onClick: () => void }) {
       onMouseLeave={() => setHovered(false)}
     >
       {/* Image */}
-      <div className="aspect-square overflow-hidden">
+      <div className="aspect-square overflow-hidden bg-[#1e1b4b]">
         <img
-          src={post.imageUrl}
+          src={imgError ? fallbackImg : post.imageUrl}
           alt={post.caption}
           className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110"
           loading="lazy"
+          onError={() => setImgError(true)}
         />
       </div>
 
@@ -120,13 +124,13 @@ function PostCard({ post, onClick }: { post: Post; onClick: () => void }) {
 
       {/* Bottom info */}
       <div className="p-3">
-        <p className="text-xs text-[var(--text-secondary)] line-clamp-2 leading-relaxed">{post.caption}</p>
+        <p className="text-xs text-[var(--text-secondary)] leading-relaxed overflow-hidden" style={{ display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' as const }}>{post.caption}</p>
         <div className="flex items-center justify-between mt-2">
           <div className="flex items-center gap-1.5">
             <span className="text-[10px] px-1.5 py-0.5 rounded bg-[var(--bg-secondary)] text-[var(--text-muted)]">{post.brand.category}</span>
             <span className="text-[10px] px-1.5 py-0.5 rounded bg-[var(--bg-secondary)] text-[var(--text-muted)]">{post.type}</span>
           </div>
-          <span className="text-[10px] text-[var(--text-muted)]">{timeAgo(post.postedAt)}</span>
+          <span className="text-[10px] text-[var(--text-muted)] flex-shrink-0">{timeAgo(post.postedAt)}</span>
         </div>
       </div>
     </div>
@@ -134,6 +138,9 @@ function PostCard({ post, onClick }: { post: Post; onClick: () => void }) {
 }
 
 function PostModal({ post, onClose }: { post: Post; onClose: () => void }) {
+  const [imgError, setImgError] = useState(false);
+  const fallbackImg = `https://ui-avatars.com/api/?name=${encodeURIComponent(post.brand.name)}&size=600&background=1e1b4b&color=a78bfa&bold=true&font-size=0.25&length=8`;
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4" onClick={onClose}>
       <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" />
@@ -142,7 +149,7 @@ function PostModal({ post, onClose }: { post: Post; onClose: () => void }) {
 
         {/* Image side */}
         <div className="md:w-[55%] bg-black flex items-center">
-          <img src={post.imageUrl} alt={post.caption} className="w-full h-full object-cover max-h-[50vh] md:max-h-[90vh]" />
+          <img src={imgError ? fallbackImg : post.imageUrl} alt={post.caption} className="w-full h-full object-cover max-h-[50vh] md:max-h-[90vh]" onError={() => setImgError(true)} />
         </div>
 
         {/* Info side */}
