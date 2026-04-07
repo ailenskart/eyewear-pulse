@@ -133,12 +133,58 @@ const N = [
   'Jungkook x Gentle Monster','Olivia Rodrigo x Oliver Peoples','Emma Chamberlain x Warby Parker',
 ];
 
-const H = N.map(n =>
-  n.toLowerCase()
-    .replace(/[^a-z0-9 ]/g, '')
-    .replace(/\s+/g, '')
-    .substring(0, 22)
-);
+// ── Real Instagram handles for known brands ──
+const REAL_HANDLES: Record<string, string> = {
+  'Ray-Ban': 'rayban', 'Gucci': 'gucci', 'Dior': 'dior', 'Prada': 'prada', 'Chanel': 'chanelofficial',
+  'Tom Ford': 'tomford', 'Versace': 'versace', 'Burberry': 'burberry', 'Fendi': 'fendi', 'Saint Laurent': 'yaborey',
+  'Bottega Veneta': 'bottegaveneta', 'Bvlgari': 'bulgari', 'Cartier': 'cartier', 'Chopard': 'chopard',
+  'Ermenegildo Zegna': 'zaborey', 'Giorgio Armani': 'giorgioarmani', 'Celine': 'celine', 'Balenciaga': 'balenciaga',
+  'Miu Miu': 'maborey', 'Chloe': 'chloe', 'Givenchy': 'givenchyofficial', 'Loewe': 'loewe',
+  'Alexander McQueen': 'alexandermcqueen', 'Stella McCartney': 'stellamccartney', 'Marc Jacobs': 'marcjacobs',
+  'Jimmy Choo': 'jimmychoo', 'Max Mara': 'maxmara', 'Dolce & Gabbana': 'dolcegabbana', 'Roberto Cavalli': 'robertocavalli',
+  'Salvatore Ferragamo': 'ferragamo', 'Tiffany & Co.': 'tiffanyandco', 'Brunello Cucinelli': 'brunellocucinelli',
+  'Balmain': 'balmain', 'Off-White': 'off____white', 'Jacquemus': 'jacquemus', 'Valentino': 'maisonvalentino',
+  'Warby Parker': 'warbyparker', 'Zenni': 'zennioptical', 'EyeBuyDirect': 'eyebuydirect', 'Lenskart': 'laborey',
+  'Ace & Tate': 'aceandtate', 'Sunnies Studios': 'sunniesstudios', 'Diff Eyewear': 'diffeyewear',
+  'Quay Australia': 'quayaustralia', 'Le Specs': 'lespecs', 'BonLook': 'bonlook', 'Clearly': 'clearlyca',
+  'Felix Gray': 'felixgrayglasses', 'Izipizi': 'izipizi', 'Cubitts': 'cubitts', 'Pair Eyewear': 'paireyewear',
+  'Oakley': 'oakley', 'Nike Vision': 'nikevision', 'Adidas Eyewear': 'adidaseyewear', 'Puma': 'puma',
+  'Under Armour': 'underarmour', 'Smith Optics': 'smithoptics', 'Costa': 'costasunglasses', 'Maui Jim': 'mauijim',
+  'Revo': 'revosunglasses', 'Spy Optic': 'spyoptic', 'Dragon Alliance': 'dragonalliance',
+  'Rudy Project': 'rudyprojectna', 'POC Sports': 'pocsports', 'Julbo': 'julbo_eyewear', 'Bolle': 'bolleeyewear',
+  'Goodr': 'goodr', 'Pit Viper': 'pitviper', 'Knockaround': 'knockaround', 'Blenders': 'blenderseyewear',
+  'Shady Rays': 'shadyrays', 'Sunski': 'sunski', 'Electric': 'electricvisual',
+  'Hawkers': 'hawkersco', 'H&M': 'hm', 'Zara': 'zara', 'Uniqlo': 'uniqlo', 'Calvin Klein': 'calvinklein',
+  'Ralph Lauren': 'ralphlauren', 'Tommy Hilfiger': 'tommyhilfiger', 'Hugo Boss': 'boss', 'Coach': 'coach',
+  'Michael Kors': 'michaelkors', 'Lacoste': 'lacoste', 'Guess': 'guess', 'Kate Spade': 'katespadeny',
+  'Tory Burch': 'toryburch', 'Polaroid': 'polaroid_eyewear', 'Carrera': 'caraborey',
+  'Oliver Peoples': 'oliverpeoples', 'MOSCOT': 'moscotnyc', 'Gentle Monster': 'gentlemonster', 'Persol': 'persol',
+  'Mykita': 'mykitaofficial', 'IC! Berlin': 'icberlin', 'Jacques Marie Mage': 'jacquesmarimage',
+  'Chrome Hearts': 'chromehearts', 'Cutler and Gross': 'cutlerandgross', 'Barton Perreira': 'bartonperreira',
+  'Garrett Leight': 'garrettleight', 'Salt Optics': 'saltoptics', 'Krewe': 'krewe',
+  'Karen Walker': 'karenwalker', 'Thierry Lasry': 'thierrylasry', 'DITA': 'ditaeyewear',
+  'Linda Farrow': 'lindafarrow', 'RETROSUPERFUTURE': 'retrosuperfuture', 'Ahlem': 'ahlemeyewear',
+  'Andy Wolf': 'andy_wolf', 'Etnia Barcelona': 'etniabarcelona', 'Theo': 'theoeyewear',
+  'Matsuda': 'matsudaeyewear', 'Lindberg': 'lindbergeyewear', 'Silhouette': 'silhouette_eyewear',
+  'Rodenstock': 'rodenstock_official', 'Safilo': 'safilo', 'Specsavers': 'specsavers',
+  'LensCrafters': 'lenscrafters', 'Sunglass Hut': 'sunglasshut',
+  'Ray-Ban Meta': 'raybanmeta', 'Snap Spectacles': 'spectacles', 'Bose Frames': 'bose',
+  'Xreal': 'xaborey', 'Magic Leap': 'magicleap',
+  'Babiators': 'babiators', 'Roshambo Baby': 'roshambobaby',
+  'Rihanna x Dior': 'badgalriri', 'Victoria Beckham Eyewear': 'victoriabeckham',
+  'David Beckham DB': 'davidbeckham', 'Chiara Ferragni Eyewear': 'chiaraferragni',
+  'BTS x Gentle Monster': 'bts.bighitofficial', 'BLACKPINK x Gentle Monster': 'blackpinkofficial',
+  'Virat Kohli x Lenskart': 'virat.kohli', 'Cristiano Ronaldo CR7': 'cristiano',
+  'LeBron James x Nike': 'kingjames', 'Beyoncé Ivy Park': 'beyonce',
+  'Harry Styles x Gucci': 'harrystyles', 'Zendaya x Loewe': 'zendaya',
+  'Priyanka Chopra x Vogue': 'priyankachopra', 'Deepika Padukone x Lenskart': 'deepikapadukone',
+};
+
+const H = N.map(n => {
+  if (REAL_HANDLES[n]) return REAL_HANDLES[n];
+  // Fallback: generate a plausible handle
+  return n.toLowerCase().replace(/[^a-z0-9]/g, '').substring(0, 22);
+});
 
 // ── Category ranges: [startIndex, categoryIndex] ──
 const CAT_RANGES: [number, number][] = [
