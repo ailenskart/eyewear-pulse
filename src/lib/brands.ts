@@ -29,7 +29,7 @@ const N = [
   'Salvatore Ferragamo','Tiffany & Co.','Berluti','Brunello Cucinelli','Loro Piana','Emilio Pucci',
   'Etro','Missoni','Moschino','Philipp Plein','Balmain','Off-White','Amiri','Fear of God','Jacquemus','Valentino',
 
-  // ── D2C / Direct to Consumer (50-109) ──
+  // ── D2C / Direct to Consumer (50-219) — 170 brands ──
   'Warby Parker','Zenni','EyeBuyDirect','Firmoo','Lenskart','John Jacobs','Vincent Chase','Ace & Tate',
   'Sunnies Studios','Diff Eyewear','Quay Australia','Le Specs','BonLook','Peepers','Clearly','GlassesUSA',
   'Felix Gray','Ambr Eyewear','Izipizi','Cubitts','Bridges Eyewear','Eyewa','LivHo','Cyxus','TIJN',
@@ -38,6 +38,26 @@ const N = [
   'Oscar Wylee','Bailey Nelson','Dresden Vision','Eyes of Solotica','Lensabl','Roka','Covry','Ojo Optique',
   'Fuse Lenses','EyeGlasses.com','Discount Glasses','Yesglasses','Eyemart Express','OpticalH','Jins','Glassic',
   'Mouqy','EZContacts','Overnight Glasses','Sportrx',
+  // ── New D2C additions ──
+  'Jimmy Fairly','Mr Spex','Tens','Topology Eyewear','Vehla','Moo Eyewear','Prive Revaux','Vooglam',
+  'Zoff','Bird Eyewear','Eyewear Labs','Soda Shades','Ben & Frank','Polette','Chilli Beans','Owndays',
+  'Coolwinks','Meller','Stoggles','LOHO','Peppe Eyewear','9Five','Caddis','ClearDekho',
+  'Saturdays','Shwood','Tomahawk Shades','AOJO','Hubble Contacts','Zeelool',
+  'Ainak','Aqualens','Barner Brand','Brille24','Classic Specs','Coolens','Copper Looks',
+  'Dick Moby','Dime Optics','District Eyewear','Eye Republic','Eyebobs','Eyejusters','EyeMyEye',
+  'Feel Good Contacts','Finlay & Co','Genusee','Glasses Direct','Glazziq','Goggles4U',
+  'Iolla','Jonas Paul Eyewear','Karün','La Paire','Lemon Eyewear',
+  'Lensmart','Lenstore','Lentes Factory','Lentes Plus',
+  'London Mole','Look Optic','Lowercase','Meetsun','Mon C London',
+  'MVMT','Nau Eyewear','Nectar Sunglasses','Neso Eyewear','Nooz Optics','Northweek',
+  'Ombraz','Ooh Spectacles','Oppa Glasses','Ottoto Eyewear',
+  'Pala Eyewear','Payne Glasses','Peculiar Eyewear','Pela Vision','Pixel Eyewear','Pott Glasses',
+  'Proof Eyewear','Raen','Revant Optics','Rivet & Sway',
+  'Sea2See','Sensee','SoJo Vision','Solo Eyewear',
+  'Specscart','SunGod','Sunnies Specs','Tapole','Taylor Morris','ThinOptics',
+  'Vision Direct','VIU','Waterhaul','Wazi Eyewear','Wee Farers','William Painter',
+  'Woosh Eyewear','Zinff Optical','Infinite Eyewear','Pott Glasses',
+  'Lensational','FramesBuy','Soxick','Spexy',
 
   // ── Sports (110-159) ──
   'Oakley','Nike Vision','Adidas Eyewear','Puma','Under Armour','Smith Optics','Costa','Maui Jim',
@@ -144,10 +164,49 @@ const REAL_HANDLES: Record<string, string> = {
   'Jimmy Choo': 'jimmychoo', 'Max Mara': 'maxmara', 'Dolce & Gabbana': 'dolcegabbana', 'Roberto Cavalli': 'robertocavalli',
   'Salvatore Ferragamo': 'ferragamo', 'Tiffany & Co.': 'tiffanyandco', 'Brunello Cucinelli': 'brunellocucinelli',
   'Balmain': 'balmain', 'Off-White': 'off____white', 'Jacquemus': 'jacquemus', 'Valentino': 'maisonvalentino',
-  'Warby Parker': 'warbyparker', 'Zenni': 'zennioptical', 'EyeBuyDirect': 'eyebuydirect', 'Lenskart': 'laborey',
+  'Warby Parker': 'warbyparker', 'Zenni': 'zennioptical', 'EyeBuyDirect': 'eyebuydirect', 'Lenskart': 'lenskart',
   'Ace & Tate': 'aceandtate', 'Sunnies Studios': 'sunniesstudios', 'Diff Eyewear': 'diffeyewear',
-  'Quay Australia': 'quayaustralia', 'Le Specs': 'lespecs', 'BonLook': 'bonlook', 'Clearly': 'clearlyca',
+  'Quay Australia': 'quay', 'Le Specs': 'lespecs', 'BonLook': 'bonlook', 'Clearly': 'clearlyca',
   'Felix Gray': 'felixgrayglasses', 'Izipizi': 'izipizi', 'Cubitts': 'cubitts', 'Pair Eyewear': 'paireyewear',
+  'Jimmy Fairly': 'jimmyfairly', 'Mr Spex': 'misterspex', 'Tens': 'tens', 'Topology Eyewear': 'topologyeyewear',
+  'Vehla': 'vehla', 'Moo Eyewear': 'mooeyewear', 'Prive Revaux': 'priverevaux', 'Vooglam': 'vooglam',
+  'Zoff': 'zoff_eyewear', 'Bird Eyewear': 'birdeyewear', 'Eyewear Labs': 'eyewearlabs', 'Soda Shades': 'sodashades',
+  'Ben & Frank': 'benandfrank', 'Polette': 'polette_eyewear', 'Chilli Beans': 'chillibeans', 'Owndays': 'owndays_official',
+  'Coolwinks': 'coolwinks', 'Meller': 'mellerband', 'Stoggles': 'stoggles', 'LOHO': 'lohoeyewear',
+  'Peppe Eyewear': 'peppe.eyewear', '9Five': '9five', 'Caddis': 'caddislife', 'ClearDekho': 'cleardekho',
+  'Saturdays': 'saturdays', 'Shwood': 'shwood', 'Tomahawk Shades': 'tomahawkshades', 'AOJO': 'aojo_eyewear',
+  'Hubble Contacts': 'hubblecontacts', 'Zeelool': 'zeelool', 'Liingo Eyewear': 'liingoeyewear',
+  'Ainak': 'ainak.pk', 'Aqualens': 'aqualens', 'Barner Brand': 'barnerbrand', 'Brille24': 'brille24',
+  'Classic Specs': 'classicspecs', 'Coolens': 'coolens', 'Copper Looks': 'copperlooks',
+  'Dick Moby': 'dickmoby', 'Dime Optics': 'dimeoptics', 'District Eyewear': 'districteyewear',
+  'Eye Republic': 'eyerepublic', 'Eyebobs': 'eyebobs', 'Eyejusters': 'eyejusters', 'EyeMyEye': 'eyemyeye',
+  'Feel Good Contacts': 'feelgoodcontacts', 'Finlay & Co': 'finlayandco', 'Genusee': 'genusee',
+  'Glasses Direct': 'glassesdirect', 'Glazziq': 'glazziq', 'Goggles4U': 'goggles4u',
+  'Iolla': 'iolla', 'Jonas Paul Eyewear': 'jonaspauleyewear', 'Karün': 'karunworld',
+  'La Paire': 'lapaireglasses', 'Lemon Eyewear': 'lemoneyewear',
+  'Lensmart': 'lensmart', 'Lenstore': 'lenstore', 'Lentes Factory': 'lentesfactory', 'Lentes Plus': 'lentesplus',
+  'London Mole': 'londonmole', 'Look Optic': 'lookoptic', 'Lowercase': 'lowercasenyc',
+  'Meetsun': 'meetsun', 'Mon C London': 'monclondon',
+  'MVMT': 'mvmt', 'Nau Eyewear': 'nau_eyewear', 'Nectar Sunglasses': 'nectarsunglasses',
+  'Neso Eyewear': 'nesoeyewear', 'Nooz Optics': 'noozoptics', 'Northweek': 'northweek',
+  'Ombraz': 'ombraz', 'Ooh Spectacles': 'oohspectacles', 'Oppa Glasses': 'oppaglasses',
+  'Ottoto Eyewear': 'ottotoeyewear', 'Pala Eyewear': 'palaeyewear', 'Payne Glasses': 'payneglasses',
+  'Peculiar Eyewear': 'peculiareyewear', 'Pela Vision': 'pelavision', 'Pixel Eyewear': 'pixeleyewear',
+  'Pott Glasses': 'pottglasses', 'Proof Eyewear': 'proofeyewear', 'Raen': 'raen',
+  'Revant Optics': 'revantoptics', 'Rivet & Sway': 'rivetandsway',
+  'Sea2See': 'sea2seeeyewear', 'Sensee': 'sensee', 'SoJo Vision': 'sojosvision', 'Solo Eyewear': 'soloeyewear',
+  'Specscart': 'specscart', 'SunGod': 'wearesungod', 'Sunnies Specs': 'sunniesspecs',
+  'Tapole': 'tapole_eyewear', 'Taylor Morris': 'taylormorris', 'ThinOptics': 'thinoptics',
+  'Vision Direct': 'visiondirect', 'VIU': 'viueyewear', 'Waterhaul': 'waterhaul',
+  'Wazi Eyewear': 'wazieyewear', 'Wee Farers': 'weefarers', 'William Painter': 'williampainter',
+  'Woosh Eyewear': 'woosheyewear', 'Zinff Optical': 'zinffoptical', 'Infinite Eyewear': 'infiniteyewear',
+  'John Jacobs': 'johnjacobseyewear', 'Vincent Chase': 'vincentchase', 'Fitz Frames': 'fitzframes',
+  'Arlo Wolf': 'arlowolf', 'Bloobloom': 'bloobloom', 'Ollie Quinn': 'olliequinn',
+  'Oscar Wylee': 'oscarwylee', 'Bailey Nelson': 'baileynelson', 'Dresden Vision': 'dresdenvision',
+  'Lensabl': 'lensabl', 'Roka': 'roka', 'Covry': 'covry', 'Glassic': 'glassic.co',
+  'GlassesUSA': 'glassesusa', '39DollarGlasses': '39dollarglasses', 'Yesglasses': 'yesglasses',
+  'Mouqy': 'mouqy', 'Overnight Glasses': 'overnightglasses', 'Coastal': 'coastal',
+  'Lensational': 'lensational', 'FramesBuy': 'framesbuy', 'Soxick': 'soxick', 'Spexy': 'spexy.in',
   'Oakley': 'oakley', 'Nike Vision': 'nikevision', 'Adidas Eyewear': 'adidaseyewear', 'Puma': 'puma',
   'Under Armour': 'underarmour', 'Smith Optics': 'smithoptics', 'Costa': 'costasunglasses', 'Maui Jim': 'mauijim',
   'Revo': 'revosunglasses', 'Spy Optic': 'spyoptic', 'Dragon Alliance': 'dragonalliance',
@@ -188,17 +247,17 @@ const H = N.map(n => {
 
 // ── Category ranges: [startIndex, categoryIndex] ──
 const CAT_RANGES: [number, number][] = [
-  [0, 0],    // Luxury
-  [50, 1],   // D2C
-  [110, 2],  // Sports
-  [160, 3],  // Fast Fashion
-  [210, 4],  // Independent
-  [270, 5],  // Heritage
-  [320, 6],  // Streetwear
-  [370, 7],  // Sustainable
-  [420, 8],  // Tech
-  [480, 9],  // Kids
-  [530, 10], // Celebrity
+  [0, 0],    // Luxury (0-49)
+  [50, 1],   // D2C (50-218)
+  [219, 2],  // Sports (219-268)
+  [269, 3],  // Fast Fashion (269-318)
+  [319, 4],  // Independent (319-382)
+  [382, 5],  // Heritage (382-432)
+  [433, 6],  // Streetwear (433-482)
+  [483, 7],  // Sustainable (483-533)
+  [534, 8],  // Tech (534-594)
+  [595, 9],  // Kids (595-646)
+  [647, 10], // Celebrity (647+)
 ];
 
 function assignCategory(i: number): number {
