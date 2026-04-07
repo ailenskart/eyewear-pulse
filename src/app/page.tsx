@@ -3,10 +3,13 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 
 /* ---------- types ---------- */
+interface CarouselSlide { url: string; type: string; }
 interface Post {
   id: string;
   brand: { name: string; handle: string; category: string; region: string; priceRange: string };
   imageUrl: string;
+  videoUrl: string | null;
+  carouselSlides: CarouselSlide[];
   caption: string;
   likes: number;
   comments: number;
@@ -115,10 +118,15 @@ function PostCard({ post, onClick }: { post: Post; onClick: () => void }) {
         <span className="text-white text-[10px] font-semibold">{post.brand.name}</span>
       </div>
 
-      {/* Type tag */}
+      {/* Type badge */}
       {post.isVideo && (
-        <div className="absolute top-2 right-2 bg-[var(--accent)]/80 backdrop-blur-sm text-white text-[10px] font-medium px-2 py-0.5 rounded-full">
-          Video
+        <div className="absolute top-2 right-2 bg-[var(--accent)]/80 backdrop-blur-sm text-white text-[10px] font-medium px-2 py-0.5 rounded-full flex items-center gap-1">
+          <span>&#9654;</span> Video
+        </div>
+      )}
+      {post.carouselSlides.length > 0 && !post.isVideo && (
+        <div className="absolute top-2 right-2 bg-white/20 backdrop-blur-sm text-white text-[10px] font-medium px-2 py-0.5 rounded-full">
+          1/{post.carouselSlides.length}
         </div>
       )}
 
@@ -139,7 +147,14 @@ function PostCard({ post, onClick }: { post: Post; onClick: () => void }) {
 
 function PostModal({ post, onClose }: { post: Post; onClose: () => void }) {
   const [imgError, setImgError] = useState(false);
+  const [slideIdx, setSlideIdx] = useState(0);
   const fallbackImg = `https://ui-avatars.com/api/?name=${encodeURIComponent(post.brand.name)}&size=600&background=1e1b4b&color=a78bfa&bold=true&font-size=0.25&length=8`;
+
+  const slides = post.carouselSlides.length > 0
+    ? post.carouselSlides.map(s => s.url)
+    : [post.imageUrl];
+  const currentSlide = slides[slideIdx] || post.imageUrl;
+  const hasMultipleSlides = slides.length > 1;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4" onClick={onClose}>
@@ -147,9 +162,29 @@ function PostModal({ post, onClose }: { post: Post; onClose: () => void }) {
       <div className="relative bg-[var(--bg-secondary)] rounded-2xl border border-[var(--border)] max-w-4xl w-full max-h-[90vh] overflow-hidden flex flex-col md:flex-row" onClick={e => e.stopPropagation()}>
         <button onClick={onClose} className="absolute top-3 right-3 z-10 w-8 h-8 rounded-full bg-black/50 flex items-center justify-center text-white/80 hover:text-white transition-colors">✕</button>
 
-        {/* Image side */}
-        <div className="md:w-[55%] bg-black flex items-center">
-          <img src={imgError ? fallbackImg : post.imageUrl} alt={post.caption} className="w-full h-full object-cover max-h-[50vh] md:max-h-[90vh]" onError={() => setImgError(true)} />
+        {/* Image/Video side */}
+        <div className="md:w-[55%] bg-black flex items-center relative">
+          {post.isVideo && post.videoUrl ? (
+            <video src={post.videoUrl} controls autoPlay muted playsInline className="w-full max-h-[50vh] md:max-h-[90vh] object-contain" poster={post.imageUrl} />
+          ) : (
+            <img src={imgError ? fallbackImg : currentSlide} alt={post.caption} className="w-full h-full object-cover max-h-[50vh] md:max-h-[90vh]" onError={() => setImgError(true)} />
+          )}
+          {/* Carousel navigation */}
+          {hasMultipleSlides && !post.isVideo && (
+            <>
+              {slideIdx > 0 && (
+                <button onClick={(e) => { e.stopPropagation(); setSlideIdx(i => i - 1); }} className="absolute left-2 top-1/2 -translate-y-1/2 w-8 h-8 rounded-full bg-black/50 text-white flex items-center justify-center hover:bg-black/70">&#8249;</button>
+              )}
+              {slideIdx < slides.length - 1 && (
+                <button onClick={(e) => { e.stopPropagation(); setSlideIdx(i => i + 1); }} className="absolute right-2 top-1/2 -translate-y-1/2 w-8 h-8 rounded-full bg-black/50 text-white flex items-center justify-center hover:bg-black/70">&#8250;</button>
+              )}
+              <div className="absolute bottom-3 left-1/2 -translate-x-1/2 flex gap-1">
+                {slides.map((_, i) => (
+                  <div key={i} className={`w-1.5 h-1.5 rounded-full transition-all ${i === slideIdx ? 'bg-white w-3' : 'bg-white/40'}`} />
+                ))}
+              </div>
+            </>
+          )}
         </div>
 
         {/* Info side */}

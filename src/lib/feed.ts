@@ -5,6 +5,11 @@ import scrapedData from '../data/scraped-feed.json';
 /*  Types                                                              */
 /* ------------------------------------------------------------------ */
 
+export interface CarouselSlide {
+  url: string;
+  type: string;
+}
+
 export interface Post {
   id: string;
   brand: {
@@ -15,6 +20,8 @@ export interface Post {
     priceRange: string;
   };
   imageUrl: string;
+  videoUrl: string | null;
+  carouselSlides: CarouselSlide[];
   caption: string;
   likes: number;
   comments: number;
@@ -57,6 +64,8 @@ interface RawPost {
   inputUrl?: string;
   localImage?: string;
   blobUrl?: string;
+  videoBlobUrl?: string;
+  carouselSlides?: Array<{ url: string; type: string }>;
 }
 
 function transformPosts(): Post[] {
@@ -105,6 +114,8 @@ function transformPosts(): Post[] {
       id: p.id || p.shortCode || `${handle}_${posts.length}`,
       brand,
       imageUrl,
+      videoUrl: p.videoBlobUrl || p.videoUrl || null,
+      carouselSlides: p.carouselSlides || [],
       caption: p.caption || '',
       likes,
       comments,
