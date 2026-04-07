@@ -66,7 +66,9 @@ export async function GET(request: NextRequest) {
   }, {} as Record<string, number>);
 
   const totalFollowers = BRANDS.reduce((s, b) => s + b.followerEstimate, 0);
-  const avgEngagement = BRANDS.reduce((s, b) => s + (b.avgLikes / b.followerEstimate), 0) / BRANDS.length * 100;
+  const avgEngagement = BRANDS.length > 0
+    ? BRANDS.reduce((s, b) => s + (b.followerEstimate > 0 ? b.avgLikes / b.followerEstimate : 0), 0) / BRANDS.length * 100
+    : 0;
 
   return NextResponse.json({
     brands: paginated,

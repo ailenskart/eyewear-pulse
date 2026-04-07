@@ -29,7 +29,7 @@ interface ApiResponse {
 /* ---------- constants ---------- */
 const COLORS = ['#6366f1','#8b5cf6','#a78bfa','#c4b5fd','#818cf8','#6d28d9','#4f46e5','#7c3aed','#5b21b6','#4338ca'];
 const REGIONS = ['All','North America','Europe','Asia Pacific','South Asia','Middle East','Latin America','Africa','Southeast Asia','East Asia','Oceania'];
-const CATEGORIES = ['All','Luxury','D2C','Sports','Fast Fashion','Independent','Heritage','Streetwear','Sustainable','Tech','Kids','Celebrity'];
+const CATEGORIES = ['All','Luxury','D2C','Sports','Fast Fashion','Independent','Heritage','Streetwear','Sustainable','Tech','Kids','Celebrity'] as const;
 const PRICE_RANGES = ['All','$','$$','$$$','$$$$'];
 const SUBCATEGORIES = ['All','Optical','Sunglasses','Both','Sport Goggles','Safety','Fashion'];
 
@@ -246,7 +246,9 @@ export default function Dashboard() {
   const [sortBy, setSortBy] = useState('followerEstimate');
   const [page, setPage] = useState(1);
   const [selectedBrand, setSelectedBrand] = useState<Brand | null>(null);
-  const [activeTab, setActiveTab] = useState<'grid' | 'analytics' | 'trends'>('grid');
+  const [activeTab, setActiveTab] = useState<'grid' | 'analytics' | 'trends' | 'insights'>('grid');
+  const [insightsData, setInsightsData] = useState<Record<string, unknown> | null>(null);
+  const [insightsLoading, setInsightsLoading] = useState(false);
   const [allBrands, setAllBrands] = useState<Brand[]>([]);
 
   const fetchData = useCallback(async () => {
@@ -263,7 +265,7 @@ export default function Dashboard() {
 
       // Also fetch all brands for analytics
       if (!allBrands.length) {
-        const allRes = await fetch('/api/brands?limit=500');
+        const allRes = await fetch('/api/brands?limit=600');
         const allJson: ApiResponse = await allRes.json();
         setAllBrands(allJson.brands);
       }
@@ -274,6 +276,18 @@ export default function Dashboard() {
   }, [category, region, priceRange, subcategory, search, sortBy, page]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
+
+  // Fetch Instagram insights overview when tab is selected
+  useEffect(() => {
+    if (activeTab === 'insights' && !insightsData && !insightsLoading) {
+      setInsightsLoading(true);
+      fetch('/api/instagram-insights')
+        .then(r => r.json())
+        .then(d => setInsightsData(d))
+        .catch(e => console.error('Insights fetch failed:', e))
+        .finally(() => setInsightsLoading(false));
+    }
+  }, [activeTab, insightsData, insightsLoading]);
 
   /* ---------- derived analytics ---------- */
   const categoryData = useMemo(() => {
@@ -383,7 +397,7 @@ export default function Dashboard() {
                   EyeWear Pulse
                 </h1>
                 <p className="text-[10px] text-[var(--text-muted)] uppercase tracking-widest">
-                  Global Instagram Intelligence — 500 Accounts
+                  Global Instagram Intelligence — 600 Accounts
                 </p>
               </div>
             </div>
@@ -403,11 +417,11 @@ export default function Dashboard() {
 
             {/* Tabs */}
             <div className="flex gap-1 bg-[var(--bg-card)] rounded-xl p-1 border border-[var(--border)]">
-              {(['grid', 'analytics', 'trends'] as const).map(tab => (
+              {(['grid', 'analytics', 'insights', 'trends'] as const).map(tab => (
                 <button key={tab} onClick={() => setActiveTab(tab)}
                   className={`px-4 py-1.5 rounded-lg text-xs font-medium capitalize transition-all ${
                     activeTab === tab ? 'bg-[var(--accent)] text-white' : 'text-[var(--text-muted)] hover:text-white'
-                  }`}>{tab === 'grid' ? 'Brands' : tab}</button>
+                  }`}>{tab === 'grid' ? 'Brands' : tab === 'insights' ? 'IG Insights' : tab}</button>
               ))}
             </div>
           </div>
@@ -417,10 +431,10 @@ export default function Dashboard() {
       <main className="max-w-[1600px] mx-auto px-4 py-6">
         {/* Stats Row */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-          <StatCard icon="🌍" label="Tracked Brands" value={String(data?.analytics.totalBrands || 500)} sub="Across 10 global regions" />
+          <StatCard icon="🌍" label="Tracked Brands" value={String(data?.analytics.totalBrands || 600)} sub="Across 10 global regions + 11 categories" />
           <StatCard icon="👥" label="Total Reach" value={formatNumber(data?.analytics.totalFollowers || 0)} sub="Combined follower base" />
           <StatCard icon="❤️" label="Avg Engagement" value={`${data?.analytics.avgEngagement || 0}%`} sub="Like-to-follower ratio" />
-          <StatCard icon="📊" label="Showing" value={`${data?.total || 0}`} sub={`of ${data?.analytics.totalBrands || 500} brands`} />
+          <StatCard icon="📊" label="Showing" value={`${data?.total || 0}`} sub={`of ${data?.analytics.totalBrands || 600} brands`} />
         </div>
 
         {/* Filters */}
@@ -593,13 +607,180 @@ export default function Dashboard() {
           </div>
         )}
 
+        {activeTab === 'insights' && (
+          <div className="space-y-6">
+            {/* Insights Header */}
+            <div className="bg-gradient-to-r from-pink-900/20 via-purple-900/20 to-indigo-900/20 rounded-2xl border border-purple-500/30 p-6">
+              <div className="flex items-center gap-3 mb-2">
+                <span className="text-2xl">📸</span>
+                <h2 className="text-lg font-bold">Instagram Intelligence — Powered by InstaTouch</h2>
+              </div>
+              <p className="text-sm text-[var(--text-secondary)]">
+                Deep Instagram analytics for {data?.analytics.totalBrands || 600} global eyewear players.
+                Live scraping via <span className="text-[var(--accent-light)] font-medium">instatouch</span> with
+                fallback data generation. Track engagement, hashtag trends, content strategies, and competitive benchmarks.
+              </p>
+            </div>
+
+            {insightsLoading ? (
+              <div className="flex items-center justify-center py-20">
+                <div className="text-center">
+                  <div className="w-12 h-12 border-4 border-[var(--accent)] border-t-transparent rounded-full animate-spin mx-auto mb-3" />
+                  <p className="text-sm text-[var(--text-muted)]">Loading Instagram insights...</p>
+                </div>
+              </div>
+            ) : insightsData ? (
+              <>
+                {/* Overview Stats */}
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                  <StatCard icon="📊" label="Total Brands" value={String((insightsData as Record<string, unknown>).totalBrands || 600)} sub="Mapped globally" />
+                  <StatCard icon="👥" label="Est. Total Reach" value={formatNumber((insightsData as Record<string, number>).totalEstimatedFollowers || 0)} sub="Combined followers" />
+                  <StatCard icon="❤️" label="Avg Engagement" value={`${(insightsData as Record<string, number>).avgEngagement || 0}%`} sub="Across all brands" />
+                  <StatCard icon="#️⃣" label="Tracked Hashtags" value={String(((insightsData as Record<string, unknown[]>).trendingHashtags || []).length)} sub="Eyewear-specific" />
+                </div>
+
+                {/* Category Breakdown */}
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                  <div className="bg-[var(--bg-card)] rounded-2xl border border-[var(--border)] p-5">
+                    <h3 className="text-sm font-semibold mb-4">Category Breakdown — Instagram Presence</h3>
+                    <ResponsiveContainer width="100%" height={350}>
+                      <BarChart data={((insightsData as Record<string, Array<Record<string, unknown>>>).categoryBreakdown || []).slice(0, 11)} layout="vertical">
+                        <XAxis type="number" tick={{ fill: '#64748b', fontSize: 11 }} tickFormatter={formatNumber} />
+                        <YAxis dataKey="category" type="category" tick={{ fill: '#94a3b8', fontSize: 10 }} width={100} />
+                        <Tooltip content={<ChartTooltip />} />
+                        <Legend />
+                        <Bar dataKey="totalFollowers" name="Total Followers" fill="#6366f1" radius={[0, 6, 6, 0]} />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </div>
+
+                  <div className="bg-[var(--bg-card)] rounded-2xl border border-[var(--border)] p-5">
+                    <h3 className="text-sm font-semibold mb-4">Engagement Rate by Category</h3>
+                    <ResponsiveContainer width="100%" height={350}>
+                      <BarChart data={((insightsData as Record<string, Array<Record<string, unknown>>>).categoryBreakdown || []).slice(0, 11)}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
+                        <XAxis dataKey="category" tick={{ fill: '#94a3b8', fontSize: 9 }} angle={-35} textAnchor="end" height={70} />
+                        <YAxis tick={{ fill: '#64748b', fontSize: 11 }} />
+                        <Tooltip content={<ChartTooltip />} />
+                        <Bar dataKey="avgEngagement" name="Avg Engagement %" fill="#22c55e" radius={[4, 4, 0, 0]}>
+                          {((insightsData as Record<string, Array<Record<string, unknown>>>).categoryBreakdown || []).slice(0, 11).map((_: unknown, i: number) => (
+                            <Cell key={i} fill={COLORS[i % COLORS.length]} />
+                          ))}
+                        </Bar>
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </div>
+                </div>
+
+                {/* Region Breakdown */}
+                <div className="bg-[var(--bg-card)] rounded-2xl border border-[var(--border)] p-5">
+                  <h3 className="text-sm font-semibold mb-4">Global Region Instagram Footprint</h3>
+                  <ResponsiveContainer width="100%" height={300}>
+                    <BarChart data={(insightsData as Record<string, Array<Record<string, unknown>>>).regionBreakdown || []}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
+                      <XAxis dataKey="region" tick={{ fill: '#94a3b8', fontSize: 9 }} angle={-25} textAnchor="end" height={60} />
+                      <YAxis yAxisId="left" tick={{ fill: '#64748b', fontSize: 11 }} tickFormatter={formatNumber} />
+                      <YAxis yAxisId="right" orientation="right" tick={{ fill: '#64748b', fontSize: 11 }} />
+                      <Tooltip content={<ChartTooltip />} />
+                      <Legend />
+                      <Bar yAxisId="left" dataKey="totalFollowers" name="Total Followers" fill="#6366f1" radius={[4, 4, 0, 0]} />
+                      <Line yAxisId="right" type="monotone" dataKey="avgEngagement" name="Avg Engagement %" stroke="#22c55e" strokeWidth={2} dot={{ fill: '#22c55e', r: 4 }} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+
+                {/* Top Players */}
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                  <div className="bg-[var(--bg-card)] rounded-2xl border border-[var(--border)] p-5">
+                    <h3 className="text-sm font-semibold mb-4">Top 15 by Followers</h3>
+                    <div className="space-y-2 max-h-[400px] overflow-y-auto">
+                      {((insightsData as Record<string, Array<Record<string, unknown>>>).topByFollowers || []).slice(0, 15).map((b: Record<string, unknown>, i: number) => (
+                        <div key={i} className="flex items-center gap-3 p-2 rounded-lg hover:bg-[var(--bg-secondary)] transition-colors">
+                          <span className="text-xs font-bold text-[var(--accent-light)] w-6">#{i + 1}</span>
+                          <BrandAvatar name={String(b.name)} size={32} className="w-8 h-8 rounded-full flex-shrink-0" />
+                          <div className="flex-1 min-w-0">
+                            <div className="text-xs font-semibold truncate">{String(b.name)}</div>
+                            <div className="text-[10px] text-[var(--text-muted)]">{String(b.category)} · {String(b.region)}</div>
+                          </div>
+                          <div className="text-right">
+                            <div className="text-xs font-bold text-[var(--accent-light)]">{formatNumber(b.followers as number)}</div>
+                            <div className="text-[10px] text-[var(--text-muted)]">{String(b.engagement)}% eng</div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="bg-[var(--bg-card)] rounded-2xl border border-[var(--border)] p-5">
+                    <h3 className="text-sm font-semibold mb-4">Top 15 by Engagement Rate</h3>
+                    <div className="space-y-2 max-h-[400px] overflow-y-auto">
+                      {((insightsData as Record<string, Array<Record<string, unknown>>>).topByEngagement || []).slice(0, 15).map((b: Record<string, unknown>, i: number) => (
+                        <div key={i} className="flex items-center gap-3 p-2 rounded-lg hover:bg-[var(--bg-secondary)] transition-colors">
+                          <span className="text-xs font-bold text-emerald-400 w-6">#{i + 1}</span>
+                          <BrandAvatar name={String(b.name)} size={32} className="w-8 h-8 rounded-full flex-shrink-0" />
+                          <div className="flex-1 min-w-0">
+                            <div className="text-xs font-semibold truncate">{String(b.name)}</div>
+                            <div className="text-[10px] text-[var(--text-muted)]">{String(b.category)} · {String(b.region)}</div>
+                          </div>
+                          <div className="text-right">
+                            <div className="text-xs font-bold text-emerald-400">{String(b.engagement)}%</div>
+                            <div className="text-[10px] text-[var(--text-muted)]">{formatNumber(b.followers as number)} followers</div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Trending Hashtags */}
+                <div className="bg-[var(--bg-card)] rounded-2xl border border-[var(--border)] p-5">
+                  <h3 className="text-sm font-semibold mb-4">Eyewear Hashtag Intelligence</h3>
+                  <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
+                    {((insightsData as Record<string, Array<Record<string, unknown>>>).trendingHashtags || []).map((h: Record<string, unknown>, i: number) => {
+                      const trendColor = h.trend === 'hot' ? '#ef4444' : h.trend === 'growing' ? '#22c55e' : '#6366f1';
+                      return (
+                        <div key={i} className="bg-[var(--bg-secondary)] rounded-xl p-3 border border-[var(--border)]">
+                          <div className="flex items-center justify-between mb-1">
+                            <span className="text-sm font-bold text-[var(--accent-light)]">{String(h.tag)}</span>
+                            <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full" style={{ background: trendColor + '20', color: trendColor }}>
+                              {String(h.trend)}
+                            </span>
+                          </div>
+                          <div className="text-xs text-[var(--text-muted)]">{formatNumber(h.estimatedPosts as number)} posts</div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Scraping Note */}
+                <div className="bg-gradient-to-r from-[var(--accent)]/5 to-purple-900/5 rounded-2xl border border-[var(--accent)]/20 p-5">
+                  <div className="flex items-start gap-3">
+                    <span className="text-xl">⚡</span>
+                    <div>
+                      <h3 className="font-semibold text-sm mb-1">InstaTouch Scraping Engine</h3>
+                      <p className="text-xs text-[var(--text-secondary)] leading-relaxed">
+                        This dashboard uses the <span className="font-medium text-[var(--accent-light)]">instatouch</span> npm
+                        package for Instagram data extraction. It supports profile metadata, post feeds, hashtag analysis,
+                        and batch scraping with configurable concurrency. Provide an Instagram session cookie via the API
+                        for authenticated endpoints (followers, following lists). Without a session, public profile data
+                        and fallback analytics are used. Rate limiting and proxy support are built in.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </>
+            ) : null}
+          </div>
+        )}
+
         {activeTab === 'trends' && (
           <div className="space-y-6">
             {/* Trend Insights Header */}
             <div className="bg-gradient-to-r from-[var(--accent)]/10 to-purple-900/10 rounded-2xl border border-[var(--accent)]/30 p-6">
               <h2 className="text-lg font-bold mb-2">Eyewear Trend Intelligence</h2>
               <p className="text-sm text-[var(--text-secondary)]">
-                AI-powered insights derived from scraping 500 global eyewear accounts. Analyzing design attributes,
+                AI-powered insights derived from scraping 600 global eyewear accounts. Analyzing design attributes,
                 posting patterns, and engagement signals to identify emerging trends from runways to retail.
               </p>
             </div>
@@ -735,7 +916,7 @@ export default function Dashboard() {
                 <div>
                   <h3 className="font-semibold text-sm mb-2">AI Design Intelligence Note</h3>
                   <p className="text-xs text-[var(--text-secondary)] leading-relaxed">
-                    Based on analysis of 500 global eyewear accounts, key design attributes that drive higher engagement include:
+                    Based on analysis of 600 global eyewear accounts, key design attributes that drive higher engagement include:
                     minimal temple designs (people prefer less ornamentation on the front), bold color choices on acetate frames,
                     and oversized proportions. The trend data suggests moving toward attribute-based design selection —
                     categorizing frames by temple style, front shape, material, and color rather than traditional SKU-based approaches.
@@ -757,8 +938,8 @@ export default function Dashboard() {
       <footer className="border-t border-[var(--border)] py-6 mt-12">
         <div className="max-w-[1600px] mx-auto px-4 text-center">
           <p className="text-xs text-[var(--text-muted)]">
-            EyeWear Pulse — Tracking 500 global eyewear & sunglasses Instagram accounts.
-            Built for Lenskart design intelligence. Data refreshed via Instagram public endpoints.
+            EyeWear Pulse — Tracking 600 global eyewear & sunglasses Instagram accounts across 11 categories.
+            Built for Lenskart design intelligence. Powered by InstaTouch scraping engine + Instagram public endpoints.
           </p>
         </div>
       </footer>
