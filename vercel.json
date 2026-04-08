@@ -1,1 +1,12 @@
-{"version": 2, "framework": "nextjs", "buildCommand": "npx next build", "outputDirectory": ".next"}
+{
+  "version": 2,
+  "framework": "nextjs",
+  "buildCommand": "npx next build",
+  "outputDirectory": ".next",
+  "crons": [
+    {
+      "path": "/api/cron/rescrape?key=eyewear-pulse-cron-2026",
+      "schedule": "0 6 * * *"
+    }
+  ]
+}

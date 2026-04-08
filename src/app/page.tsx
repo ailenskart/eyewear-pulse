@@ -183,39 +183,40 @@ function PostModal({ post, onClose }: { post: Post; onClose: () => void }) {
   // Video posts get a clean centered video dialog
   if (post.isVideo && post.videoUrl) {
     return (
-      <div className="fixed inset-0 z-50 flex items-center justify-center p-4" onClick={onClose}>
+      <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center" onClick={onClose}>
         <div className="absolute inset-0 bg-black/80 backdrop-blur-md" />
-        <div className="relative max-w-lg w-full" onClick={e => e.stopPropagation()}>
-          <button onClick={onClose} className="absolute -top-10 right-0 z-10 w-8 h-8 rounded-full bg-white/10 flex items-center justify-center text-white/80 hover:text-white hover:bg-white/20 transition-colors">✕</button>
+        <div className="relative w-full sm:max-w-lg sm:mx-4" onClick={e => e.stopPropagation()}>
+          {/* Close button */}
+          <button onClick={onClose} className="absolute top-3 right-3 z-20 w-8 h-8 rounded-full bg-black/50 flex items-center justify-center text-white/80 hover:text-white hover:bg-black/70 transition-colors">✕</button>
 
           {/* Video player */}
-          <div className="rounded-2xl overflow-hidden bg-black shadow-2xl">
+          <div className="rounded-t-2xl sm:rounded-2xl overflow-hidden bg-black shadow-2xl max-h-[95vh] sm:max-h-[85vh] flex flex-col">
             <video
               src={post.videoUrl}
               controls
               autoPlay
               playsInline
-              className="w-full max-h-[70vh] object-contain"
+              className="w-full flex-1 object-contain max-h-[60vh] sm:max-h-[65vh]"
               poster={post.imageUrl}
             />
 
             {/* Info bar below video */}
-            <div className="bg-[var(--bg-card)] p-4">
-              <div className="flex items-center gap-3 mb-2">
+            <div className="bg-[var(--bg-card)] p-3 sm:p-4 flex-shrink-0">
+              <div className="flex items-center gap-2 mb-2">
                 <img
                   src={`https://ui-avatars.com/api/?name=${encodeURIComponent(post.brand.name)}&size=32&background=6366f1&color=fff&bold=true`}
-                  alt="" className="w-8 h-8 rounded-full"
+                  alt="" className="w-7 h-7 sm:w-8 sm:h-8 rounded-full flex-shrink-0"
                 />
-                <div>
+                <div className="min-w-0">
                   <span className="text-sm font-semibold">{post.brand.name}</span>
-                  <span className="text-xs text-[var(--text-muted)] ml-2">@{post.brand.handle}</span>
+                  <span className="text-xs text-[var(--text-muted)] ml-1.5">@{post.brand.handle}</span>
                 </div>
               </div>
-              <p className="text-xs text-[var(--text-secondary)] leading-relaxed overflow-hidden" style={{ display: '-webkit-box', WebkitLineClamp: 3, WebkitBoxOrient: 'vertical' as const }}>{post.caption}</p>
-              <div className="flex items-center gap-4 mt-3">
+              <p className="text-xs text-[var(--text-secondary)] leading-relaxed overflow-hidden" style={{ display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' as const }}>{post.caption}</p>
+              <div className="flex items-center gap-3 mt-2 flex-wrap">
                 <span className="text-xs text-[var(--accent-light)] font-semibold">{formatNumber(post.likes)} likes</span>
                 <span className="text-xs text-[var(--text-muted)]">{formatNumber(post.comments)} comments</span>
-                <span className="text-xs text-emerald-400">{post.engagement}% engage</span>
+                <span className="text-xs text-emerald-400">{post.engagement}%</span>
                 <div className="flex-1" />
                 <a href={post.postUrl} target="_blank" rel="noopener noreferrer" className="text-xs px-3 py-1 rounded-full bg-gradient-to-r from-[#833AB4] via-[#FD1D1D] to-[#F77737] text-white font-medium hover:opacity-90 transition-opacity">
                   View on IG
@@ -230,9 +231,9 @@ function PostModal({ post, onClose }: { post: Post; onClose: () => void }) {
 
   // Image/carousel posts get the side-by-side modal
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center" onClick={onClose}>
       <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" />
-      <div className="relative bg-[var(--bg-secondary)] rounded-2xl border border-[var(--border)] max-w-4xl w-full max-h-[90vh] overflow-hidden flex flex-col md:flex-row" onClick={e => e.stopPropagation()}>
+      <div className="relative bg-[var(--bg-secondary)] rounded-t-2xl sm:rounded-2xl border border-[var(--border)] sm:max-w-4xl w-full max-h-[90vh] overflow-hidden flex flex-col md:flex-row sm:mx-4" onClick={e => e.stopPropagation()}>
         <button onClick={onClose} className="absolute top-3 right-3 z-10 w-8 h-8 rounded-full bg-black/50 flex items-center justify-center text-white/80 hover:text-white transition-colors">✕</button>
 
         {/* Image side */}
@@ -386,7 +387,10 @@ export default function Dashboard() {
   const [page, setPage] = useState(1);
   const [selectedPost, setSelectedPost] = useState<Post | null>(null);
   const [showFilters, setShowFilters] = useState(false);
-  const [view, setView] = useState<'feed' | 'trends'>('feed');
+  const [view, setView] = useState<'feed' | 'trends' | 'ai'>('feed');
+  const [aiInsights, setAiInsights] = useState<string>('');
+  const [aiLoading, setAiLoading] = useState(false);
+  const [aiType, setAiType] = useState('weekly');
   const searchTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const fetchData = useCallback(async () => {
@@ -465,6 +469,7 @@ export default function Dashboard() {
             <div className="flex gap-1 bg-[var(--bg-card)] rounded-xl p-1 border border-[var(--border)]">
               <button onClick={() => setView('feed')} className={`px-4 py-1.5 rounded-lg text-xs font-medium transition-all ${view === 'feed' ? 'bg-[var(--accent)] text-white' : 'text-[var(--text-muted)] hover:text-white'}`}>Feed</button>
               <button onClick={() => setView('trends')} className={`px-4 py-1.5 rounded-lg text-xs font-medium transition-all ${view === 'trends' ? 'bg-[var(--accent)] text-white' : 'text-[var(--text-muted)] hover:text-white'}`}>Trends</button>
+              <button onClick={() => setView('ai')} className={`px-4 py-1.5 rounded-lg text-xs font-medium transition-all ${view === 'ai' ? 'bg-gradient-to-r from-[var(--accent)] to-purple-600 text-white' : 'text-[var(--text-muted)] hover:text-white'}`}>AI Intel</button>
             </div>
           </div>
         </div>
@@ -662,6 +667,82 @@ export default function Dashboard() {
                 </div>
               </div>
             </div>
+          </div>
+        )}
+
+        {view === 'ai' && (
+          <div className="space-y-6">
+            {/* AI Header */}
+            <div className="bg-gradient-to-r from-[var(--accent)]/10 via-purple-900/10 to-pink-900/10 rounded-2xl border border-[var(--accent)]/30 p-6">
+              <h2 className="text-lg font-bold mb-1">AI-Powered Eyewear Intelligence</h2>
+              <p className="text-sm text-[var(--text-secondary)]">
+                Claude analyzes {stats?.totalPosts || 0} real Instagram posts from {stats?.totalBrands || 0} eyewear brands to generate actionable insights for Lenskart.
+              </p>
+            </div>
+
+            {/* Report type selector */}
+            <div className="flex gap-3 flex-wrap">
+              {[
+                { key: 'weekly', label: 'Weekly Brief', desc: 'Trends, winners, opportunities' },
+                { key: 'product', label: 'Product Intel', desc: 'Styles, materials, design recs' },
+                { key: 'content', label: 'Content Strategy', desc: 'What content works best' },
+              ].map(t => (
+                <button
+                  key={t.key}
+                  onClick={() => setAiType(t.key)}
+                  className={`flex-1 min-w-[200px] p-4 rounded-xl border text-left transition-all ${
+                    aiType === t.key
+                      ? 'border-[var(--accent)] bg-[var(--accent)]/10'
+                      : 'border-[var(--border)] bg-[var(--bg-card)] hover:border-[var(--accent)]/50'
+                  }`}
+                >
+                  <div className="text-sm font-semibold">{t.label}</div>
+                  <div className="text-xs text-[var(--text-muted)] mt-0.5">{t.desc}</div>
+                </button>
+              ))}
+            </div>
+
+            {/* Generate button */}
+            <button
+              onClick={async () => {
+                setAiLoading(true);
+                setAiInsights('');
+                try {
+                  const res = await fetch(`/api/ai-insights?type=${aiType}`);
+                  const data = await res.json();
+                  setAiInsights(data.insights || data.error || 'No insights generated');
+                } catch (e) {
+                  setAiInsights('Failed to generate insights. Check ANTHROPIC_API_KEY env var.');
+                }
+                setAiLoading(false);
+              }}
+              disabled={aiLoading}
+              className="w-full py-3 rounded-xl bg-gradient-to-r from-[var(--accent)] to-purple-600 text-white font-semibold text-sm hover:opacity-90 transition-opacity disabled:opacity-50"
+            >
+              {aiLoading ? 'Analyzing posts with Claude...' : `Generate ${aiType === 'weekly' ? 'Weekly Brief' : aiType === 'product' ? 'Product Intel' : 'Content Strategy'}`}
+            </button>
+
+            {/* Loading state */}
+            {aiLoading && (
+              <div className="bg-[var(--bg-card)] rounded-2xl border border-[var(--border)] p-8 text-center">
+                <div className="w-12 h-12 border-4 border-[var(--accent)] border-t-transparent rounded-full animate-spin mx-auto mb-4" />
+                <p className="text-sm text-[var(--text-muted)]">Claude is analyzing {stats?.totalPosts || 0} posts across {stats?.totalBrands || 0} brands...</p>
+              </div>
+            )}
+
+            {/* Results */}
+            {aiInsights && !aiLoading && (
+              <div className="bg-[var(--bg-card)] rounded-2xl border border-[var(--border)] p-6">
+                <div className="flex items-center gap-2 mb-4">
+                  <span className="text-lg">🤖</span>
+                  <h3 className="font-semibold text-sm">AI Analysis</h3>
+                  <span className="text-[10px] text-[var(--text-muted)] ml-auto">Powered by Claude</span>
+                </div>
+                <div className="prose prose-invert prose-sm max-w-none text-[var(--text-secondary)] leading-relaxed whitespace-pre-wrap text-sm">
+                  {aiInsights}
+                </div>
+              </div>
+            )}
           </div>
         )}
       </main>
