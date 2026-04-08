@@ -652,11 +652,12 @@ function IntelView({ intel, onLoad }: { intel: Record<string, unknown> | null; o
 
 /* ---------- products view ---------- */
 interface ProductData {
-  products: Array<{ brand: string; name: string; price: string; image: string; type: string; url: string; tags: string[] }>;
+  products: Array<{ brand: string; name: string; price: string; comparePrice?: string; image: string; type: string; url: string; isNew?: boolean; isDelisted?: boolean }>;
   total: number; page: number; totalPages: number;
   brands: string[];
   priceRanges: Record<string, number>;
   avgByBrand: Array<{ brand: string; products: number; avgPrice: number; minPrice: number; maxPrice: number }>;
+  stats?: { totalActive: number; newThisWeek: number; delisted: number; totalBrands: number };
 }
 
 function ProductsView() {
@@ -664,14 +665,15 @@ function ProductsView() {
   const [brand, setBrand] = useState('All');
   const [search, setSearch] = useState('');
   const [sortBy, setSortBy] = useState('price_asc');
+  const [show, setShow] = useState('active');
   const [page, setPage] = useState(1);
   const [imgErr, setImgErr] = useState<Set<number>>(new Set());
 
   const fetchProducts = useCallback(async () => {
-    const params = new URLSearchParams({ brand, search, sortBy, page: String(page), limit: '40' });
+    const params = new URLSearchParams({ brand, search, sortBy, show, page: String(page), limit: '40' });
     const res = await fetch(`/api/products?${params}`);
     setData(await res.json());
-  }, [brand, search, sortBy, page]);
+  }, [brand, search, sortBy, show, page]);
 
   useEffect(() => { fetchProducts(); }, [fetchProducts]);
 
@@ -681,10 +683,28 @@ function ProductsView() {
 
   return (
     <div className="space-y-6">
-      {/* Price analytics header */}
+      {/* Stats + status tabs */}
       <div className="bg-gradient-to-r from-emerald-900/20 via-[var(--accent)]/10 to-amber-900/20 rounded-2xl border border-emerald-500/20 p-6">
         <h2 className="text-xl font-bold mb-1">Product & Pricing Intelligence</h2>
-        <p className="text-sm text-[var(--text-secondary)] mb-5">Real pricing data scraped from {data.brands.length} D2C eyewear brand websites</p>
+        <p className="text-sm text-[var(--text-secondary)] mb-4">
+          {data.stats ? `${formatNumber(data.stats.totalActive)} active products from ${data.stats.totalBrands} brands` : `Real pricing from ${data.brands.length} brands`}
+          {data.stats?.newThisWeek ? ` · ${data.stats.newThisWeek} new this week` : ''}
+          {data.stats?.delisted ? ` · ${data.stats.delisted} delisted` : ''}
+        </p>
+        <div className="flex gap-2 mb-5">
+          {[
+            { key: 'active', label: 'All Active', count: data.stats?.totalActive },
+            { key: 'new', label: 'New This Week', count: data.stats?.newThisWeek },
+            { key: 'delisted', label: 'Delisted', count: data.stats?.delisted },
+          ].map(t => (
+            <button key={t.key} onClick={() => { setShow(t.key); setPage(1); }}
+              className={`px-3 py-1.5 rounded-full text-xs font-medium transition-all ${show === t.key
+                ? 'bg-emerald-500 text-white'
+                : 'bg-[var(--bg-card)] text-[var(--text-muted)] border border-[var(--border)]'}`}>
+              {t.label} {t.count ? `(${t.count})` : ''}
+            </button>
+          ))}
+        </div>
         <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
           {Object.entries(data.priceRanges).map(([range, count], i) => {
             const labels: Record<string, string> = { under25: 'Under $25', '25to50': '$25-50', '50to100': '$50-100', '100to200': '$100-200', over200: '$200+' };
@@ -729,6 +749,7 @@ function ProductsView() {
           className="bg-[var(--bg-card)] border border-[var(--border)] rounded-lg px-3 py-1.5 text-xs focus:outline-none focus:border-[var(--accent)]">
           <option value="price_asc">Price: Low to High</option>
           <option value="price_desc">Price: High to Low</option>
+          <option value="newest">Newest First</option>
           <option value="brand">Brand A-Z</option>
           <option value="name">Name A-Z</option>
         </select>
@@ -751,11 +772,18 @@ function ProductsView() {
                   loading="lazy" onError={() => setImgErr(prev => new Set(prev).add(i))} />
               )}
             </div>
+            {/* NEW / SALE badges */}
+            {p.isNew && <div className="absolute top-2 left-2 bg-emerald-500 text-white text-[9px] font-bold px-1.5 py-0.5 rounded">NEW</div>}
+            {p.isDelisted && <div className="absolute top-2 left-2 bg-red-500 text-white text-[9px] font-bold px-1.5 py-0.5 rounded">GONE</div>}
+            {p.comparePrice && !p.isDelisted && !p.isNew && <div className="absolute top-2 left-2 bg-amber-500 text-white text-[9px] font-bold px-1.5 py-0.5 rounded">SALE</div>}
             <div className="p-3">
               <div className="text-[10px] text-[var(--accent-light)] font-semibold uppercase">{p.brand}</div>
               <h4 className="text-xs font-medium mt-0.5 overflow-hidden" style={{ display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' as const }}>{p.name}</h4>
               <div className="flex items-center justify-between mt-2">
-                <span className="text-sm font-bold text-emerald-400">{p.price}</span>
+                <div className="flex items-center gap-1.5">
+                  <span className="text-sm font-bold text-emerald-400">{p.price}</span>
+                  {p.comparePrice && <span className="text-[10px] text-[var(--text-muted)] line-through">{p.comparePrice}</span>}
+                </div>
                 <span className="text-[10px] px-1.5 py-0.5 rounded bg-[var(--bg-secondary)] text-[var(--text-muted)]">{p.type || 'Eyewear'}</span>
               </div>
             </div>
