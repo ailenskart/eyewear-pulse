@@ -314,7 +314,7 @@ export default function App() {
   );
 
   return (
-    <div className="min-h-screen pb-14 sm:pb-0">
+    <div className="min-h-screen pb-[72px] sm:pb-0">
       {/* Top bar */}
       <header className="sticky top-0 z-40 bg-[var(--bg)] border-b border-[var(--border)]">
         <div className="max-w-[935px] mx-auto px-4 h-[60px] flex items-center justify-between">
@@ -358,12 +358,12 @@ export default function App() {
 
         {/* ── Feed Tab ── */}
         {tab === 'feed' && (
-          <div className="sm:py-6">
-            {/* Category pills */}
-            <div className="flex gap-2 px-4 py-3 overflow-x-auto" style={{ scrollbarWidth: 'none' }}>
+          <div className="sm:py-4">
+            {/* Categories — horizontal scroll */}
+            <div className="flex gap-2.5 px-4 py-3 overflow-x-auto no-scrollbar" style={{ scrollbarWidth: 'none', WebkitOverflowScrolling: 'touch' }}>
               {CATEGORIES.map(c => (
                 <button key={c} onClick={() => { setCategory(c); setPage(1); }}
-                  className={`px-4 py-1.5 rounded-full text-[13px] font-medium whitespace-nowrap transition-all ${
+                  className={`px-3.5 py-[6px] rounded-full text-[13px] font-medium whitespace-nowrap transition-all flex-shrink-0 ${
                     category === c
                       ? 'bg-[var(--text)] text-[var(--bg)]'
                       : 'bg-[var(--bg-secondary)] text-[var(--text-secondary)]'
@@ -371,21 +371,23 @@ export default function App() {
               ))}
             </div>
 
-            {/* Sort pills */}
-            <div className="flex gap-2 px-4 pb-3 overflow-x-auto" style={{ scrollbarWidth: 'none' }}>
-              {[
-                { key: 'recent', label: 'Recent' },
-                { key: 'likes', label: 'Most Liked' },
-                { key: 'engagement', label: 'Top Engagement' },
-              ].map(s => (
-                <button key={s.key} onClick={() => { setSortBy(s.key); setPage(1); }}
-                  className={`px-3 py-1 rounded-full text-[12px] font-medium whitespace-nowrap border transition-all ${
-                    sortBy === s.key
-                      ? 'border-[var(--text)] text-[var(--text)]'
-                      : 'border-[var(--border)] text-[var(--text-secondary)]'
-                  }`}>{s.label}</button>
-              ))}
-              <span className="flex items-center text-[12px] text-[var(--text-muted)] ml-auto whitespace-nowrap">{data?.total || 0} posts</span>
+            {/* Sort + count */}
+            <div className="flex items-center justify-between px-4 pb-2">
+              <div className="flex gap-1.5">
+                {[
+                  { key: 'recent', label: 'Recent' },
+                  { key: 'likes', label: 'Top' },
+                  { key: 'engagement', label: 'Trending' },
+                ].map(s => (
+                  <button key={s.key} onClick={() => { setSortBy(s.key); setPage(1); }}
+                    className={`px-2.5 py-1 rounded-md text-[12px] font-medium transition-all ${
+                      sortBy === s.key
+                        ? 'bg-[var(--accent)] text-white'
+                        : 'text-[var(--text-secondary)]'
+                    }`}>{s.label}</button>
+                ))}
+              </div>
+              <span className="text-[12px] text-[var(--text-muted)]">{data?.total || 0} posts</span>
             </div>
 
             {/* Feed posts */}
@@ -435,7 +437,7 @@ export default function App() {
       </main>
 
       {/* Bottom nav (mobile) */}
-      <nav className="sm:hidden fixed bottom-0 left-0 right-0 bg-[var(--bg)] border-t border-[var(--border)] flex justify-around py-2 pb-[env(safe-area-inset-bottom,8px)] z-50">
+      <nav className="sm:hidden fixed bottom-0 left-0 right-0 bg-[var(--bg-elevated)] border-t border-[var(--border)] flex justify-around pt-2 z-50" style={{ paddingBottom: 'max(8px, env(safe-area-inset-bottom))' }}>
         {[
           { key: 'feed', icon: Icons.home },
           { key: 'explore', icon: Icons.search },
