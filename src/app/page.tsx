@@ -681,11 +681,13 @@ export default function Dashboard() {
             </div>
 
             {/* Report type selector */}
-            <div className="flex gap-3 flex-wrap">
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
               {[
                 { key: 'weekly', label: 'Weekly Brief', desc: 'Trends, winners, opportunities' },
                 { key: 'product', label: 'Product Intel', desc: 'Styles, materials, design recs' },
                 { key: 'content', label: 'Content Strategy', desc: 'What content works best' },
+                { key: 'pricing', label: 'Pricing Intel', desc: 'Pricing, promos, positioning' },
+                { key: 'sentiment', label: 'Customer Signals', desc: 'Demand, sentiment, gaps' },
               ].map(t => (
                 <button
                   key={t.key}
@@ -711,15 +713,15 @@ export default function Dashboard() {
                   const res = await fetch(`/api/ai-insights?type=${aiType}`);
                   const data = await res.json();
                   setAiInsights(data.insights || data.error || 'No insights generated');
-                } catch (e) {
-                  setAiInsights('Failed to generate insights. Check ANTHROPIC_API_KEY env var.');
+                } catch {
+                  setAiInsights('Failed to generate insights. Set GEMINI_API_KEY env var on Vercel.');
                 }
                 setAiLoading(false);
               }}
               disabled={aiLoading}
               className="w-full py-3 rounded-xl bg-gradient-to-r from-[var(--accent)] to-purple-600 text-white font-semibold text-sm hover:opacity-90 transition-opacity disabled:opacity-50"
             >
-              {aiLoading ? 'Analyzing posts with Claude...' : `Generate ${aiType === 'weekly' ? 'Weekly Brief' : aiType === 'product' ? 'Product Intel' : 'Content Strategy'}`}
+              {aiLoading ? 'Analyzing with Gemma AI...' : 'Generate Report'}
             </button>
 
             {/* Loading state */}
@@ -736,7 +738,7 @@ export default function Dashboard() {
                 <div className="flex items-center gap-2 mb-4">
                   <span className="text-lg">🤖</span>
                   <h3 className="font-semibold text-sm">AI Analysis</h3>
-                  <span className="text-[10px] text-[var(--text-muted)] ml-auto">Powered by Claude</span>
+                  <span className="text-[10px] text-[var(--text-muted)] ml-auto">Powered by Gemma AI</span>
                 </div>
                 <div className="prose prose-invert prose-sm max-w-none text-[var(--text-secondary)] leading-relaxed whitespace-pre-wrap text-sm">
                   {aiInsights}

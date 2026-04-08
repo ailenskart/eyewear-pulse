@@ -1,28 +1,32 @@
 import { NextRequest, NextResponse } from 'next/server';
-import Anthropic from '@anthropic-ai/sdk';
+import { GoogleGenAI } from '@google/genai';
 import { ALL_POSTS, FEED_STATS } from '@/lib/feed';
-import { ANTHROPIC_KEY } from '@/lib/env';
 
-const client = new Anthropic({ apiKey: ANTHROPIC_KEY });
+const GEMINI_KEY = process.env.GEMINI_API_KEY || '';
 
 export async function GET(request: NextRequest) {
   const type = request.nextUrl.searchParams.get('type') || 'weekly';
 
-  if (!ANTHROPIC_KEY) {
-    return NextResponse.json({ error: 'ANTHROPIC_API_KEY not set — add it to Vercel env vars or src/lib/env.ts' }, { status: 500 });
+  if (!GEMINI_KEY) {
+    return NextResponse.json({ error: 'GEMINI_API_KEY not set' }, { status: 500 });
   }
 
-  // Build data summary for Claude
-  const topBrands = [...new Map<string, { posts: number; likes: number; comments: number; handle: string }>(
-    ALL_POSTS.map(p => [p.brand.handle, { posts: 0, likes: 0, comments: 0, handle: p.brand.handle }])
-  ).entries()].map(([, v]) => {
-    ALL_POSTS.filter(p => p.brand.handle === v.handle).forEach(p => {
-      v.posts++;
-      v.likes += p.likes;
-      v.comments += p.comments;
-    });
-    return v;
-  }).sort((a, b) => b.likes - a.likes).slice(0, 30);
+  const ai = new GoogleGenAI({ apiKey: GEMINI_KEY });
+
+  // Build data summary
+  const brandStats = new Map<string, { posts: number; likes: number; comments: number; handle: string; category: string }>();
+  ALL_POSTS.forEach(p => {
+    const key = p.brand.handle;
+    const existing = brandStats.get(key) || { posts: 0, likes: 0, comments: 0, handle: key, category: p.brand.category };
+    existing.posts++;
+    existing.likes += p.likes;
+    existing.comments += p.comments;
+    brandStats.set(key, existing);
+  });
+
+  const topBrands = [...brandStats.values()]
+    .sort((a, b) => b.likes - a.likes)
+    .slice(0, 30);
 
   const topCaptions = ALL_POSTS
     .filter(p => p.likes > 0)
@@ -85,24 +89,45 @@ Generate a CONTENT STRATEGY REPORT:
 6. **Lenskart Content Playbook** - Specific content ideas to test next week
 
 Be specific with examples from the data.`,
+
+    pricing: `You are a pricing strategist at Lenskart. Analyze this Instagram data from ${FEED_STATS.totalPosts} posts across ${FEED_STATS.totalBrands} eyewear brands.
+
+Generate a PRICING & PROMOTION INTELLIGENCE REPORT:
+1. **Price Tier Distribution** - How brands position across $, $$, $$$, $$$$ tiers
+2. **Promotional Patterns** - What discounts/offers are brands running (from captions)?
+3. **D2C vs Luxury Positioning** - How do they differ in messaging?
+4. **Bundle/Upsell Signals** - Any BOGO, bundle, or subscription offers?
+5. **Seasonal Patterns** - What seasonal campaigns are running?
+6. **Lenskart Pricing Opportunities** - Where can Lenskart win on value?
+
+Be specific with examples from the data.`,
+
+    sentiment: `You are a customer insights analyst at Lenskart. Analyze this Instagram data from ${FEED_STATS.totalPosts} posts across ${FEED_STATS.totalBrands} eyewear brands.
+
+Generate a CUSTOMER SENTIMENT & DEMAND REPORT:
+1. **What Customers Want** - Based on engagement signals, what resonates most?
+2. **Unmet Needs** - What gaps exist in the market based on content analysis?
+3. **Regional Preferences** - How do India, US, Europe, Asia differ?
+4. **Gen Z vs Millennial Signals** - Different style/content preferences?
+5. **Sustainability Demand** - How strong is the eco/sustainable signal?
+6. **Lenskart Customer Playbook** - How to better serve customer needs
+
+Be specific with examples from the data.`,
   };
 
   const prompt = prompts[type] || prompts.weekly;
 
   try {
-    const message = await client.messages.create({
-      model: 'claude-sonnet-4-20250514',
-      max_tokens: 2000,
-      messages: [{
-        role: 'user',
-        content: `${prompt}\n\nDATA:\n${JSON.stringify(dataSummary, null, 2)}`,
-      }],
+    const response = await ai.models.generateContent({
+      model: 'gemma-3-27b-it',
+      contents: `${prompt}\n\nDATA:\n${JSON.stringify(dataSummary, null, 2)}`,
     });
 
-    const text = message.content[0].type === 'text' ? message.content[0].text : '';
+    const text = response.text || '';
 
     return NextResponse.json({
       type,
+      model: 'gemma-3-27b-it',
       generatedAt: new Date().toISOString(),
       insights: text,
       dataPoints: {
