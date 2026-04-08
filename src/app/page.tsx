@@ -127,7 +127,15 @@ function PostCard({ post, onClick }: { post: Post; onClick: () => void }) {
       </div>
 
       {/* Type badge */}
-      {post.isVideo && (
+      {post.isVideo && post.videoUrl && (
+        <button
+          onClick={(e) => { e.stopPropagation(); onClick(); }}
+          className="absolute top-2 right-2 bg-[var(--accent)]/90 backdrop-blur-sm text-white text-[10px] font-medium px-2.5 py-1 rounded-full flex items-center gap-1 hover:bg-[var(--accent)] transition-colors"
+        >
+          <span className="text-sm">&#9654;</span> Video
+        </button>
+      )}
+      {post.isVideo && !post.videoUrl && (
         <div className="absolute top-2 right-2 bg-[var(--accent)]/80 backdrop-blur-sm text-white text-[10px] font-medium px-2 py-0.5 rounded-full flex items-center gap-1">
           <span>&#9654;</span> Video
         </div>
@@ -135,6 +143,15 @@ function PostCard({ post, onClick }: { post: Post; onClick: () => void }) {
       {post.carouselSlides.length > 0 && !post.isVideo && (
         <div className="absolute top-2 right-2 bg-white/20 backdrop-blur-sm text-white text-[10px] font-medium px-2 py-0.5 rounded-full">
           1/{post.carouselSlides.length}
+        </div>
+      )}
+
+      {/* Big play button centered on video posts */}
+      {post.isVideo && post.videoUrl && (
+        <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+          <div className="w-14 h-14 rounded-full bg-black/40 backdrop-blur-sm flex items-center justify-center group-hover:bg-black/60 transition-all group-hover:scale-110">
+            <span className="text-white text-2xl ml-1">&#9654;</span>
+          </div>
         </div>
       )}
 
@@ -163,17 +180,64 @@ function PostModal({ post, onClose }: { post: Post; onClose: () => void }) {
   const currentSlide = slides[slideIdx] || post.imageUrl;
   const hasMultipleSlides = slides.length > 1;
 
+  // Video posts get a clean centered video dialog
+  if (post.isVideo && post.videoUrl) {
+    return (
+      <div className="fixed inset-0 z-50 flex items-center justify-center p-4" onClick={onClose}>
+        <div className="absolute inset-0 bg-black/80 backdrop-blur-md" />
+        <div className="relative max-w-lg w-full" onClick={e => e.stopPropagation()}>
+          <button onClick={onClose} className="absolute -top-10 right-0 z-10 w-8 h-8 rounded-full bg-white/10 flex items-center justify-center text-white/80 hover:text-white hover:bg-white/20 transition-colors">✕</button>
+
+          {/* Video player */}
+          <div className="rounded-2xl overflow-hidden bg-black shadow-2xl">
+            <video
+              src={post.videoUrl}
+              controls
+              autoPlay
+              playsInline
+              className="w-full max-h-[70vh] object-contain"
+              poster={post.imageUrl}
+            />
+
+            {/* Info bar below video */}
+            <div className="bg-[var(--bg-card)] p-4">
+              <div className="flex items-center gap-3 mb-2">
+                <img
+                  src={`https://ui-avatars.com/api/?name=${encodeURIComponent(post.brand.name)}&size=32&background=6366f1&color=fff&bold=true`}
+                  alt="" className="w-8 h-8 rounded-full"
+                />
+                <div>
+                  <span className="text-sm font-semibold">{post.brand.name}</span>
+                  <span className="text-xs text-[var(--text-muted)] ml-2">@{post.brand.handle}</span>
+                </div>
+              </div>
+              <p className="text-xs text-[var(--text-secondary)] leading-relaxed overflow-hidden" style={{ display: '-webkit-box', WebkitLineClamp: 3, WebkitBoxOrient: 'vertical' as const }}>{post.caption}</p>
+              <div className="flex items-center gap-4 mt-3">
+                <span className="text-xs text-[var(--accent-light)] font-semibold">{formatNumber(post.likes)} likes</span>
+                <span className="text-xs text-[var(--text-muted)]">{formatNumber(post.comments)} comments</span>
+                <span className="text-xs text-emerald-400">{post.engagement}% engage</span>
+                <div className="flex-1" />
+                <a href={post.postUrl} target="_blank" rel="noopener noreferrer" className="text-xs px-3 py-1 rounded-full bg-gradient-to-r from-[#833AB4] via-[#FD1D1D] to-[#F77737] text-white font-medium hover:opacity-90 transition-opacity">
+                  View on IG
+                </a>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Image/carousel posts get the side-by-side modal
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4" onClick={onClose}>
       <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" />
       <div className="relative bg-[var(--bg-secondary)] rounded-2xl border border-[var(--border)] max-w-4xl w-full max-h-[90vh] overflow-hidden flex flex-col md:flex-row" onClick={e => e.stopPropagation()}>
         <button onClick={onClose} className="absolute top-3 right-3 z-10 w-8 h-8 rounded-full bg-black/50 flex items-center justify-center text-white/80 hover:text-white transition-colors">✕</button>
 
-        {/* Image/Video side */}
+        {/* Image side */}
         <div className="md:w-[55%] bg-black flex items-center relative">
-          {post.isVideo && post.videoUrl ? (
-            <video src={post.videoUrl} controls autoPlay muted playsInline className="w-full max-h-[50vh] md:max-h-[90vh] object-contain" poster={post.imageUrl} />
-          ) : imgError ? (
+          {imgError ? (
             <div className="w-full h-full min-h-[300px] flex flex-col items-center justify-center gap-3 bg-gradient-to-br from-[#1e1b4b] via-[#312e81] to-[#4c1d95]">
               <div className="w-20 h-20 rounded-full bg-white/10 flex items-center justify-center text-3xl">👓</div>
               <span className="text-white/60 text-sm font-medium">{post.brand.name}</span>
@@ -182,7 +246,7 @@ function PostModal({ post, onClose }: { post: Post; onClose: () => void }) {
             <img src={currentSlide} alt={post.caption} className="w-full h-full object-cover max-h-[50vh] md:max-h-[90vh]" onError={() => setImgError(true)} />
           )}
           {/* Carousel navigation */}
-          {hasMultipleSlides && !post.isVideo && (
+          {hasMultipleSlides && (
             <>
               {slideIdx > 0 && (
                 <button onClick={(e) => { e.stopPropagation(); setSlideIdx(i => i - 1); }} className="absolute left-2 top-1/2 -translate-y-1/2 w-8 h-8 rounded-full bg-black/50 text-white flex items-center justify-center hover:bg-black/70">&#8249;</button>
