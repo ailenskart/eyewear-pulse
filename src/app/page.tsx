@@ -672,11 +672,33 @@ export default function Dashboard() {
 
         {view === 'ai' && (
           <div className="space-y-6">
-            {/* AI Header */}
+            {/* Embedded Gamma Report */}
+            <div className="bg-[var(--bg-card)] rounded-2xl border border-[var(--border)] overflow-hidden">
+              <div className="flex items-center justify-between p-4 border-b border-[var(--border)]">
+                <div>
+                  <h3 className="text-sm font-semibold">Latest Intelligence Report</h3>
+                  <p className="text-xs text-[var(--text-muted)] mt-0.5">Visual analysis of {stats?.totalPosts || 0} posts from {stats?.totalBrands || 0} brands</p>
+                </div>
+                <a href="https://gamma.app/docs/ea6wvpycpcwd7li" target="_blank" rel="noopener noreferrer"
+                  className="text-xs px-3 py-1.5 rounded-full bg-[var(--accent)]/20 text-[var(--accent-light)] hover:bg-[var(--accent)]/30 transition-colors">
+                  Open in Gamma
+                </a>
+              </div>
+              <div className="aspect-video w-full">
+                <iframe
+                  src="https://gamma.app/embed/ea6wvpycpcwd7li"
+                  className="w-full h-full border-0"
+                  allow="fullscreen"
+                  title="EyeWear Pulse Intelligence Report"
+                />
+              </div>
+            </div>
+
+            {/* AI Report Generator */}
             <div className="bg-gradient-to-r from-[var(--accent)]/10 via-purple-900/10 to-pink-900/10 rounded-2xl border border-[var(--accent)]/30 p-6">
               <h2 className="text-lg font-bold mb-1">AI-Powered Eyewear Intelligence</h2>
               <p className="text-sm text-[var(--text-secondary)]">
-                Claude analyzes {stats?.totalPosts || 0} real Instagram posts from {stats?.totalBrands || 0} eyewear brands to generate actionable insights for Lenskart.
+                Generate custom AI reports from live data. Pick a focus area below.
               </p>
             </div>
 
