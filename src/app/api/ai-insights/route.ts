@@ -1,14 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
 import Anthropic from '@anthropic-ai/sdk';
 import { ALL_POSTS, FEED_STATS } from '@/lib/feed';
+import { ANTHROPIC_KEY } from '@/lib/env';
 
-const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY || '' });
+const client = new Anthropic({ apiKey: ANTHROPIC_KEY });
 
 export async function GET(request: NextRequest) {
   const type = request.nextUrl.searchParams.get('type') || 'weekly';
 
-  if (!process.env.ANTHROPIC_API_KEY) {
-    return NextResponse.json({ error: 'ANTHROPIC_API_KEY not set' }, { status: 500 });
+  if (!ANTHROPIC_KEY) {
+    return NextResponse.json({ error: 'ANTHROPIC_API_KEY not set — add it to Vercel env vars or src/lib/env.ts' }, { status: 500 });
   }
 
   // Build data summary for Claude
