@@ -167,30 +167,42 @@ function PostDetail({ post, onClose }: { post: Post; onClose: () => void }) {
   const slides = post.carouselSlides.length > 0 ? [post.imageUrl, ...post.carouselSlides.map(s => s.url)] : [post.imageUrl];
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/60" onClick={onClose}>
-      {/* Mobile: bottom sheet */}
-      <div className="absolute inset-0 sm:flex sm:items-center sm:justify-center" onClick={e => e.stopPropagation()}>
-        <div className="absolute bottom-0 sm:relative sm:bottom-auto w-full sm:max-w-[900px] bg-[var(--bg)] sm:rounded-xl overflow-hidden max-h-[92vh] sm:max-h-[85vh] flex flex-col sm:flex-row" style={{ animation: 'slideUp 0.3s ease' }}>
+    <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm" onClick={onClose}>
+      <div className="absolute inset-0 sm:flex sm:items-center sm:justify-center sm:p-6" onClick={e => e.stopPropagation()}>
+        <div className="absolute bottom-0 sm:relative sm:bottom-auto w-full sm:max-w-[900px] bg-[var(--bg)] rounded-t-2xl sm:rounded-2xl overflow-hidden max-h-[94vh] sm:max-h-[88vh] flex flex-col sm:flex-row shadow-2xl" style={{ animation: 'slideUp 0.25s ease-out' }}>
 
-          {/* Close */}
-          <button onClick={onClose} className="absolute top-3 right-3 z-20 w-8 h-8 rounded-full bg-[var(--bg-elevated)]/80 backdrop-blur flex items-center justify-center sm:hidden">{Icons.x}</button>
-          <button onClick={onClose} className="hidden sm:flex absolute top-3 right-3 z-20 w-8 h-8 rounded-full bg-black/50 items-center justify-center text-white">{Icons.x}</button>
+          {/* Mobile drag handle + close row */}
+          <div className="sm:hidden flex items-center justify-between px-4 pt-3 pb-2 border-b border-[var(--border)] flex-shrink-0">
+            <div className="flex items-center gap-2.5">
+              <div className="w-7 h-7 rounded-full bg-gradient-to-br from-yellow-400 via-pink-500 to-purple-600 p-[1.5px]">
+                <div className="w-full h-full rounded-full bg-[var(--bg)] flex items-center justify-center text-[8px] font-bold">{post.brand.name.substring(0,2).toUpperCase()}</div>
+              </div>
+              <div>
+                <div className="text-[13px] font-semibold leading-tight">{post.brand.name}</div>
+                <div className="text-[10px] text-[var(--text-secondary)]">@{post.brand.handle}</div>
+              </div>
+            </div>
+            <button onClick={onClose} className="text-[var(--text-secondary)] text-[14px] font-semibold">Done</button>
+          </div>
+
+          {/* Desktop close */}
+          <button onClick={onClose} className="hidden sm:flex absolute top-3 right-3 z-20 w-8 h-8 rounded-full bg-black/40 items-center justify-center text-white hover:bg-black/60 transition-colors">{Icons.x}</button>
 
           {/* Media */}
           <div className="sm:w-[55%] bg-black flex-shrink-0 relative">
             {post.isVideo && post.videoUrl ? (
-              <video src={post.videoUrl} controls autoPlay playsInline className="w-full aspect-square sm:aspect-auto sm:h-full object-contain" poster={post.imageUrl} />
+              <video src={post.videoUrl} controls autoPlay playsInline className="w-full max-h-[50vh] sm:max-h-none sm:h-full object-contain" poster={post.imageUrl} />
             ) : imgErr ? (
-              <div className="w-full aspect-square sm:h-full flex items-center justify-center bg-[var(--bg-secondary)]"><span className="text-5xl">👓</span></div>
+              <div className="w-full aspect-[4/3] sm:h-full flex items-center justify-center bg-[var(--bg-secondary)]"><span className="text-5xl">👓</span></div>
             ) : (
-              <img src={slides[slideIdx]} alt="" className="w-full aspect-square sm:aspect-auto sm:h-full object-cover" onError={() => setImgErr(true)} />
+              <img src={slides[slideIdx]} alt="" className="w-full max-h-[50vh] sm:max-h-none sm:h-full object-contain sm:object-cover" onError={() => setImgErr(true)} />
             )}
             {slides.length > 1 && !post.isVideo && (
               <>
-                {slideIdx > 0 && <button onClick={() => setSlideIdx(i => i - 1)} className="absolute left-2 top-1/2 -translate-y-1/2 w-7 h-7 rounded-full bg-white/80 flex items-center justify-center text-sm font-bold shadow">‹</button>}
-                {slideIdx < slides.length - 1 && <button onClick={() => setSlideIdx(i => i + 1)} className="absolute right-2 top-1/2 -translate-y-1/2 w-7 h-7 rounded-full bg-white/80 flex items-center justify-center text-sm font-bold shadow">›</button>}
+                {slideIdx > 0 && <button onClick={() => setSlideIdx(i => i - 1)} className="absolute left-2 top-1/2 -translate-y-1/2 w-8 h-8 rounded-full bg-white/90 flex items-center justify-center text-base font-bold shadow-md">‹</button>}
+                {slideIdx < slides.length - 1 && <button onClick={() => setSlideIdx(i => i + 1)} className="absolute right-2 top-1/2 -translate-y-1/2 w-8 h-8 rounded-full bg-white/90 flex items-center justify-center text-base font-bold shadow-md">›</button>}
                 <div className="absolute bottom-3 left-1/2 -translate-x-1/2 flex gap-1.5">
-                  {slides.map((_, i) => <div key={i} className={`w-1.5 h-1.5 rounded-full ${i === slideIdx ? 'bg-[var(--blue)]' : 'bg-white/50'}`} />)}
+                  {slides.map((_, i) => <div key={i} className={`w-1.5 h-1.5 rounded-full transition-all ${i === slideIdx ? 'bg-[var(--blue)] w-3' : 'bg-white/50'}`} />)}
                 </div>
               </>
             )}
@@ -198,8 +210,8 @@ function PostDetail({ post, onClose }: { post: Post; onClose: () => void }) {
 
           {/* Info panel */}
           <div className="sm:w-[45%] flex flex-col overflow-y-auto">
-            {/* Header */}
-            <div className="flex items-center gap-3 p-4 border-b border-[var(--border)]">
+            {/* Desktop header (hidden on mobile — shown in drag handle) */}
+            <div className="hidden sm:flex items-center gap-3 p-4 border-b border-[var(--border)]">
               <div className="w-9 h-9 rounded-full bg-gradient-to-br from-yellow-400 via-pink-500 to-purple-600 p-[2px]">
                 <div className="w-full h-full rounded-full bg-[var(--bg)] flex items-center justify-center text-[10px] font-bold">
                   {post.brand.name.substring(0, 2).toUpperCase()}
@@ -212,8 +224,24 @@ function PostDetail({ post, onClose }: { post: Post; onClose: () => void }) {
               <a href={post.postUrl} target="_blank" rel="noopener noreferrer" className="text-[var(--blue)] text-[13px] font-semibold">Open</a>
             </div>
 
+            {/* Stats bar */}
+            <div className="grid grid-cols-3 border-b border-[var(--border)]">
+              <div className="text-center py-2.5 sm:py-3 border-r border-[var(--border)]">
+                <div className="text-[15px] font-bold">{fmt(post.likes)}</div>
+                <div className="text-[10px] text-[var(--text-secondary)]">likes</div>
+              </div>
+              <div className="text-center py-2.5 sm:py-3 border-r border-[var(--border)]">
+                <div className="text-[15px] font-bold">{fmt(post.comments)}</div>
+                <div className="text-[10px] text-[var(--text-secondary)]">comments</div>
+              </div>
+              <div className="text-center py-2.5 sm:py-3">
+                <div className="text-[15px] font-bold text-[var(--green)]">{post.engagement}%</div>
+                <div className="text-[10px] text-[var(--text-secondary)]">engagement</div>
+              </div>
+            </div>
+
             {/* Caption */}
-            <div className="p-4 flex-1">
+            <div className="p-4 flex-1 overflow-y-auto">
               <p className="text-[13px] leading-relaxed">
                 <span className="font-semibold">{post.brand.handle}</span>{' '}
                 {post.caption}
@@ -221,30 +249,23 @@ function PostDetail({ post, onClose }: { post: Post; onClose: () => void }) {
               {post.hashtags.length > 0 && (
                 <p className="text-[13px] text-[var(--blue)] mt-2">{post.hashtags.map(h => `#${h}`).join(' ')}</p>
               )}
-              <p className="text-[11px] text-[var(--text-secondary)] mt-3 uppercase">{ago(post.postedAt)} · {post.brand.category} · {post.brand.region}</p>
-            </div>
-
-            {/* Stats */}
-            <div className="grid grid-cols-3 border-t border-[var(--border)]">
-              <div className="text-center py-3 border-r border-[var(--border)]">
-                <div className="text-base font-bold">{fmt(post.likes)}</div>
-                <div className="text-[10px] text-[var(--text-secondary)]">likes</div>
-              </div>
-              <div className="text-center py-3 border-r border-[var(--border)]">
-                <div className="text-base font-bold">{fmt(post.comments)}</div>
-                <div className="text-[10px] text-[var(--text-secondary)]">comments</div>
-              </div>
-              <div className="text-center py-3">
-                <div className="text-base font-bold text-[var(--green)]">{post.engagement}%</div>
-                <div className="text-[10px] text-[var(--text-secondary)]">engagement</div>
+              <div className="flex flex-wrap gap-2 mt-3">
+                <span className="text-[11px] px-2 py-0.5 rounded-full bg-[var(--bg-secondary)] text-[var(--text-secondary)]">{post.brand.category}</span>
+                <span className="text-[11px] px-2 py-0.5 rounded-full bg-[var(--bg-secondary)] text-[var(--text-secondary)]">{post.brand.region}</span>
+                <span className="text-[11px] px-2 py-0.5 rounded-full bg-[var(--bg-secondary)] text-[var(--text-secondary)]">{post.type}</span>
+                <span className="text-[11px] text-[var(--text-muted)]">{ago(post.postedAt)}</span>
               </div>
             </div>
 
-            {/* IG link */}
-            <div className="p-4 border-t border-[var(--border)]">
+            {/* Action buttons */}
+            <div className="p-3 border-t border-[var(--border)] flex gap-2 flex-shrink-0">
               <a href={post.postUrl} target="_blank" rel="noopener noreferrer"
-                className="block w-full py-2.5 rounded-lg bg-[var(--blue)] text-white text-[13px] font-semibold text-center">
+                className="flex-1 py-2.5 rounded-lg bg-[var(--blue)] text-white text-[13px] font-semibold text-center">
                 View on Instagram
+              </a>
+              <a href={`https://instagram.com/${post.brand.handle}`} target="_blank" rel="noopener noreferrer"
+                className="py-2.5 px-4 rounded-lg border border-[var(--border)] text-[13px] font-semibold text-center">
+                Profile
               </a>
             </div>
           </div>
