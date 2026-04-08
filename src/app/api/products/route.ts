@@ -1,16 +1,23 @@
 import { NextRequest, NextResponse } from 'next/server';
-import productsData from '@/data/products.json';
+// Compact format: b=brand, n=name, p=price, cp=comparePrice, i=image, t=type, u=url
+import rawData from '@/data/products.json';
+
+const productsData = (rawData as Array<{ b: string; n: string; p: string; cp: string; i: string; t: string; u: string }>).map(r => ({
+  brand: r.b, name: r.n, price: r.p ? `$${r.p}` : '', comparePrice: r.cp ? `$${r.cp}` : '',
+  currency: 'USD', image: r.i, type: r.t, url: r.u, tags: [] as string[],
+}));
 
 interface Product {
   brand: string;
   name: string;
   price: string;
+  comparePrice?: string;
   currency: string;
   image: string;
   type: string;
   url: string;
-  tags: string[];
-  description: string;
+  tags?: string[];
+  description?: string;
 }
 
 export async function GET(request: NextRequest) {
@@ -32,7 +39,7 @@ export async function GET(request: NextRequest) {
       p.name.toLowerCase().includes(s) ||
       p.brand.toLowerCase().includes(s) ||
       p.type.toLowerCase().includes(s) ||
-      p.tags.some(t => t.toLowerCase().includes(s))
+      (p.tags || []).some(t => t.toLowerCase().includes(s))
     );
   }
 
