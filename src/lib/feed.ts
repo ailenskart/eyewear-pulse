@@ -76,10 +76,11 @@ function transformPosts(): Post[] {
     const handle = p.ownerUsername || '';
     if (!handle) continue;
 
-    // Get image URL — prefer Vercel Blob, then local, then IG CDN
-    const imageUrl = p.blobUrl
+    // Get image URL — prefer fresh IG CDN URLs, fall back to Blob
+    const imageUrl = ((p.images && p.images.length > 0) ? p.images[0] : (p.displayUrl || ''))
+      || p.blobUrl
       || p.localImage
-      || ((p.images && p.images.length > 0) ? p.images[0] : (p.displayUrl || ''));
+      || '';
     if (!imageUrl) continue;
 
     // Find brand info

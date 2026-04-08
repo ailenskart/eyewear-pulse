@@ -72,8 +72,6 @@ function PostCard({ post, onClick }: { post: Post; onClick: () => void }) {
   const [hovered, setHovered] = useState(false);
   const [imgError, setImgError] = useState(false);
 
-  const fallbackImg = `https://ui-avatars.com/api/?name=${encodeURIComponent(post.brand.name)}&size=600&background=1e1b4b&color=a78bfa&bold=true&font-size=0.25&length=8`;
-
   return (
     <div
       className="relative group cursor-pointer rounded-xl overflow-hidden bg-[var(--bg-card)] border border-[var(--border)] animate-fade-in"
@@ -82,14 +80,26 @@ function PostCard({ post, onClick }: { post: Post; onClick: () => void }) {
       onMouseLeave={() => setHovered(false)}
     >
       {/* Image */}
-      <div className="aspect-square overflow-hidden bg-[#1e1b4b]">
-        <img
-          src={imgError ? fallbackImg : post.imageUrl}
-          alt={post.caption}
-          className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110"
-          loading="lazy"
-          onError={() => setImgError(true)}
-        />
+      <div className="aspect-square overflow-hidden bg-gradient-to-br from-[#1e1b4b] via-[#312e81] to-[#4c1d95]">
+        {imgError ? (
+          <div className="w-full h-full flex flex-col items-center justify-center gap-3 p-4">
+            <div className="w-16 h-16 rounded-full bg-white/10 flex items-center justify-center text-2xl">
+              👓
+            </div>
+            <span className="text-white/60 text-xs font-medium text-center">{post.brand.name}</span>
+            <span className="text-white/30 text-[10px]">@{post.brand.handle}</span>
+          </div>
+        ) : (
+          <img
+            src={post.imageUrl}
+            alt={post.caption}
+            className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110"
+            loading="lazy"
+            referrerPolicy="no-referrer"
+            crossOrigin="anonymous"
+            onError={() => setImgError(true)}
+          />
+        )}
       </div>
 
       {/* Hover overlay with engagement */}
@@ -148,7 +158,6 @@ function PostCard({ post, onClick }: { post: Post; onClick: () => void }) {
 function PostModal({ post, onClose }: { post: Post; onClose: () => void }) {
   const [imgError, setImgError] = useState(false);
   const [slideIdx, setSlideIdx] = useState(0);
-  const fallbackImg = `https://ui-avatars.com/api/?name=${encodeURIComponent(post.brand.name)}&size=600&background=1e1b4b&color=a78bfa&bold=true&font-size=0.25&length=8`;
 
   const slides = post.carouselSlides.length > 0
     ? post.carouselSlides.map(s => s.url)
@@ -166,8 +175,13 @@ function PostModal({ post, onClose }: { post: Post; onClose: () => void }) {
         <div className="md:w-[55%] bg-black flex items-center relative">
           {post.isVideo && post.videoUrl ? (
             <video src={post.videoUrl} controls autoPlay muted playsInline className="w-full max-h-[50vh] md:max-h-[90vh] object-contain" poster={post.imageUrl} />
+          ) : imgError ? (
+            <div className="w-full h-full min-h-[300px] flex flex-col items-center justify-center gap-3 bg-gradient-to-br from-[#1e1b4b] via-[#312e81] to-[#4c1d95]">
+              <div className="w-20 h-20 rounded-full bg-white/10 flex items-center justify-center text-3xl">👓</div>
+              <span className="text-white/60 text-sm font-medium">{post.brand.name}</span>
+            </div>
           ) : (
-            <img src={imgError ? fallbackImg : currentSlide} alt={post.caption} className="w-full h-full object-cover max-h-[50vh] md:max-h-[90vh]" onError={() => setImgError(true)} />
+            <img src={currentSlide} alt={post.caption} className="w-full h-full object-cover max-h-[50vh] md:max-h-[90vh]" referrerPolicy="no-referrer" crossOrigin="anonymous" onError={() => setImgError(true)} />
           )}
           {/* Carousel navigation */}
           {hasMultipleSlides && !post.isVideo && (
