@@ -375,6 +375,176 @@ function TrendBadge({ label, count, total, color }: { label: string; count: numb
   );
 }
 
+/* ---------- intel view ---------- */
+interface IntelData {
+  summary: { totalPosts: number; totalBrands: number; avgEngagement: number; totalLikes: number; totalComments: number };
+  topPosts: Array<{ brand: string; handle: string; caption: string; likes: number; comments: number; imageUrl: string; postUrl: string; type: string }>;
+  brandLeaderboard: Array<{ name: string; handle: string; category: string; posts: number; likes: number; comments: number; topPostImage: string; topPostUrl: string }>;
+  contentPerformance: Array<{ type: string; count: number; avgLikes: number; avgComments: number; pct: number }>;
+  categories: Array<{ name: string; posts: number; totalLikes: number; brands: number; topBrand: string }>;
+  regions: Array<{ name: string; posts: number; totalLikes: number; brands: number }>;
+  topHashtags: Array<{ name: string; count: number }>;
+}
+
+function IntelView({ intel, onLoad }: { intel: Record<string, unknown> | null; onLoad: () => void }) {
+  const [imgErrors, setImgErrors] = useState<Set<string>>(new Set());
+
+  useEffect(() => { onLoad(); }, [onLoad]);
+
+  if (!intel) return (
+    <div className="flex items-center justify-center py-20">
+      <div className="w-12 h-12 border-4 border-[var(--accent)] border-t-transparent rounded-full animate-spin" />
+    </div>
+  );
+
+  const d = intel as unknown as IntelData;
+  const COLORS = ['#6366f1','#8b5cf6','#22c55e','#f59e0b','#ef4444','#06b6d4','#ec4899','#a78bfa','#4f46e5','#14b8a6'];
+
+  return (
+    <div className="space-y-8">
+      {/* Hero stats */}
+      <div className="bg-gradient-to-r from-[var(--accent)]/10 via-purple-900/10 to-pink-900/10 rounded-2xl border border-[var(--accent)]/30 p-6 md:p-8">
+        <h2 className="text-xl md:text-2xl font-bold mb-1">Global Eyewear Intelligence</h2>
+        <p className="text-sm text-[var(--text-secondary)] mb-6">Real-time insights from {formatNumber(d.summary.totalPosts)} Instagram posts across {d.summary.totalBrands} eyewear brands worldwide</p>
+        <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+          {[
+            { label: 'Posts Analyzed', value: formatNumber(d.summary.totalPosts), color: '#6366f1' },
+            { label: 'Brands Tracked', value: String(d.summary.totalBrands), color: '#8b5cf6' },
+            { label: 'Total Likes', value: formatNumber(d.summary.totalLikes), color: '#22c55e' },
+            { label: 'Total Comments', value: formatNumber(d.summary.totalComments), color: '#f59e0b' },
+            { label: 'Avg Engagement', value: `${d.summary.avgEngagement}%`, color: '#06b6d4' },
+          ].map(s => (
+            <div key={s.label} className="text-center">
+              <div className="text-2xl md:text-3xl font-bold" style={{ color: s.color }}>{s.value}</div>
+              <div className="text-[10px] uppercase tracking-wider text-[var(--text-muted)] mt-1">{s.label}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Top Performing Posts — visual cards */}
+      <div>
+        <h3 className="text-lg font-bold mb-4">Top Performing Posts</h3>
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
+          {d.topPosts.map((p, i) => (
+            <a key={i} href={p.postUrl} target="_blank" rel="noopener noreferrer" className="group rounded-xl overflow-hidden bg-[var(--bg-card)] border border-[var(--border)] hover:border-[var(--accent)]/50 transition-all">
+              <div className="aspect-square overflow-hidden bg-gradient-to-br from-[#1e1b4b] to-[#4c1d95]">
+                {imgErrors.has(p.postUrl) ? (
+                  <div className="w-full h-full flex items-center justify-center"><span className="text-3xl">👓</span></div>
+                ) : (
+                  <img src={p.imageUrl} alt="" className="w-full h-full object-cover group-hover:scale-105 transition-transform" loading="lazy" onError={() => setImgErrors(prev => new Set(prev).add(p.postUrl))} />
+                )}
+              </div>
+              <div className="p-2.5">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-semibold truncate">{p.brand}</span>
+                  <span className="text-[10px] px-1.5 py-0.5 rounded bg-[var(--bg-secondary)] text-[var(--text-muted)]">{p.type}</span>
+                </div>
+                <div className="text-xs text-[var(--accent-light)] font-bold mt-1">{formatNumber(p.likes)} likes</div>
+                <p className="text-[10px] text-[var(--text-muted)] mt-1 overflow-hidden" style={{ display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' as const }}>{p.caption}</p>
+              </div>
+            </a>
+          ))}
+        </div>
+      </div>
+
+      {/* Brand Leaderboard */}
+      <div className="bg-[var(--bg-card)] rounded-2xl border border-[var(--border)] overflow-hidden">
+        <div className="p-5 border-b border-[var(--border)]">
+          <h3 className="text-sm font-semibold">Brand Leaderboard — Top 20 by Total Likes</h3>
+        </div>
+        <div className="divide-y divide-[var(--border)]">
+          {d.brandLeaderboard.map((b, i) => (
+            <div key={b.handle} className="flex items-center gap-3 px-5 py-3 hover:bg-[var(--bg-secondary)]/50 transition-colors">
+              <span className="text-lg font-bold w-8 text-center" style={{ color: COLORS[i % COLORS.length] }}>#{i + 1}</span>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2">
+                  <span className="text-sm font-semibold">{b.name}</span>
+                  <span className="text-[10px] px-1.5 py-0.5 rounded bg-[var(--bg-secondary)] text-[var(--text-muted)]">{b.category}</span>
+                </div>
+                <div className="text-[10px] text-[var(--text-muted)]">@{b.handle} · {b.posts} posts</div>
+              </div>
+              <div className="text-right flex-shrink-0">
+                <div className="text-sm font-bold text-[var(--accent-light)]">{formatNumber(b.likes)}</div>
+                <div className="text-[10px] text-[var(--text-muted)]">total likes</div>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Content Performance + Categories side by side */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Content Type Performance */}
+        <div className="bg-[var(--bg-card)] rounded-2xl border border-[var(--border)] p-5">
+          <h3 className="text-sm font-semibold mb-4">Content Type Performance</h3>
+          <div className="space-y-4">
+            {d.contentPerformance.map((c, i) => (
+              <div key={c.type}>
+                <div className="flex items-center justify-between mb-1">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-semibold">{c.type}</span>
+                    <span className="text-[10px] text-[var(--text-muted)]">{c.count} posts ({c.pct}%)</span>
+                  </div>
+                  <span className="text-xs font-semibold" style={{ color: COLORS[i] }}>avg {formatNumber(c.avgLikes)} likes</span>
+                </div>
+                <div className="h-3 rounded-full bg-[var(--bg-secondary)] overflow-hidden">
+                  <div className="h-full rounded-full transition-all duration-700" style={{ width: `${c.pct}%`, background: COLORS[i] }} />
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Categories */}
+        <div className="bg-[var(--bg-card)] rounded-2xl border border-[var(--border)] p-5">
+          <h3 className="text-sm font-semibold mb-4">Posts by Category</h3>
+          <div className="space-y-3">
+            {d.categories.map((c, i) => (
+              <div key={c.name} className="flex items-center gap-3">
+                <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: COLORS[i % COLORS.length] }} />
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-semibold">{c.name}</span>
+                    <span className="text-[10px] text-[var(--text-muted)]">{c.posts} posts · {c.brands} brands</span>
+                  </div>
+                  <div className="text-[10px] text-[var(--text-muted)]">Top: {c.topBrand} · {formatNumber(c.totalLikes)} total likes</div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* Regions */}
+      <div className="bg-[var(--bg-card)] rounded-2xl border border-[var(--border)] p-5">
+        <h3 className="text-sm font-semibold mb-4">Global Coverage</h3>
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
+          {d.regions.map((r, i) => (
+            <div key={r.name} className="p-3 rounded-xl bg-[var(--bg-secondary)] border border-[var(--border)] text-center">
+              <div className="text-lg font-bold" style={{ color: COLORS[i % COLORS.length] }}>{r.posts}</div>
+              <div className="text-xs font-semibold mt-0.5">{r.name}</div>
+              <div className="text-[10px] text-[var(--text-muted)]">{r.brands} brands · {formatNumber(r.totalLikes)} likes</div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Hashtags cloud */}
+      <div className="bg-[var(--bg-card)] rounded-2xl border border-[var(--border)] p-5">
+        <h3 className="text-sm font-semibold mb-4">Trending Hashtags</h3>
+        <div className="flex flex-wrap gap-2">
+          {d.topHashtags.map((h, i) => (
+            <span key={h.name} className="px-3 py-1.5 rounded-full text-xs font-medium border border-[var(--border)]" style={{ color: COLORS[i % COLORS.length] }}>
+              #{h.name} <span className="text-[var(--text-muted)]">({h.count})</span>
+            </span>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /* ---------- main page ---------- */
 export default function Dashboard() {
   const [data, setData] = useState<FeedResponse | null>(null);
@@ -388,9 +558,7 @@ export default function Dashboard() {
   const [selectedPost, setSelectedPost] = useState<Post | null>(null);
   const [showFilters, setShowFilters] = useState(false);
   const [view, setView] = useState<'feed' | 'trends' | 'ai'>('feed');
-  const [aiInsights, setAiInsights] = useState<string>('');
-  const [aiLoading, setAiLoading] = useState(false);
-  const [aiType, setAiType] = useState('weekly');
+  const [intel, setIntel] = useState<Record<string, unknown> | null>(null);
   const searchTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const fetchData = useCallback(async () => {
@@ -671,103 +839,9 @@ export default function Dashboard() {
         )}
 
         {view === 'ai' && (
-          <div className="space-y-6">
-            {/* Embedded Gamma Report */}
-            <div className="bg-[var(--bg-card)] rounded-2xl border border-[var(--border)] overflow-hidden">
-              <div className="flex items-center justify-between p-4 border-b border-[var(--border)]">
-                <div>
-                  <h3 className="text-sm font-semibold">Latest Intelligence Report</h3>
-                  <p className="text-xs text-[var(--text-muted)] mt-0.5">Visual analysis of {stats?.totalPosts || 0} posts from {stats?.totalBrands || 0} brands</p>
-                </div>
-                <a href="https://gamma.app/docs/ea6wvpycpcwd7li" target="_blank" rel="noopener noreferrer"
-                  className="text-xs px-3 py-1.5 rounded-full bg-[var(--accent)]/20 text-[var(--accent-light)] hover:bg-[var(--accent)]/30 transition-colors">
-                  Open in Gamma
-                </a>
-              </div>
-              <div className="aspect-video w-full">
-                <iframe
-                  src="https://gamma.app/embed/ea6wvpycpcwd7li"
-                  className="w-full h-full border-0"
-                  allow="fullscreen"
-                  title="EyeWear Pulse Intelligence Report"
-                />
-              </div>
-            </div>
-
-            {/* AI Report Generator */}
-            <div className="bg-gradient-to-r from-[var(--accent)]/10 via-purple-900/10 to-pink-900/10 rounded-2xl border border-[var(--accent)]/30 p-6">
-              <h2 className="text-lg font-bold mb-1">AI-Powered Eyewear Intelligence</h2>
-              <p className="text-sm text-[var(--text-secondary)]">
-                Generate custom AI reports from live data. Pick a focus area below.
-              </p>
-            </div>
-
-            {/* Report type selector */}
-            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
-              {[
-                { key: 'weekly', label: 'Weekly Brief', desc: 'Trends, winners, opportunities' },
-                { key: 'product', label: 'Product Intel', desc: 'Styles, materials, design recs' },
-                { key: 'content', label: 'Content Strategy', desc: 'What content works best' },
-                { key: 'pricing', label: 'Pricing Intel', desc: 'Pricing, promos, positioning' },
-                { key: 'sentiment', label: 'Customer Signals', desc: 'Demand, sentiment, gaps' },
-              ].map(t => (
-                <button
-                  key={t.key}
-                  onClick={() => setAiType(t.key)}
-                  className={`flex-1 min-w-[200px] p-4 rounded-xl border text-left transition-all ${
-                    aiType === t.key
-                      ? 'border-[var(--accent)] bg-[var(--accent)]/10'
-                      : 'border-[var(--border)] bg-[var(--bg-card)] hover:border-[var(--accent)]/50'
-                  }`}
-                >
-                  <div className="text-sm font-semibold">{t.label}</div>
-                  <div className="text-xs text-[var(--text-muted)] mt-0.5">{t.desc}</div>
-                </button>
-              ))}
-            </div>
-
-            {/* Generate button */}
-            <button
-              onClick={async () => {
-                setAiLoading(true);
-                setAiInsights('');
-                try {
-                  const res = await fetch(`/api/ai-insights?type=${aiType}`);
-                  const data = await res.json();
-                  setAiInsights(data.insights || data.error || 'No insights generated');
-                } catch {
-                  setAiInsights('Failed to generate insights. Set GEMINI_API_KEY env var on Vercel.');
-                }
-                setAiLoading(false);
-              }}
-              disabled={aiLoading}
-              className="w-full py-3 rounded-xl bg-gradient-to-r from-[var(--accent)] to-purple-600 text-white font-semibold text-sm hover:opacity-90 transition-opacity disabled:opacity-50"
-            >
-              {aiLoading ? 'Analyzing with Gemma AI...' : 'Generate Report'}
-            </button>
-
-            {/* Loading state */}
-            {aiLoading && (
-              <div className="bg-[var(--bg-card)] rounded-2xl border border-[var(--border)] p-8 text-center">
-                <div className="w-12 h-12 border-4 border-[var(--accent)] border-t-transparent rounded-full animate-spin mx-auto mb-4" />
-                <p className="text-sm text-[var(--text-muted)]">Claude is analyzing {stats?.totalPosts || 0} posts across {stats?.totalBrands || 0} brands...</p>
-              </div>
-            )}
-
-            {/* Results */}
-            {aiInsights && !aiLoading && (
-              <div className="bg-[var(--bg-card)] rounded-2xl border border-[var(--border)] p-6">
-                <div className="flex items-center gap-2 mb-4">
-                  <span className="text-lg">🤖</span>
-                  <h3 className="font-semibold text-sm">AI Analysis</h3>
-                  <span className="text-[10px] text-[var(--text-muted)] ml-auto">Powered by Gemma AI</span>
-                </div>
-                <div className="prose prose-invert prose-sm max-w-none text-[var(--text-secondary)] leading-relaxed whitespace-pre-wrap text-sm">
-                  {aiInsights}
-                </div>
-              </div>
-            )}
-          </div>
+          <IntelView intel={intel} onLoad={() => {
+            if (!intel) fetch('/api/intel').then(r => r.json()).then(setIntel);
+          }} />
         )}
       </main>
 
