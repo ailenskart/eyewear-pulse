@@ -650,6 +650,133 @@ function IntelView({ intel, onLoad }: { intel: Record<string, unknown> | null; o
   );
 }
 
+/* ---------- products view ---------- */
+interface ProductData {
+  products: Array<{ brand: string; name: string; price: string; image: string; type: string; url: string; tags: string[] }>;
+  total: number; page: number; totalPages: number;
+  brands: string[];
+  priceRanges: Record<string, number>;
+  avgByBrand: Array<{ brand: string; products: number; avgPrice: number; minPrice: number; maxPrice: number }>;
+}
+
+function ProductsView() {
+  const [data, setData] = useState<ProductData | null>(null);
+  const [brand, setBrand] = useState('All');
+  const [search, setSearch] = useState('');
+  const [sortBy, setSortBy] = useState('price_asc');
+  const [page, setPage] = useState(1);
+  const [imgErr, setImgErr] = useState<Set<number>>(new Set());
+
+  const fetchProducts = useCallback(async () => {
+    const params = new URLSearchParams({ brand, search, sortBy, page: String(page), limit: '40' });
+    const res = await fetch(`/api/products?${params}`);
+    setData(await res.json());
+  }, [brand, search, sortBy, page]);
+
+  useEffect(() => { fetchProducts(); }, [fetchProducts]);
+
+  const C = ['#6366f1','#8b5cf6','#22c55e','#f59e0b','#ef4444','#06b6d4','#ec4899','#a78bfa','#4f46e5','#14b8a6'];
+
+  if (!data) return <div className="flex items-center justify-center py-20"><div className="w-12 h-12 border-4 border-[var(--accent)] border-t-transparent rounded-full animate-spin" /></div>;
+
+  return (
+    <div className="space-y-6">
+      {/* Price analytics header */}
+      <div className="bg-gradient-to-r from-emerald-900/20 via-[var(--accent)]/10 to-amber-900/20 rounded-2xl border border-emerald-500/20 p-6">
+        <h2 className="text-xl font-bold mb-1">Product & Pricing Intelligence</h2>
+        <p className="text-sm text-[var(--text-secondary)] mb-5">Real pricing data scraped from {data.brands.length} D2C eyewear brand websites</p>
+        <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+          {Object.entries(data.priceRanges).map(([range, count], i) => {
+            const labels: Record<string, string> = { under25: 'Under $25', '25to50': '$25-50', '50to100': '$50-100', '100to200': '$100-200', over200: '$200+' };
+            return (
+              <div key={range} className="text-center p-3 rounded-xl bg-[var(--bg-card)] border border-[var(--border)]">
+                <div className="text-xl font-bold" style={{ color: C[i] }}>{count}</div>
+                <div className="text-[10px] text-[var(--text-muted)]">{labels[range] || range}</div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Avg price by brand */}
+      <div className="bg-[var(--bg-card)] rounded-2xl border border-[var(--border)] p-5">
+        <h3 className="text-sm font-semibold mb-4">Average Price by Brand</h3>
+        <div className="space-y-2">
+          {data.avgByBrand.map((b, i) => {
+            const maxAvg = Math.max(...data.avgByBrand.map(x => x.avgPrice));
+            return (
+              <div key={b.brand} className="flex items-center gap-3">
+                <span className="text-xs font-semibold w-28 truncate">{b.brand}</span>
+                <div className="flex-1 h-3 rounded-full bg-[var(--bg-secondary)] overflow-hidden">
+                  <div className="h-full rounded-full" style={{ width: `${(b.avgPrice / maxAvg) * 100}%`, background: C[i % C.length] }} />
+                </div>
+                <span className="text-xs font-bold w-16 text-right" style={{ color: C[i % C.length] }}>${b.avgPrice}</span>
+                <span className="text-[10px] text-[var(--text-muted)] w-20">${b.minPrice}-${b.maxPrice}</span>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Filters */}
+      <div className="flex flex-wrap items-center gap-3">
+        <select value={brand} onChange={e => { setBrand(e.target.value); setPage(1); }}
+          className="bg-[var(--bg-card)] border border-[var(--border)] rounded-lg px-3 py-1.5 text-xs focus:outline-none focus:border-[var(--accent)]">
+          <option value="All">All Brands</option>
+          {data.brands.map(b => <option key={b} value={b}>{b}</option>)}
+        </select>
+        <select value={sortBy} onChange={e => { setSortBy(e.target.value); setPage(1); }}
+          className="bg-[var(--bg-card)] border border-[var(--border)] rounded-lg px-3 py-1.5 text-xs focus:outline-none focus:border-[var(--accent)]">
+          <option value="price_asc">Price: Low to High</option>
+          <option value="price_desc">Price: High to Low</option>
+          <option value="brand">Brand A-Z</option>
+          <option value="name">Name A-Z</option>
+        </select>
+        <input type="text" value={search} onChange={e => { setSearch(e.target.value); setPage(1); }}
+          placeholder="Search products..."
+          className="flex-1 min-w-[200px] bg-[var(--bg-card)] border border-[var(--border)] rounded-lg px-3 py-1.5 text-xs placeholder:text-[var(--text-muted)] focus:outline-none focus:border-[var(--accent)]" />
+        <span className="text-xs text-[var(--text-muted)]">{data.total} products</span>
+      </div>
+
+      {/* Product grid */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3">
+        {data.products.map((p, i) => (
+          <a key={i} href={p.url} target="_blank" rel="noopener noreferrer"
+            className="group rounded-xl overflow-hidden bg-[var(--bg-card)] border border-[var(--border)] hover:border-[var(--accent)]/50 transition-all animate-fade-in">
+            <div className="aspect-square overflow-hidden bg-white">
+              {imgErr.has(i) ? (
+                <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-[#1e1b4b] to-[#4c1d95]"><span className="text-3xl">👓</span></div>
+              ) : (
+                <img src={p.image} alt={p.name} className="w-full h-full object-contain group-hover:scale-105 transition-transform p-2"
+                  loading="lazy" onError={() => setImgErr(prev => new Set(prev).add(i))} />
+              )}
+            </div>
+            <div className="p-3">
+              <div className="text-[10px] text-[var(--accent-light)] font-semibold uppercase">{p.brand}</div>
+              <h4 className="text-xs font-medium mt-0.5 overflow-hidden" style={{ display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' as const }}>{p.name}</h4>
+              <div className="flex items-center justify-between mt-2">
+                <span className="text-sm font-bold text-emerald-400">{p.price}</span>
+                <span className="text-[10px] px-1.5 py-0.5 rounded bg-[var(--bg-secondary)] text-[var(--text-muted)]">{p.type || 'Eyewear'}</span>
+              </div>
+            </div>
+          </a>
+        ))}
+      </div>
+
+      {/* Pagination */}
+      {data.totalPages > 1 && (
+        <div className="flex items-center justify-center gap-3">
+          <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1}
+            className="px-4 py-2 rounded-lg bg-[var(--bg-card)] border border-[var(--border)] text-xs disabled:opacity-30">Previous</button>
+          <span className="text-xs text-[var(--text-muted)]">Page {data.page} of {data.totalPages}</span>
+          <button onClick={() => setPage(p => Math.min(data.totalPages, p + 1))} disabled={page === data.totalPages}
+            className="px-4 py-2 rounded-lg bg-[var(--bg-card)] border border-[var(--border)] text-xs disabled:opacity-30">Next</button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 /* ---------- main page ---------- */
 export default function Dashboard() {
   const [data, setData] = useState<FeedResponse | null>(null);
@@ -662,7 +789,7 @@ export default function Dashboard() {
   const [page, setPage] = useState(1);
   const [selectedPost, setSelectedPost] = useState<Post | null>(null);
   const [showFilters, setShowFilters] = useState(false);
-  const [view, setView] = useState<'feed' | 'trends' | 'ai'>('feed');
+  const [view, setView] = useState<'feed' | 'trends' | 'ai' | 'products'>('feed');
   const [intel, setIntel] = useState<Record<string, unknown> | null>(null);
   const searchTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -743,6 +870,7 @@ export default function Dashboard() {
               <button onClick={() => setView('feed')} className={`px-4 py-1.5 rounded-lg text-xs font-medium transition-all ${view === 'feed' ? 'bg-[var(--accent)] text-white' : 'text-[var(--text-muted)] hover:text-white'}`}>Feed</button>
               <button onClick={() => setView('trends')} className={`px-4 py-1.5 rounded-lg text-xs font-medium transition-all ${view === 'trends' ? 'bg-[var(--accent)] text-white' : 'text-[var(--text-muted)] hover:text-white'}`}>Trends</button>
               <button onClick={() => setView('ai')} className={`px-4 py-1.5 rounded-lg text-xs font-medium transition-all ${view === 'ai' ? 'bg-gradient-to-r from-[var(--accent)] to-purple-600 text-white' : 'text-[var(--text-muted)] hover:text-white'}`}>AI Intel</button>
+              <button onClick={() => setView('products')} className={`px-4 py-1.5 rounded-lg text-xs font-medium transition-all ${view === 'products' ? 'bg-[var(--accent)] text-white' : 'text-[var(--text-muted)] hover:text-white'}`}>Products</button>
             </div>
           </div>
         </div>
@@ -948,6 +1076,8 @@ export default function Dashboard() {
             if (!intel) fetch('/api/intel').then(r => r.json()).then(setIntel);
           }} />
         )}
+
+        {view === 'products' && <ProductsView />}
       </main>
 
       {/* Modal */}
