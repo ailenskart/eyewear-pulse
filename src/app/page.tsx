@@ -377,17 +377,23 @@ function TrendBadge({ label, count, total, color }: { label: string; count: numb
 
 /* ---------- intel view ---------- */
 interface IntelData {
-  summary: { totalPosts: number; totalBrands: number; avgEngagement: number; totalLikes: number; totalComments: number };
+  summary: { totalPosts: number; totalBrands: number; avgEngagement: number; totalLikes: number; totalComments: number; avgLikesPerPost: number };
   topPosts: Array<{ brand: string; handle: string; caption: string; likes: number; comments: number; imageUrl: string; postUrl: string; type: string }>;
-  brandLeaderboard: Array<{ name: string; handle: string; category: string; posts: number; likes: number; comments: number; topPostImage: string; topPostUrl: string }>;
+  brandLeaderboard: Array<{ name: string; handle: string; category: string; posts: number; likes: number; comments: number; avgLikes: number; topPostLikes: number; videos: number; carousels: number; images: number }>;
   contentPerformance: Array<{ type: string; count: number; avgLikes: number; avgComments: number; pct: number }>;
   categories: Array<{ name: string; posts: number; totalLikes: number; brands: number; topBrand: string }>;
   regions: Array<{ name: string; posts: number; totalLikes: number; brands: number }>;
   topHashtags: Array<{ name: string; count: number }>;
+  influencers: Array<{ handle: string; mentions: number; brands: string[]; brandCount: number }>;
+  trendAlerts: Array<{ brand: string; handle: string; likes: number; comments: number; caption: string; imageUrl: string; postUrl: string; multiplier: number; type: string; postedAt: string }>;
+  bestDays: Array<{ day: string; posts: number; avgLikes: number }>;
+  bestHours: Array<{ hour: string; posts: number; avgLikes: number }>;
 }
 
 function IntelView({ intel, onLoad }: { intel: Record<string, unknown> | null; onLoad: () => void }) {
   const [imgErrors, setImgErrors] = useState<Set<string>>(new Set());
+  const [compareInput, setCompareInput] = useState('');
+  const [compareData, setCompareData] = useState<Array<Record<string, unknown>> | null>(null);
 
   useEffect(() => { onLoad(); }, [onLoad]);
 
@@ -398,42 +404,67 @@ function IntelView({ intel, onLoad }: { intel: Record<string, unknown> | null; o
   );
 
   const d = intel as unknown as IntelData;
-  const COLORS = ['#6366f1','#8b5cf6','#22c55e','#f59e0b','#ef4444','#06b6d4','#ec4899','#a78bfa','#4f46e5','#14b8a6'];
+  const C = ['#6366f1','#8b5cf6','#22c55e','#f59e0b','#ef4444','#06b6d4','#ec4899','#a78bfa','#4f46e5','#14b8a6'];
 
   return (
     <div className="space-y-8">
       {/* Hero stats */}
       <div className="bg-gradient-to-r from-[var(--accent)]/10 via-purple-900/10 to-pink-900/10 rounded-2xl border border-[var(--accent)]/30 p-6 md:p-8">
         <h2 className="text-xl md:text-2xl font-bold mb-1">Global Eyewear Intelligence</h2>
-        <p className="text-sm text-[var(--text-secondary)] mb-6">Real-time insights from {formatNumber(d.summary.totalPosts)} Instagram posts across {d.summary.totalBrands} eyewear brands worldwide</p>
-        <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+        <p className="text-sm text-[var(--text-secondary)] mb-6">Real-time insights from {formatNumber(d.summary.totalPosts)} Instagram posts across {d.summary.totalBrands} eyewear brands</p>
+        <div className="grid grid-cols-3 md:grid-cols-6 gap-4">
           {[
-            { label: 'Posts Analyzed', value: formatNumber(d.summary.totalPosts), color: '#6366f1' },
-            { label: 'Brands Tracked', value: String(d.summary.totalBrands), color: '#8b5cf6' },
-            { label: 'Total Likes', value: formatNumber(d.summary.totalLikes), color: '#22c55e' },
-            { label: 'Total Comments', value: formatNumber(d.summary.totalComments), color: '#f59e0b' },
-            { label: 'Avg Engagement', value: `${d.summary.avgEngagement}%`, color: '#06b6d4' },
+            { label: 'Posts', value: formatNumber(d.summary.totalPosts), color: C[0] },
+            { label: 'Brands', value: String(d.summary.totalBrands), color: C[1] },
+            { label: 'Total Likes', value: formatNumber(d.summary.totalLikes), color: C[2] },
+            { label: 'Total Comments', value: formatNumber(d.summary.totalComments), color: C[3] },
+            { label: 'Avg Likes/Post', value: formatNumber(d.summary.avgLikesPerPost), color: C[4] },
+            { label: 'Avg Engagement', value: `${d.summary.avgEngagement}%`, color: C[5] },
           ].map(s => (
             <div key={s.label} className="text-center">
-              <div className="text-2xl md:text-3xl font-bold" style={{ color: s.color }}>{s.value}</div>
+              <div className="text-xl md:text-2xl font-bold" style={{ color: s.color }}>{s.value}</div>
               <div className="text-[10px] uppercase tracking-wider text-[var(--text-muted)] mt-1">{s.label}</div>
             </div>
           ))}
         </div>
       </div>
 
-      {/* Top Performing Posts — visual cards */}
+      {/* Trend Alerts */}
+      {d.trendAlerts.length > 0 && (
+        <div>
+          <h3 className="text-lg font-bold mb-3 flex items-center gap-2">Trend Alerts <span className="text-xs font-normal px-2 py-0.5 rounded-full bg-red-500/20 text-red-400">VIRAL</span></h3>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            {d.trendAlerts.slice(0, 6).map((t, i) => (
+              <a key={i} href={t.postUrl} target="_blank" rel="noopener noreferrer" className="flex gap-3 p-3 rounded-xl bg-[var(--bg-card)] border border-[var(--border)] hover:border-[var(--accent)]/50 transition-all">
+                <div className="w-16 h-16 rounded-lg overflow-hidden bg-gradient-to-br from-[#1e1b4b] to-[#4c1d95] flex-shrink-0">
+                  {!imgErrors.has(t.postUrl) ? (
+                    <img src={t.imageUrl} alt="" className="w-full h-full object-cover" loading="lazy" onError={() => setImgErrors(prev => new Set(prev).add(t.postUrl))} />
+                  ) : <div className="w-full h-full flex items-center justify-center text-lg">👓</div>}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-bold">{t.brand}</span>
+                    <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-red-500/20 text-red-400 font-bold">{t.multiplier}x avg</span>
+                  </div>
+                  <div className="text-xs text-[var(--accent-light)] font-semibold mt-0.5">{formatNumber(t.likes)} likes · {formatNumber(t.comments)} comments</div>
+                  <p className="text-[10px] text-[var(--text-muted)] mt-0.5 truncate">{t.caption}</p>
+                </div>
+              </a>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Top Posts */}
       <div>
-        <h3 className="text-lg font-bold mb-4">Top Performing Posts</h3>
+        <h3 className="text-lg font-bold mb-3">Top Performing Posts</h3>
         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
           {d.topPosts.map((p, i) => (
             <a key={i} href={p.postUrl} target="_blank" rel="noopener noreferrer" className="group rounded-xl overflow-hidden bg-[var(--bg-card)] border border-[var(--border)] hover:border-[var(--accent)]/50 transition-all">
               <div className="aspect-square overflow-hidden bg-gradient-to-br from-[#1e1b4b] to-[#4c1d95]">
-                {imgErrors.has(p.postUrl) ? (
-                  <div className="w-full h-full flex items-center justify-center"><span className="text-3xl">👓</span></div>
-                ) : (
+                {!imgErrors.has(p.postUrl) ? (
                   <img src={p.imageUrl} alt="" className="w-full h-full object-cover group-hover:scale-105 transition-transform" loading="lazy" onError={() => setImgErrors(prev => new Set(prev).add(p.postUrl))} />
-                )}
+                ) : <div className="w-full h-full flex items-center justify-center text-3xl">👓</div>}
               </div>
               <div className="p-2.5">
                 <div className="flex items-center justify-between">
@@ -441,7 +472,6 @@ function IntelView({ intel, onLoad }: { intel: Record<string, unknown> | null; o
                   <span className="text-[10px] px-1.5 py-0.5 rounded bg-[var(--bg-secondary)] text-[var(--text-muted)]">{p.type}</span>
                 </div>
                 <div className="text-xs text-[var(--accent-light)] font-bold mt-1">{formatNumber(p.likes)} likes</div>
-                <p className="text-[10px] text-[var(--text-muted)] mt-1 overflow-hidden" style={{ display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' as const }}>{p.caption}</p>
               </div>
             </a>
           ))}
@@ -450,19 +480,17 @@ function IntelView({ intel, onLoad }: { intel: Record<string, unknown> | null; o
 
       {/* Brand Leaderboard */}
       <div className="bg-[var(--bg-card)] rounded-2xl border border-[var(--border)] overflow-hidden">
-        <div className="p-5 border-b border-[var(--border)]">
-          <h3 className="text-sm font-semibold">Brand Leaderboard — Top 20 by Total Likes</h3>
-        </div>
+        <div className="p-5 border-b border-[var(--border)]"><h3 className="text-sm font-semibold">Brand Leaderboard</h3></div>
         <div className="divide-y divide-[var(--border)]">
           {d.brandLeaderboard.map((b, i) => (
-            <div key={b.handle} className="flex items-center gap-3 px-5 py-3 hover:bg-[var(--bg-secondary)]/50 transition-colors">
-              <span className="text-lg font-bold w-8 text-center" style={{ color: COLORS[i % COLORS.length] }}>#{i + 1}</span>
+            <div key={b.handle} className="flex items-center gap-3 px-5 py-3">
+              <span className="text-lg font-bold w-8 text-center" style={{ color: C[i % C.length] }}>#{i + 1}</span>
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2">
                   <span className="text-sm font-semibold">{b.name}</span>
                   <span className="text-[10px] px-1.5 py-0.5 rounded bg-[var(--bg-secondary)] text-[var(--text-muted)]">{b.category}</span>
                 </div>
-                <div className="text-[10px] text-[var(--text-muted)]">@{b.handle} · {b.posts} posts</div>
+                <div className="text-[10px] text-[var(--text-muted)]">@{b.handle} · {b.posts} posts · avg {formatNumber(b.avgLikes)}/post · V:{b.videos} C:{b.carousels} I:{b.images}</div>
               </div>
               <div className="text-right flex-shrink-0">
                 <div className="text-sm font-bold text-[var(--accent-light)]">{formatNumber(b.likes)}</div>
@@ -473,72 +501,149 @@ function IntelView({ intel, onLoad }: { intel: Record<string, unknown> | null; o
         </div>
       </div>
 
-      {/* Content Performance + Categories side by side */}
+      {/* Influencer Discovery + Content Calendar */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Content Type Performance */}
+        {/* Influencers */}
         <div className="bg-[var(--bg-card)] rounded-2xl border border-[var(--border)] p-5">
-          <h3 className="text-sm font-semibold mb-4">Content Type Performance</h3>
-          <div className="space-y-4">
-            {d.contentPerformance.map((c, i) => (
-              <div key={c.type}>
-                <div className="flex items-center justify-between mb-1">
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs font-semibold">{c.type}</span>
-                    <span className="text-[10px] text-[var(--text-muted)]">{c.count} posts ({c.pct}%)</span>
-                  </div>
-                  <span className="text-xs font-semibold" style={{ color: COLORS[i] }}>avg {formatNumber(c.avgLikes)} likes</span>
-                </div>
-                <div className="h-3 rounded-full bg-[var(--bg-secondary)] overflow-hidden">
-                  <div className="h-full rounded-full transition-all duration-700" style={{ width: `${c.pct}%`, background: COLORS[i] }} />
+          <h3 className="text-sm font-semibold mb-1">Influencer Discovery</h3>
+          <p className="text-[10px] text-[var(--text-muted)] mb-4">Accounts mentioned by 2+ different brands</p>
+          <div className="space-y-2">
+            {d.influencers.slice(0, 12).map((inf, i) => (
+              <div key={inf.handle} className="flex items-center gap-2">
+                <span className="text-xs font-bold w-5" style={{ color: C[i % C.length] }}>{i + 1}</span>
+                <a href={`https://instagram.com/${inf.handle}`} target="_blank" rel="noopener noreferrer" className="text-xs font-semibold text-[var(--accent-light)] hover:underline">@{inf.handle}</a>
+                <span className="text-[10px] text-[var(--text-muted)]">{inf.mentions} mentions by {inf.brandCount} brands</span>
+                <div className="flex-1" />
+                <div className="flex gap-1">
+                  {inf.brands.slice(0, 3).map(b => (
+                    <span key={b} className="text-[9px] px-1 py-0.5 rounded bg-[var(--bg-secondary)] text-[var(--text-muted)]">{b}</span>
+                  ))}
                 </div>
               </div>
             ))}
           </div>
         </div>
 
-        {/* Categories */}
+        {/* Best Times to Post */}
         <div className="bg-[var(--bg-card)] rounded-2xl border border-[var(--border)] p-5">
-          <h3 className="text-sm font-semibold mb-4">Posts by Category</h3>
-          <div className="space-y-3">
-            {d.categories.map((c, i) => (
-              <div key={c.name} className="flex items-center gap-3">
-                <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: COLORS[i % COLORS.length] }} />
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-semibold">{c.name}</span>
-                    <span className="text-[10px] text-[var(--text-muted)]">{c.posts} posts · {c.brands} brands</span>
-                  </div>
-                  <div className="text-[10px] text-[var(--text-muted)]">Top: {c.topBrand} · {formatNumber(c.totalLikes)} total likes</div>
+          <h3 className="text-sm font-semibold mb-4">Best Times to Post</h3>
+          <div className="mb-4">
+            <p className="text-[10px] text-[var(--text-muted)] mb-2 uppercase tracking-wider">Best Days (by avg likes)</p>
+            <div className="grid grid-cols-7 gap-1">
+              {d.bestDays.map((day, i) => (
+                <div key={day.day} className="text-center p-2 rounded-lg" style={{ background: i === 0 ? 'rgba(99,102,241,0.15)' : 'transparent' }}>
+                  <div className="text-[10px] text-[var(--text-muted)]">{day.day.substring(0, 3)}</div>
+                  <div className="text-xs font-bold" style={{ color: i < 3 ? C[2] : 'var(--text-secondary)' }}>{formatNumber(day.avgLikes)}</div>
+                  <div className="text-[9px] text-[var(--text-muted)]">{day.posts}p</div>
                 </div>
-              </div>
-            ))}
+              ))}
+            </div>
+          </div>
+          <div>
+            <p className="text-[10px] text-[var(--text-muted)] mb-2 uppercase tracking-wider">Best Hours UTC (by avg likes)</p>
+            <div className="grid grid-cols-4 gap-2">
+              {d.bestHours.slice(0, 8).map((h, i) => (
+                <div key={h.hour} className="text-center p-2 rounded-lg bg-[var(--bg-secondary)]">
+                  <div className="text-xs font-bold" style={{ color: i < 3 ? C[2] : 'var(--text-secondary)' }}>{h.hour}</div>
+                  <div className="text-[10px] text-[var(--text-muted)]">avg {formatNumber(h.avgLikes)} likes</div>
+                </div>
+              ))}
+            </div>
           </div>
         </div>
       </div>
 
-      {/* Regions */}
-      <div className="bg-[var(--bg-card)] rounded-2xl border border-[var(--border)] p-5">
-        <h3 className="text-sm font-semibold mb-4">Global Coverage</h3>
-        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
-          {d.regions.map((r, i) => (
-            <div key={r.name} className="p-3 rounded-xl bg-[var(--bg-secondary)] border border-[var(--border)] text-center">
-              <div className="text-lg font-bold" style={{ color: COLORS[i % COLORS.length] }}>{r.posts}</div>
-              <div className="text-xs font-semibold mt-0.5">{r.name}</div>
-              <div className="text-[10px] text-[var(--text-muted)]">{r.brands} brands · {formatNumber(r.totalLikes)} likes</div>
+      {/* Content Performance + Categories */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <div className="bg-[var(--bg-card)] rounded-2xl border border-[var(--border)] p-5">
+          <h3 className="text-sm font-semibold mb-4">Content Type Performance</h3>
+          {d.contentPerformance.map((c, i) => (
+            <div key={c.type} className="mb-3">
+              <div className="flex items-center justify-between mb-1">
+                <span className="text-xs font-semibold">{c.type} <span className="text-[var(--text-muted)] font-normal">({c.count} posts)</span></span>
+                <span className="text-xs font-semibold" style={{ color: C[i] }}>avg {formatNumber(c.avgLikes)} likes</span>
+              </div>
+              <div className="h-3 rounded-full bg-[var(--bg-secondary)]"><div className="h-full rounded-full" style={{ width: `${c.pct}%`, background: C[i] }} /></div>
+            </div>
+          ))}
+        </div>
+        <div className="bg-[var(--bg-card)] rounded-2xl border border-[var(--border)] p-5">
+          <h3 className="text-sm font-semibold mb-4">Posts by Category</h3>
+          {d.categories.map((c, i) => (
+            <div key={c.name} className="flex items-center gap-3 mb-2">
+              <div className="w-2 h-2 rounded-full" style={{ background: C[i % C.length] }} />
+              <span className="text-xs font-semibold flex-1">{c.name}</span>
+              <span className="text-[10px] text-[var(--text-muted)]">{c.posts} posts · {c.brands} brands</span>
             </div>
           ))}
         </div>
       </div>
 
-      {/* Hashtags cloud */}
+      {/* Brand Compare Tool */}
       <div className="bg-[var(--bg-card)] rounded-2xl border border-[var(--border)] p-5">
-        <h3 className="text-sm font-semibold mb-4">Trending Hashtags</h3>
-        <div className="flex flex-wrap gap-2">
-          {d.topHashtags.map((h, i) => (
-            <span key={h.name} className="px-3 py-1.5 rounded-full text-xs font-medium border border-[var(--border)]" style={{ color: COLORS[i % COLORS.length] }}>
-              #{h.name} <span className="text-[var(--text-muted)]">({h.count})</span>
-            </span>
-          ))}
+        <h3 className="text-sm font-semibold mb-1">Brand Comparison</h3>
+        <p className="text-[10px] text-[var(--text-muted)] mb-3">Compare any two brands side by side</p>
+        <div className="flex gap-2">
+          <input
+            type="text" value={compareInput} onChange={e => setCompareInput(e.target.value)}
+            placeholder="e.g. warbyparker,zennioptical"
+            className="flex-1 bg-[var(--bg-secondary)] border border-[var(--border)] rounded-lg px-3 py-2 text-xs placeholder:text-[var(--text-muted)] focus:outline-none focus:border-[var(--accent)]"
+          />
+          <button onClick={async () => {
+            if (!compareInput) return;
+            const res = await fetch(`/api/intel?compare=${encodeURIComponent(compareInput)}`);
+            const data = await res.json();
+            setCompareData(data.brandComparison);
+          }} className="px-4 py-2 rounded-lg bg-[var(--accent)] text-white text-xs font-semibold hover:opacity-90">Compare</button>
+        </div>
+        {compareData && (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
+            {compareData.map((b: Record<string, unknown>, i: number) => (
+              <div key={i} className="p-4 rounded-xl border border-[var(--border)] bg-[var(--bg-secondary)]">
+                {!(b.found) ? <p className="text-xs text-[var(--text-muted)]">@{String(b.handle)} not found</p> : (
+                  <>
+                    <div className="flex items-center gap-2 mb-3">
+                      <span className="text-sm font-bold">{String(b.name)}</span>
+                      <span className="text-[10px] px-1.5 py-0.5 rounded bg-[var(--bg-card)] text-[var(--text-muted)]">{String(b.category)}</span>
+                    </div>
+                    <div className="grid grid-cols-3 gap-2 text-center mb-3">
+                      <div><div className="text-lg font-bold" style={{ color: C[i] }}>{Number(b.posts)}</div><div className="text-[10px] text-[var(--text-muted)]">Posts</div></div>
+                      <div><div className="text-lg font-bold" style={{ color: C[i] }}>{formatNumber(Number(b.totalLikes))}</div><div className="text-[10px] text-[var(--text-muted)]">Likes</div></div>
+                      <div><div className="text-lg font-bold" style={{ color: C[i] }}>{formatNumber(Number(b.avgLikes))}</div><div className="text-[10px] text-[var(--text-muted)]">Avg/Post</div></div>
+                    </div>
+                    <div className="text-[10px] text-[var(--text-muted)]">
+                      Mix: {(b.contentMix as Record<string, number>).videos}V {(b.contentMix as Record<string, number>).carousels}C {(b.contentMix as Record<string, number>).images}I · {String(b.region)}
+                    </div>
+                  </>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Regions + Hashtags */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <div className="bg-[var(--bg-card)] rounded-2xl border border-[var(--border)] p-5">
+          <h3 className="text-sm font-semibold mb-4">Global Coverage</h3>
+          <div className="grid grid-cols-2 gap-2">
+            {d.regions.map((r, i) => (
+              <div key={r.name} className="p-2.5 rounded-lg bg-[var(--bg-secondary)] flex items-center gap-2">
+                <div className="text-lg font-bold" style={{ color: C[i % C.length] }}>{r.posts}</div>
+                <div><div className="text-xs font-semibold">{r.name}</div><div className="text-[9px] text-[var(--text-muted)]">{r.brands} brands</div></div>
+              </div>
+            ))}
+          </div>
+        </div>
+        <div className="bg-[var(--bg-card)] rounded-2xl border border-[var(--border)] p-5">
+          <h3 className="text-sm font-semibold mb-4">Trending Hashtags</h3>
+          <div className="flex flex-wrap gap-2">
+            {d.topHashtags.map((h, i) => (
+              <span key={h.name} className="px-2.5 py-1 rounded-full text-xs font-medium border border-[var(--border)]" style={{ color: C[i % C.length] }}>
+                #{h.name} <span className="text-[var(--text-muted)]">({h.count})</span>
+              </span>
+            ))}
+          </div>
         </div>
       </div>
     </div>
