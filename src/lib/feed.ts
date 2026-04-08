@@ -68,6 +68,12 @@ interface RawPost {
   carouselSlides?: Array<{ url: string; type: string }>;
 }
 
+function proxyIgUrl(url: string | null): string | null {
+  if (!url) return null;
+  if (url.includes('cdninstagram.com')) return `/api/img?url=${encodeURIComponent(url)}`;
+  return url;
+}
+
 function transformPosts(): Post[] {
   const raw = scrapedData as RawPost[];
   const posts: Post[] = [];
@@ -76,11 +82,15 @@ function transformPosts(): Post[] {
     const handle = p.ownerUsername || '';
     if (!handle) continue;
 
-    // Get image URL — prefer fresh IG CDN URLs, fall back to Blob
-    const imageUrl = ((p.images && p.images.length > 0) ? p.images[0] : (p.displayUrl || ''))
-      || p.blobUrl
+    // Get image URL — prefer Blob (permanent), then proxy IG CDN through our server
+    const rawUrl = p.blobUrl
+      || ((p.images && p.images.length > 0) ? p.images[0] : (p.displayUrl || ''))
       || p.localImage
       || '';
+    // Proxy Instagram CDN URLs through /api/img to avoid browser CORS blocks
+    const imageUrl = rawUrl.includes('cdninstagram.com')
+      ? `/api/img?url=${encodeURIComponent(rawUrl)}`
+      : rawUrl;
     if (!imageUrl) continue;
 
     // Find brand info
@@ -115,8 +125,11 @@ function transformPosts(): Post[] {
       id: p.id || p.shortCode || `${handle}_${posts.length}`,
       brand,
       imageUrl,
-      videoUrl: p.videoBlobUrl || p.videoUrl || null,
-      carouselSlides: p.carouselSlides || [],
+      videoUrl: proxyIgUrl(p.videoBlobUrl || p.videoUrl || null),
+      carouselSlides: (p.carouselSlides || []).map(s => ({
+        ...s,
+        url: s.url.includes('cdninstagram.com') ? `/api/img?url=${encodeURIComponent(s.url)}` : s.url,
+      })),
       caption: p.caption || '',
       likes,
       comments,

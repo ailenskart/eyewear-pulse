@@ -95,8 +95,6 @@ function PostCard({ post, onClick }: { post: Post; onClick: () => void }) {
             alt={post.caption}
             className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110"
             loading="lazy"
-            referrerPolicy="no-referrer"
-            crossOrigin="anonymous"
             onError={() => setImgError(true)}
           />
         )}
@@ -181,7 +179,7 @@ function PostModal({ post, onClose }: { post: Post; onClose: () => void }) {
               <span className="text-white/60 text-sm font-medium">{post.brand.name}</span>
             </div>
           ) : (
-            <img src={currentSlide} alt={post.caption} className="w-full h-full object-cover max-h-[50vh] md:max-h-[90vh]" referrerPolicy="no-referrer" crossOrigin="anonymous" onError={() => setImgError(true)} />
+            <img src={currentSlide} alt={post.caption} className="w-full h-full object-cover max-h-[50vh] md:max-h-[90vh]" onError={() => setImgError(true)} />
           )}
           {/* Carousel navigation */}
           {hasMultipleSlides && !post.isVideo && (
