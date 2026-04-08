@@ -74,97 +74,52 @@ function PostCard({ post, onClick }: { post: Post; onClick: () => void }) {
 
   return (
     <div
-      className="relative group cursor-pointer rounded-xl overflow-hidden bg-[var(--bg-card)] border border-[var(--border)] animate-fade-in"
+      className="card group cursor-pointer overflow-hidden animate-fade-in"
       onClick={onClick}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
     >
       {/* Image */}
-      <div className="aspect-square overflow-hidden bg-gradient-to-br from-[#1e1b4b] via-[#312e81] to-[#4c1d95]">
+      <div className="aspect-square overflow-hidden bg-[var(--bg-secondary)] relative">
         {imgError ? (
-          <div className="w-full h-full flex flex-col items-center justify-center gap-3 p-4">
-            <div className="w-16 h-16 rounded-full bg-white/10 flex items-center justify-center text-2xl">
-              👓
-            </div>
-            <span className="text-white/60 text-xs font-medium text-center">{post.brand.name}</span>
-            <span className="text-white/30 text-[10px]">@{post.brand.handle}</span>
+          <div className="w-full h-full flex flex-col items-center justify-center gap-2 p-4 bg-gradient-to-br from-indigo-50 to-purple-50 dark:from-indigo-950/30 dark:to-purple-950/30">
+            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" strokeWidth="1.5"><circle cx="8" cy="12" r="4"/><circle cx="16" cy="12" r="4"/></svg>
+            <span className="text-[var(--text-muted)] text-xs font-medium">{post.brand.name}</span>
           </div>
         ) : (
-          <img
-            src={post.imageUrl}
-            alt={post.caption}
-            className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110"
-            loading="lazy"
-            onError={() => setImgError(true)}
-          />
+          <img src={post.imageUrl} alt="" className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105" loading="lazy" onError={() => setImgError(true)} />
+        )}
+
+        {/* Hover overlay */}
+        <div className={`absolute inset-0 bg-black/50 flex items-center justify-center gap-5 transition-opacity duration-200 ${hovered ? 'opacity-100' : 'opacity-0'}`}>
+          <div className="text-center"><div className="text-white text-base font-bold">{formatNumber(post.likes)}</div><div className="text-white/50 text-[10px]">likes</div></div>
+          <div className="text-center"><div className="text-white text-base font-bold">{formatNumber(post.comments)}</div><div className="text-white/50 text-[10px]">comments</div></div>
+        </div>
+
+        {/* Video play button */}
+        {post.isVideo && post.videoUrl && (
+          <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+            <div className="w-11 h-11 rounded-full bg-white/90 shadow-lg flex items-center justify-center group-hover:scale-110 transition-transform">
+              <span className="text-[var(--accent)] text-lg ml-0.5">&#9654;</span>
+            </div>
+          </div>
+        )}
+
+        {/* Carousel indicator */}
+        {post.carouselSlides.length > 0 && !post.isVideo && (
+          <div className="absolute top-2 right-2 bg-black/50 text-white text-[10px] font-medium px-2 py-0.5 rounded-full backdrop-blur-sm">
+            1/{post.carouselSlides.length}
+          </div>
         )}
       </div>
 
-      {/* Hover overlay with engagement */}
-      <div className={`absolute inset-0 bg-black/60 flex items-center justify-center gap-6 transition-opacity duration-200 ${hovered ? 'opacity-100' : 'opacity-0'}`}>
-        <div className="text-center">
-          <div className="text-white text-lg font-bold">{formatNumber(post.likes)}</div>
-          <div className="text-white/60 text-xs">likes</div>
-        </div>
-        <div className="text-center">
-          <div className="text-white text-lg font-bold">{formatNumber(post.comments)}</div>
-          <div className="text-white/60 text-xs">comments</div>
-        </div>
-        <div className="text-center">
-          <div className="text-emerald-400 text-lg font-bold">{post.engagement}%</div>
-          <div className="text-white/60 text-xs">engage</div>
-        </div>
-      </div>
-
-      {/* Brand badge */}
-      <div className="absolute top-2 left-2 flex items-center gap-1.5 bg-black/70 backdrop-blur-sm rounded-full pl-1 pr-2.5 py-1">
-        <img
-          src={`https://ui-avatars.com/api/?name=${encodeURIComponent(post.brand.name)}&size=20&background=6366f1&color=fff&bold=true&font-size=0.5`}
-          alt=""
-          className="w-5 h-5 rounded-full"
-        />
-        <span className="text-white text-[10px] font-semibold">{post.brand.name}</span>
-      </div>
-
-      {/* Type badge */}
-      {post.isVideo && post.videoUrl && (
-        <button
-          onClick={(e) => { e.stopPropagation(); onClick(); }}
-          className="absolute top-2 right-2 bg-[var(--accent)]/90 backdrop-blur-sm text-white text-[10px] font-medium px-2.5 py-1 rounded-full flex items-center gap-1 hover:bg-[var(--accent)] transition-colors"
-        >
-          <span className="text-sm">&#9654;</span> Video
-        </button>
-      )}
-      {post.isVideo && !post.videoUrl && (
-        <div className="absolute top-2 right-2 bg-[var(--accent)]/80 backdrop-blur-sm text-white text-[10px] font-medium px-2 py-0.5 rounded-full flex items-center gap-1">
-          <span>&#9654;</span> Video
-        </div>
-      )}
-      {post.carouselSlides.length > 0 && !post.isVideo && (
-        <div className="absolute top-2 right-2 bg-white/20 backdrop-blur-sm text-white text-[10px] font-medium px-2 py-0.5 rounded-full">
-          1/{post.carouselSlides.length}
-        </div>
-      )}
-
-      {/* Big play button centered on video posts */}
-      {post.isVideo && post.videoUrl && (
-        <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-          <div className="w-14 h-14 rounded-full bg-black/40 backdrop-blur-sm flex items-center justify-center group-hover:bg-black/60 transition-all group-hover:scale-110">
-            <span className="text-white text-2xl ml-1">&#9654;</span>
-          </div>
-        </div>
-      )}
-
-      {/* Bottom info */}
+      {/* Info */}
       <div className="p-3">
-        <p className="text-xs text-[var(--text-secondary)] leading-relaxed overflow-hidden" style={{ display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' as const }}>{post.caption}</p>
-        <div className="flex items-center justify-between mt-2">
-          <div className="flex items-center gap-1.5">
-            <span className="text-[10px] px-1.5 py-0.5 rounded bg-[var(--bg-secondary)] text-[var(--text-muted)]">{post.brand.category}</span>
-            <span className="text-[10px] px-1.5 py-0.5 rounded bg-[var(--bg-secondary)] text-[var(--text-muted)]">{post.type}</span>
-          </div>
-          <span className="text-[10px] text-[var(--text-muted)] flex-shrink-0">{timeAgo(post.postedAt)}</span>
+        <div className="flex items-center gap-2 mb-1.5">
+          <span className="text-[11px] font-semibold text-[var(--text-primary)]">{post.brand.name}</span>
+          <span className="text-[10px] text-[var(--text-muted)]">{timeAgo(post.postedAt)}</span>
         </div>
+        <p className="text-[11px] text-[var(--text-secondary)] leading-relaxed overflow-hidden" style={{ display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' as const }}>{post.caption}</p>
       </div>
     </div>
   );
@@ -862,62 +817,88 @@ export default function Dashboard() {
   }
 
   return (
-    <div className="min-h-screen">
+    <div className="min-h-screen bg-[var(--bg-primary)]">
       {/* Header */}
       <header className="glass sticky top-0 z-40 border-b border-[var(--border)]">
-        <div className="max-w-[1600px] mx-auto px-4 py-3">
-          <div className="flex items-center justify-between gap-4">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[var(--accent)] to-purple-600 flex items-center justify-center text-lg">
-                👓
+        <div className="max-w-[1440px] mx-auto px-4 sm:px-6">
+          <div className="flex items-center justify-between h-14 sm:h-16 gap-3">
+            {/* Logo */}
+            <div className="flex items-center gap-2.5 flex-shrink-0">
+              <div className="w-8 h-8 rounded-lg bg-[var(--accent)] flex items-center justify-center">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round"><circle cx="8" cy="12" r="4"/><circle cx="16" cy="12" r="4"/><path d="M12 12h0"/><path d="M4 12H2"/><path d="M22 12h-2"/></svg>
               </div>
-              <div>
-                <h1 className="text-lg font-bold bg-gradient-to-r from-white to-[var(--accent-light)] bg-clip-text text-transparent">
-                  EyeWear Pulse
-                </h1>
-                <p className="text-[10px] text-[var(--text-muted)] uppercase tracking-widest">
-                  Visual Instagram Intelligence — {stats?.totalBrands || 600} Brands · {stats?.totalPosts || 0} Posts
-                </p>
+              <div className="hidden sm:block">
+                <h1 className="text-base font-semibold tracking-tight text-[var(--text-primary)]">EyeWear Pulse</h1>
               </div>
             </div>
 
+            {/* Desktop Nav */}
+            <nav className="hidden sm:flex items-center gap-1 bg-[var(--bg-secondary)] rounded-lg p-0.5">
+              {[
+                { key: 'feed', label: 'Feed', icon: '📸' },
+                { key: 'products', label: 'Products', icon: '🛍️' },
+                { key: 'ai', label: 'Intelligence', icon: '📊' },
+                { key: 'trends', label: 'Trends', icon: '📈' },
+              ].map(tab => (
+                <button key={tab.key} onClick={() => setView(tab.key as typeof view)}
+                  className={`px-3.5 py-1.5 rounded-md text-[13px] font-medium transition-all ${
+                    view === tab.key
+                      ? 'bg-[var(--bg-card)] text-[var(--text-primary)] shadow-sm'
+                      : 'text-[var(--text-muted)] hover:text-[var(--text-secondary)]'
+                  }`}>
+                  {tab.label}
+                </button>
+              ))}
+            </nav>
+
             {/* Search */}
-            <div className="flex-1 max-w-md">
+            <div className="flex-1 max-w-sm">
               <div className="relative">
+                <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--text-muted)]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
                 <input
                   type="text"
                   onChange={e => handleSearch(e.target.value)}
-                  placeholder="Search brands, styles, colors, hashtags..."
-                  className="w-full bg-[var(--bg-card)] border border-[var(--border)] rounded-xl px-4 py-2 text-sm text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:outline-none focus:border-[var(--accent)] transition-colors"
+                  placeholder="Search..."
+                  className="w-full bg-[var(--bg-secondary)] border-none rounded-lg pl-9 pr-4 py-2 text-sm text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)]/30 transition-all"
                 />
               </div>
-            </div>
-
-            {/* View toggle */}
-            <div className="flex gap-1 bg-[var(--bg-card)] rounded-xl p-1 border border-[var(--border)]">
-              <button onClick={() => setView('feed')} className={`px-4 py-1.5 rounded-lg text-xs font-medium transition-all ${view === 'feed' ? 'bg-[var(--accent)] text-white' : 'text-[var(--text-muted)] hover:text-white'}`}>Feed</button>
-              <button onClick={() => setView('trends')} className={`px-4 py-1.5 rounded-lg text-xs font-medium transition-all ${view === 'trends' ? 'bg-[var(--accent)] text-white' : 'text-[var(--text-muted)] hover:text-white'}`}>Trends</button>
-              <button onClick={() => setView('ai')} className={`px-4 py-1.5 rounded-lg text-xs font-medium transition-all ${view === 'ai' ? 'bg-gradient-to-r from-[var(--accent)] to-purple-600 text-white' : 'text-[var(--text-muted)] hover:text-white'}`}>AI Intel</button>
-              <button onClick={() => setView('products')} className={`px-4 py-1.5 rounded-lg text-xs font-medium transition-all ${view === 'products' ? 'bg-[var(--accent)] text-white' : 'text-[var(--text-muted)] hover:text-white'}`}>Products</button>
             </div>
           </div>
         </div>
       </header>
 
-      <main className="max-w-[1600px] mx-auto px-4 py-5">
+      {/* Mobile bottom nav */}
+      <div className="mobile-nav sm:hidden">
+        {[
+          { key: 'feed', label: 'Feed', icon: '📸' },
+          { key: 'products', label: 'Products', icon: '🛍️' },
+          { key: 'ai', label: 'Intel', icon: '📊' },
+          { key: 'trends', label: 'Trends', icon: '📈' },
+        ].map(tab => (
+          <button key={tab.key} onClick={() => setView(tab.key as typeof view)}
+            className={view === tab.key ? 'active' : ''}>
+            <span className="nav-icon">{tab.icon}</span>
+            {tab.label}
+          </button>
+        ))}
+      </div>
+
+      <main className="max-w-[1440px] mx-auto px-4 sm:px-6 py-5">
         {view === 'feed' && (
           <>
-            {/* Filter bar */}
-            <div className="flex items-center gap-3 mb-4">
-              <button onClick={() => setShowFilters(!showFilters)} className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-all ${showFilters ? 'bg-[var(--accent)] text-white border-[var(--accent)]' : 'bg-[var(--bg-card)] text-[var(--text-muted)] border-[var(--border)]'}`}>
-                Filters {showFilters ? '▲' : '▼'}
-              </button>
-              <div className="h-4 w-px bg-[var(--border)]" />
+            {/* Sort + filter bar */}
+            <div className="flex items-center gap-2 mb-4 overflow-x-auto pb-1">
               {SORT_OPTIONS.map(s => (
-                <FilterChip key={s.key} label={s.label} active={sortBy === s.key} onClick={() => { setSortBy(s.key); setPage(1); }} />
+                <button key={s.key} onClick={() => { setSortBy(s.key); setPage(1); }}
+                  className={`pill whitespace-nowrap ${sortBy === s.key ? 'active' : ''}`}>{s.label}</button>
               ))}
+              <button onClick={() => setShowFilters(!showFilters)}
+                className={`pill whitespace-nowrap ${showFilters ? 'active' : ''}`}>
+                <svg className="w-3.5 h-3.5 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" /></svg>
+                Filters
+              </button>
               <div className="flex-1" />
-              <span className="text-xs text-[var(--text-muted)]">{data?.total || 0} posts</span>
+              <span className="text-[13px] text-[var(--text-muted)] whitespace-nowrap">{data?.total || 0} posts</span>
             </div>
 
             {/* Expandable filters */}
@@ -1112,11 +1093,10 @@ export default function Dashboard() {
       {selectedPost && <PostModal post={selectedPost} onClose={() => setSelectedPost(null)} />}
 
       {/* Footer */}
-      <footer className="border-t border-[var(--border)] py-6 mt-12">
-        <div className="max-w-[1600px] mx-auto px-4 text-center">
+      <footer className="border-t border-[var(--border)] py-8 mt-16">
+        <div className="max-w-[1440px] mx-auto px-4 sm:px-6 text-center">
           <p className="text-xs text-[var(--text-muted)]">
-            EyeWear Pulse — Visual intelligence from {stats?.totalBrands || 600} global eyewear Instagram accounts.
-            Powered by InstaTouch. Built for design intelligence.
+            EyeWear Pulse · {stats?.totalBrands || 0} brands · {stats?.totalPosts || 0} posts · Built for Lenskart
           </p>
         </div>
       </footer>
