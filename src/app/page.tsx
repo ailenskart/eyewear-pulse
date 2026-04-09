@@ -321,10 +321,10 @@ function Sheet({ post, onClose }: { post: Post; onClose: () => void }) {
     <div className="fixed inset-0 z-50" onClick={onClose}>
       <div className="absolute inset-0 bg-black/50" style={{ backdropFilter: 'blur(8px)' }} />
       <div className="absolute inset-x-0 bottom-0 sm:inset-0 sm:flex sm:items-center sm:justify-center sm:p-8" onClick={e => e.stopPropagation()}>
-        <div className="bg-[var(--bg)] w-full sm:max-w-3xl sm:rounded-2xl overflow-hidden rounded-t-2xl sm:rounded-2xl max-h-[92vh] sm:max-h-[85vh] flex flex-col sm:flex-row shadow-2xl" style={{ animation: 'sheet 0.25s ease-out' }}>
+        <div className="bg-[var(--bg)] w-full sm:max-w-3xl sm:rounded-2xl overflow-hidden rounded-t-2xl sm:rounded-2xl max-h-[85vh] sm:max-h-[85vh] flex flex-col sm:flex-row shadow-2xl" style={{ animation: 'sheet 0.25s ease-out', marginBottom: 'env(safe-area-inset-bottom, 0px)' }}>
 
-          {/* Media */}
-          <div className="sm:w-[56%] bg-black relative flex-shrink-0">
+          {/* Media — capped height on mobile so info is scrollable */}
+          <div className="sm:w-[56%] bg-black relative flex-shrink-0 max-h-[45vh] sm:max-h-none overflow-hidden">
             {/* Mobile top bar */}
             <div className="sm:hidden absolute top-0 inset-x-0 z-10 flex items-center justify-between px-3 pt-3">
               <div className="bg-black/40 backdrop-blur-md rounded-full px-3 py-1">
@@ -360,8 +360,8 @@ function Sheet({ post, onClose }: { post: Post; onClose: () => void }) {
             )}
           </div>
 
-          {/* Info */}
-          <div className="sm:w-[44%] flex flex-col">
+          {/* Info — fully scrollable on mobile */}
+          <div className="sm:w-[44%] flex flex-col overflow-y-auto">
             {/* Desktop close */}
             <div className="hidden sm:flex items-center justify-between p-4 border-b border-[var(--line)]">
               <div>
