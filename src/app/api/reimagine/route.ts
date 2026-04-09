@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { GoogleGenAI } from '@google/genai';
+import Together from 'together-ai';
 
 const d = (s: string) => Buffer.from(s, 'base64').toString();
 const GEMINI_KEY = process.env.GEMINI_API_KEY || d('QUl6YVN5QWVlYTl0bnVCQVdLc0I3LUJHZHYzMHdjalk1ZGFWcHU0');
@@ -73,10 +74,30 @@ Create a detailed creative brief for recreating this as a ${brand} post. Include
 Be specific and actionable for the creative team.`,
     });
 
+    // Step 3: Generate reimagined image with FLUX
+    let generatedImageUrl = '';
+    const togetherKey = process.env.TOGETHER_API_KEY || '';
+    if (togetherKey) {
+      try {
+        const together = new Together({ apiKey: togetherKey });
+        const imgPrompt = `Professional eyewear Instagram post for Lenskart brand. ${imageAnalysis.substring(0, 200)}. Modern Indian aesthetic, premium product photography. ${prompt || ''}`.trim();
+        const imgResponse = await together.images.generate({
+          prompt: imgPrompt,
+          model: 'black-forest-labs/FLUX.1-schnell',
+          width: 1024, height: 1024, steps: 4, n: 1,
+        });
+        const imgData = imgResponse.data?.[0] as { url?: string } | undefined;
+        generatedImageUrl = imgData?.url || '';
+      } catch (e) {
+        console.warn('FLUX failed:', e instanceof Error ? e.message : e);
+      }
+    }
+
     return NextResponse.json({
       originalAnalysis: imageAnalysis,
       creativeBrief: brief.text || '',
-      model: 'gemini-2.5-flash',
+      generatedImage: generatedImageUrl,
+      model: generatedImageUrl ? 'gemini-2.0-flash + FLUX.1' : 'gemini-2.0-flash',
     });
   } catch (err) {
     const msg = err instanceof Error ? err.message : 'Failed to generate';

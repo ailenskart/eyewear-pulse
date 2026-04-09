@@ -314,7 +314,7 @@ export default function App() {
 function Sheet({ post, onClose }: { post: Post; onClose: () => void }) {
   const [si, setSi] = useState(0);
   const [err, setErr] = useState(false);
-  const [reimagine, setReimagine] = useState<{ loading: boolean; analysis: string; brief: string; prompt: string; editing: boolean }>({ loading: false, analysis: '', brief: '', prompt: '', editing: false });
+  const [reimagine, setReimagine] = useState<{ loading: boolean; analysis: string; brief: string; prompt: string; editing: boolean; image: string }>({ loading: false, analysis: '', brief: '', prompt: '', editing: false, image: '' });
   const slides = post.carouselSlides.length > 0 ? [post.imageUrl, ...post.carouselSlides.map(s => s.url)] : [post.imageUrl];
 
   return (
@@ -438,7 +438,18 @@ function Sheet({ post, onClose }: { post: Post; onClose: () => void }) {
                 )}
 
                 {reimagine.brief && (
-                  <div className="mt-2 p-3 bg-[var(--bg-alt)] rounded-lg max-h-[300px] overflow-y-auto">
+                  <div className="mt-2 space-y-3">
+                    {/* Generated image from FLUX */}
+                    {reimagine.image && (
+                      <div className="rounded-lg overflow-hidden border border-[var(--line)]">
+                        <img src={reimagine.image} alt="AI Generated" className="w-full" />
+                        <div className="p-2 bg-[var(--bg-alt)] flex items-center justify-between">
+                          <span className="text-[10px] text-[var(--text-3)]">Generated with FLUX AI</span>
+                          <a href={reimagine.image} target="_blank" rel="noopener noreferrer" className="text-[11px] text-[var(--brand)] font-semibold">Download</a>
+                        </div>
+                      </div>
+                    )}
+                  <div className="p-3 bg-[var(--bg-alt)] rounded-lg max-h-[300px] overflow-y-auto">
                     {reimagine.analysis && (
                       <details className="mb-3">
                         <summary className="text-[11px] font-semibold text-[var(--text-2)] cursor-pointer">Original Image Analysis</summary>
@@ -446,6 +457,7 @@ function Sheet({ post, onClose }: { post: Post; onClose: () => void }) {
                       </details>
                     )}
                     <div className="text-[12px] whitespace-pre-wrap leading-relaxed">{reimagine.brief}</div>
+                  </div>
                   </div>
                 )}
               </div>
@@ -466,9 +478,9 @@ function Sheet({ post, onClose }: { post: Post; onClose: () => void }) {
                     const data = await res.json();
                     const errMsg = data.error;
                     if (errMsg) {
-                      setReimagine(r => ({...r, loading: false, brief: '⚠️ ' + errMsg}));
+                      setReimagine(r => ({...r, loading: false, brief: '⚠️ ' + errMsg, image: ''}));
                     } else {
-                      setReimagine(r => ({...r, loading: false, analysis: data.originalAnalysis || '', brief: data.creativeBrief || ''}));
+                      setReimagine(r => ({...r, loading: false, analysis: data.originalAnalysis || '', brief: data.creativeBrief || '', image: data.generatedImage || ''}));
                     }
                   } catch {
                     setReimagine(r => ({...r, loading: false, brief: '⚠️ Network error. Please try again.'}));
