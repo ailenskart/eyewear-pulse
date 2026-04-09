@@ -101,9 +101,10 @@ Answer concisely and with specific data. If asked about design/style, reference 
   } catch (err) {
     const msg = err instanceof Error ? err.message : 'AI analysis failed';
     if (msg.includes('429') || msg.includes('quota') || msg.includes('RESOURCE_EXHAUSTED')) {
-      return NextResponse.json({
-        error: 'AI quota reached. Try again in a few minutes.',
-      }, { status: 429 });
+      return NextResponse.json({ error: 'AI quota reached. Try again in a few minutes.' }, { status: 429 });
+    }
+    if (msg.includes('503') || msg.includes('UNAVAILABLE') || msg.includes('high demand')) {
+      return NextResponse.json({ error: 'AI models are busy. Please try again in a moment.' }, { status: 503 });
     }
     return NextResponse.json({ error: msg }, { status: 500 });
   }

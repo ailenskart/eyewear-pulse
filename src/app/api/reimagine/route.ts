@@ -32,14 +32,19 @@ export async function POST(request: NextRequest) {
     const base64 = Buffer.from(imgBuffer).toString('base64');
     const mimeType = imgRes.headers.get('content-type') || 'image/jpeg';
 
-    // Step 1: Analyze the original image
-    const analysis = await ai.models.generateContent({
-      model: 'gemini-2.5-flash',
-      contents: [{
-        role: 'user',
-        parts: [
-          { inlineData: { mimeType, data: base64 } },
-          { text: `Analyze this eyewear/sunglasses Instagram post image in detail. Describe:
+    // Step 1: Analyze the original image (try multiple models as fallback)
+    const models = ['gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-1.5-flash'];
+    let imageAnalysis = '';
+
+    for (const model of models) {
+      try {
+        const analysis = await ai.models.generateContent({
+          model,
+          contents: [{
+            role: 'user',
+            parts: [
+              { inlineData: { mimeType, data: base64 } },
+              { text: `Analyze this eyewear/sunglasses Instagram post image in detail. Describe:
 1. The frame style (shape, size, material)
 2. The color palette
 3. The composition and layout
@@ -48,15 +53,24 @@ export async function POST(request: NextRequest) {
 6. What makes this post visually appealing
 
 Be specific and concise.` },
-        ],
-      }],
-    });
+            ],
+          }],
+        });
+        imageAnalysis = analysis.text || '';
+        if (imageAnalysis) break;
+      } catch { continue; }
+    }
 
-    const imageAnalysis = analysis.text || '';
+    if (!imageAnalysis) {
+      return NextResponse.json({ error: 'All AI models are currently busy. Please try again in a minute.' }, { status: 503 });
+    }
 
-    // Step 2: Generate creative brief for Lenskart version
-    const brief = await ai.models.generateContent({
-      model: 'gemini-2.5-flash',
+    // Step 2: Generate creative brief (with fallback models)
+    let briefText = '';
+    for (const model of models) {
+      try {
+        const brief = await ai.models.generateContent({
+          model,
       contents: `You are a creative director at ${brand}. Based on this analysis of a competitor's eyewear post:
 
 ${imageAnalysis}
@@ -72,7 +86,11 @@ Create a detailed creative brief for recreating this as a ${brand} post. Include
 6. **Content Type**: Recommend if this should be a static post, carousel, or reel
 
 Be specific and actionable for the creative team.`,
-    });
+        });
+        briefText = brief.text || '';
+        if (briefText) break;
+      } catch { continue; }
+    }
 
     // Step 3: Generate multiple images from different AI models
     const imgPrompt = `Professional eyewear Instagram post for Lenskart brand. ${imageAnalysis.substring(0, 300)}. Modern Indian aesthetic, premium product photography, stylish model wearing designer eyewear frames. ${prompt || ''}`.trim();
@@ -106,7 +124,7 @@ Be specific and actionable for the creative team.`,
 
     return NextResponse.json({
       originalAnalysis: imageAnalysis,
-      creativeBrief: brief.text || '',
+      creativeBrief: briefText,
       generatedImages,
       imagePrompt: imgPrompt,
       model: 'gemini-2.5-flash',
@@ -114,9 +132,10 @@ Be specific and actionable for the creative team.`,
   } catch (err) {
     const msg = err instanceof Error ? err.message : 'Failed to generate';
     if (msg.includes('429') || msg.includes('quota') || msg.includes('RESOURCE_EXHAUSTED')) {
-      return NextResponse.json({
-        error: 'AI quota reached for today. Try again in a few minutes or upgrade your Google AI plan at ai.google.dev.',
-      }, { status: 429 });
+      return NextResponse.json({ error: 'AI quota reached. Try again in a few minutes.' }, { status: 429 });
+    }
+    if (msg.includes('503') || msg.includes('UNAVAILABLE') || msg.includes('high demand')) {
+      return NextResponse.json({ error: 'AI models are busy right now. Please try again in a moment.' }, { status: 503 });
     }
     return NextResponse.json({ error: msg }, { status: 500 });
   }
