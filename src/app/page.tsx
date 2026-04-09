@@ -465,32 +465,11 @@ function Sheet({ post, onClose }: { post: Post; onClose: () => void }) {
 
             {/* Actions */}
             <div className="p-3 border-t border-[var(--line)] space-y-2 flex-shrink-0">
-              {!reimagine.editing && (
-                <button onClick={async () => {
-                  // Auto-generate with default prompt — no text box needed
-                  setReimagine(r => ({...r, editing: true, loading: true, analysis: '', brief: ''}));
-                  try {
-                    const res = await fetch('/api/reimagine', {
-                      method: 'POST',
-                      headers: {'Content-Type':'application/json'},
-                      body: JSON.stringify({ imageUrl: post.imageUrl }),
-                    });
-                    const data = await res.json();
-                    const errMsg = data.error;
-                    if (errMsg) {
-                      setReimagine(r => ({...r, loading: false, brief: '⚠️ ' + errMsg, image: ''}));
-                    } else {
-                      setReimagine(r => ({...r, loading: false, analysis: data.originalAnalysis || '', brief: data.creativeBrief || '', image: data.generatedImage || ''}));
-                    }
-                  } catch {
-                    setReimagine(r => ({...r, loading: false, brief: '⚠️ Network error. Please try again.'}));
-                  }
-                }}
-                  className="w-full py-2.5 rounded-lg bg-gradient-to-r from-orange-500 to-pink-500 text-white text-[13px] font-semibold text-center flex items-center justify-center gap-2">
-                  <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
-                  Reimagine for Lenskart
-                </button>
-              )}
+              <a href={`/reimagine?image=${encodeURIComponent(post.imageUrl)}&brand=${encodeURIComponent(post.brand.name)}&caption=${encodeURIComponent(post.caption.substring(0,200))}&postUrl=${encodeURIComponent(post.postUrl)}`}
+                className="w-full py-2.5 rounded-lg bg-gradient-to-r from-orange-500 to-pink-500 text-white text-[13px] font-semibold text-center flex items-center justify-center gap-2">
+                <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
+                Reimagine for Lenskart
+              </a>
               <div className="flex gap-2">
                 <a href={post.postUrl} target="_blank" rel="noopener noreferrer" className="flex-1 py-2.5 rounded-lg bg-[var(--brand)] text-white text-[13px] font-semibold text-center">View on IG</a>
                 <a href={`https://instagram.com/${post.brand.handle}`} target="_blank" rel="noopener noreferrer" className="py-2.5 px-4 rounded-lg border border-[var(--line)] text-[13px] font-medium text-center">Profile</a>
