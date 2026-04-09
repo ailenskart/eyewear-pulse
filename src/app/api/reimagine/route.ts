@@ -74,30 +74,42 @@ Create a detailed creative brief for recreating this as a ${brand} post. Include
 Be specific and actionable for the creative team.`,
     });
 
-    // Step 3: Generate reimagined image with FLUX
-    let generatedImageUrl = '';
+    // Step 3: Generate multiple images from different AI models
+    const imgPrompt = `Professional eyewear Instagram post for Lenskart brand. ${imageAnalysis.substring(0, 300)}. Modern Indian aesthetic, premium product photography, stylish model wearing designer eyewear frames. ${prompt || ''}`.trim();
+    const generatedImages: Array<{ url: string; model: string }> = [];
+
+    // Model 1: Pollinations FLUX (free, no key)
+    generatedImages.push({
+      url: `https://image.pollinations.ai/prompt/${encodeURIComponent(imgPrompt)}?width=1024&height=1024&model=flux&nologo=true&seed=${Date.now()}`,
+      model: 'FLUX',
+    });
+
+    // Model 2: Pollinations Turbo (free, no key, different style)
+    generatedImages.push({
+      url: `https://image.pollinations.ai/prompt/${encodeURIComponent(imgPrompt)}?width=1024&height=1024&model=turbo&nologo=true&seed=${Date.now() + 1}`,
+      model: 'Turbo',
+    });
+
+    // Model 3: Together AI FLUX.1-schnell (if key available)
     const togetherKey = process.env.TOGETHER_API_KEY || '';
     if (togetherKey) {
       try {
         const together = new Together({ apiKey: togetherKey });
-        const imgPrompt = `Professional eyewear Instagram post for Lenskart brand. ${imageAnalysis.substring(0, 200)}. Modern Indian aesthetic, premium product photography. ${prompt || ''}`.trim();
         const imgResponse = await together.images.generate({
-          prompt: imgPrompt,
-          model: 'black-forest-labs/FLUX.1-schnell',
+          prompt: imgPrompt, model: 'black-forest-labs/FLUX.1-schnell',
           width: 1024, height: 1024, steps: 4, n: 1,
         });
         const imgData = imgResponse.data?.[0] as { url?: string } | undefined;
-        generatedImageUrl = imgData?.url || '';
-      } catch (e) {
-        console.warn('FLUX failed:', e instanceof Error ? e.message : e);
-      }
+        if (imgData?.url) generatedImages.push({ url: imgData.url, model: 'FLUX.1-schnell' });
+      } catch { /* skip */ }
     }
 
     return NextResponse.json({
       originalAnalysis: imageAnalysis,
       creativeBrief: brief.text || '',
-      generatedImage: generatedImageUrl,
-      model: generatedImageUrl ? 'gemini-2.5-flash + FLUX.1' : 'gemini-2.5-flash',
+      generatedImages,
+      imagePrompt: imgPrompt,
+      model: 'gemini-2.5-flash',
     });
   } catch (err) {
     const msg = err instanceof Error ? err.message : 'Failed to generate';
