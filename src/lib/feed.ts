@@ -74,6 +74,34 @@ function proxyIgUrl(url: string | null): string | null {
   return url;
 }
 
+// Accounts that are definitely NOT eyewear — filter out their posts
+const NON_EYEWEAR_ACCOUNTS = new Set([
+  'aria_johnson_official_','cadillacf1','acmilan','archmanning','stonebrewing',
+  '100thieves','100thieves.apparel','vuoriclothing','redbullusa','insomniacshop',
+  'fbkadinbasket','theviewabc','gamerecognizegamepod','foxybaehair',
+  '_miguelch','alexascore','biancaborck','beyondwland','daltondern','kohlfromsd',
+  'afashionnerd','asly.official','whatpeoplearewearing','aleezabenshalom',
+]);
+
+// Eyewear keywords — posts with these in caption are likely relevant
+const EYEWEAR_KEYWORDS = /glasses|eyewear|sunglass|frame|optical|lens|spectacle|aviator|wayfarer|polarized|prescription|blue.?light|eyecare|optician/i;
+
+function isEyewearRelevant(p: RawPost): boolean {
+  const handle = (p.ownerUsername || '').toLowerCase();
+  // Exclude known non-eyewear accounts
+  if (NON_EYEWEAR_ACCOUNTS.has(handle)) return false;
+  // If it's a known brand, always include
+  if (brandByHandle.has(handle)) return true;
+  // If caption mentions eyewear terms, include
+  const caption = p.caption || '';
+  if (EYEWEAR_KEYWORDS.test(caption)) return true;
+  // If it has eyewear hashtags, include
+  const tags = (p.hashtags || []).join(' ');
+  if (EYEWEAR_KEYWORDS.test(tags)) return true;
+  // Unknown account with no eyewear keywords — skip
+  return false;
+}
+
 function transformPosts(): Post[] {
   const raw = scrapedData as RawPost[];
   const posts: Post[] = [];
@@ -81,6 +109,7 @@ function transformPosts(): Post[] {
   for (const p of raw) {
     const handle = p.ownerUsername || '';
     if (!handle) continue;
+    if (!isEyewearRelevant(p)) continue;
 
     // Get image URL — prefer Blob (permanent), then proxy IG CDN through our server
     const rawUrl = p.blobUrl
