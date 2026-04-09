@@ -34,7 +34,7 @@ export async function POST(request: NextRequest) {
 
     // Step 1: Analyze the original image
     const analysis = await ai.models.generateContent({
-      model: 'gemini-2.0-flash',
+      model: 'gemini-2.5-flash',
       contents: [{
         role: 'user',
         parts: [
@@ -56,7 +56,7 @@ Be specific and concise.` },
 
     // Step 2: Generate creative brief for Lenskart version
     const brief = await ai.models.generateContent({
-      model: 'gemini-2.0-flash',
+      model: 'gemini-2.5-flash',
       contents: `You are a creative director at ${brand}. Based on this analysis of a competitor's eyewear post:
 
 ${imageAnalysis}
@@ -97,7 +97,7 @@ Be specific and actionable for the creative team.`,
       originalAnalysis: imageAnalysis,
       creativeBrief: brief.text || '',
       generatedImage: generatedImageUrl,
-      model: generatedImageUrl ? 'gemini-2.0-flash + FLUX.1' : 'gemini-2.0-flash',
+      model: generatedImageUrl ? 'gemini-2.5-flash + FLUX.1' : 'gemini-2.5-flash',
     });
   } catch (err) {
     const msg = err instanceof Error ? err.message : 'Failed to generate';
