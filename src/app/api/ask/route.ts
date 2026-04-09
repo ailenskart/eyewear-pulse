@@ -99,8 +99,12 @@ Answer concisely and with specific data. If asked about design/style, reference 
       hasImage: false,
     });
   } catch (err) {
-    return NextResponse.json({
-      error: err instanceof Error ? err.message : 'AI analysis failed',
-    }, { status: 500 });
+    const msg = err instanceof Error ? err.message : 'AI analysis failed';
+    if (msg.includes('429') || msg.includes('quota') || msg.includes('RESOURCE_EXHAUSTED')) {
+      return NextResponse.json({
+        error: 'AI quota reached. Try again in a few minutes.',
+      }, { status: 429 });
+    }
+    return NextResponse.json({ error: msg }, { status: 500 });
   }
 }

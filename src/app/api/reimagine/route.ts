@@ -79,8 +79,12 @@ Be specific and actionable for the creative team.`,
       model: 'gemini-2.5-flash',
     });
   } catch (err) {
-    return NextResponse.json({
-      error: err instanceof Error ? err.message : 'Failed to generate',
-    }, { status: 500 });
+    const msg = err instanceof Error ? err.message : 'Failed to generate';
+    if (msg.includes('429') || msg.includes('quota') || msg.includes('RESOURCE_EXHAUSTED')) {
+      return NextResponse.json({
+        error: 'AI quota reached for today. Try again in a few minutes or upgrade your Google AI plan at ai.google.dev.',
+      }, { status: 429 });
+    }
+    return NextResponse.json({ error: msg }, { status: 500 });
   }
 }

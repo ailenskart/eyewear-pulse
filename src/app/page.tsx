@@ -464,9 +464,14 @@ function Sheet({ post, onClose }: { post: Post; onClose: () => void }) {
                       body: JSON.stringify({ imageUrl: post.imageUrl }),
                     });
                     const data = await res.json();
-                    setReimagine(r => ({...r, loading: false, analysis: data.originalAnalysis || '', brief: data.creativeBrief || data.error || ''}));
+                    const errMsg = data.error;
+                    if (errMsg) {
+                      setReimagine(r => ({...r, loading: false, brief: '⚠️ ' + errMsg}));
+                    } else {
+                      setReimagine(r => ({...r, loading: false, analysis: data.originalAnalysis || '', brief: data.creativeBrief || ''}));
+                    }
                   } catch {
-                    setReimagine(r => ({...r, loading: false, brief: 'Failed to generate'}));
+                    setReimagine(r => ({...r, loading: false, brief: '⚠️ Network error. Please try again.'}));
                   }
                 }}
                   className="w-full py-2.5 rounded-lg bg-gradient-to-r from-orange-500 to-pink-500 text-white text-[13px] font-semibold text-center flex items-center justify-center gap-2">
