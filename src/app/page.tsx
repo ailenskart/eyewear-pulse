@@ -314,7 +314,6 @@ export default function App() {
 function Sheet({ post, onClose }: { post: Post; onClose: () => void }) {
   const [si, setSi] = useState(0);
   const [err, setErr] = useState(false);
-  const [reimagine, setReimagine] = useState<{ loading: boolean; analysis: string; brief: string; prompt: string; editing: boolean; image: string }>({ loading: false, analysis: '', brief: '', prompt: '', editing: false, image: '' });
   const slides = post.carouselSlides.length > 0 ? [post.imageUrl, ...post.carouselSlides.map(s => s.url)] : [post.imageUrl];
 
   return (
@@ -393,75 +392,6 @@ function Sheet({ post, onClose }: { post: Post; onClose: () => void }) {
                 ))}
               </div>
             </div>
-
-            {/* Reimagine panel */}
-            {reimagine.editing && (
-              <div className="p-3 border-t border-[var(--line)] space-y-2">
-                <div className="flex items-center justify-between">
-                  <span className="text-[13px] font-semibold">Reimagine for Lenskart</span>
-                  <button onClick={() => setReimagine(r => ({...r, editing: false}))} className="text-[var(--text-3)] text-[12px]">Close</button>
-                </div>
-                {reimagine.loading && (
-                  <div className="flex items-center gap-2 py-3 justify-center">
-                    <div className="w-4 h-4 border-2 border-[var(--brand)] border-t-transparent rounded-full animate-spin" />
-                    <span className="text-[12px] text-[var(--text-2)]">Analyzing image with AI...</span>
-                  </div>
-                )}
-
-                {/* Refine option — shown after first result or if user wants to add direction */}
-                {reimagine.brief && !reimagine.loading && (
-                  <div className="flex gap-2">
-                    <input
-                      type="text" value={reimagine.prompt}
-                      onChange={e => setReimagine(r => ({...r, prompt: e.target.value}))}
-                      placeholder="Refine: 'use John Jacobs frames', 'target Gen Z'..."
-                      className="flex-1 bg-[var(--bg-alt)] rounded-lg px-3 py-2 text-[12px] outline-none placeholder:text-[var(--text-3)]"
-                    />
-                    <button
-                      onClick={async () => {
-                        setReimagine(r => ({...r, loading: true, analysis: '', brief: ''}));
-                        try {
-                          const res = await fetch('/api/reimagine', {
-                            method: 'POST',
-                            headers: {'Content-Type':'application/json'},
-                            body: JSON.stringify({ imageUrl: post.imageUrl, prompt: reimagine.prompt }),
-                          });
-                          const data = await res.json();
-                          setReimagine(r => ({...r, loading: false, analysis: data.originalAnalysis || '', brief: data.creativeBrief || data.error || ''}));
-                        } catch {
-                          setReimagine(r => ({...r, loading: false, brief: 'Failed'}));
-                        }
-                      }}
-                      className="px-3 py-2 rounded-lg bg-[var(--brand)] text-white text-[12px] font-semibold flex-shrink-0"
-                    >Refine</button>
-                  </div>
-                )}
-
-                {reimagine.brief && (
-                  <div className="mt-2 space-y-3">
-                    {/* Generated image from FLUX */}
-                    {reimagine.image && (
-                      <div className="rounded-lg overflow-hidden border border-[var(--line)]">
-                        <img src={reimagine.image} alt="AI Generated" className="w-full" />
-                        <div className="p-2 bg-[var(--bg-alt)] flex items-center justify-between">
-                          <span className="text-[10px] text-[var(--text-3)]">Generated with FLUX AI</span>
-                          <a href={reimagine.image} target="_blank" rel="noopener noreferrer" className="text-[11px] text-[var(--brand)] font-semibold">Download</a>
-                        </div>
-                      </div>
-                    )}
-                  <div className="p-3 bg-[var(--bg-alt)] rounded-lg max-h-[300px] overflow-y-auto">
-                    {reimagine.analysis && (
-                      <details className="mb-3">
-                        <summary className="text-[11px] font-semibold text-[var(--text-2)] cursor-pointer">Original Image Analysis</summary>
-                        <p className="text-[11px] text-[var(--text-2)] mt-1 whitespace-pre-wrap leading-relaxed">{reimagine.analysis}</p>
-                      </details>
-                    )}
-                    <div className="text-[12px] whitespace-pre-wrap leading-relaxed">{reimagine.brief}</div>
-                  </div>
-                  </div>
-                )}
-              </div>
-            )}
 
             {/* Actions */}
             <div className="p-3 border-t border-[var(--line)] space-y-2 flex-shrink-0">
