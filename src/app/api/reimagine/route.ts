@@ -59,17 +59,22 @@ export async function POST(request: NextRequest) {
       (async () => {
         if (!REPLICATE_TOKEN) return null;
         const replicate = new Replicate({ auth: REPLICATE_TOKEN });
+        // Try with image URL directly (Replicate can fetch URLs)
         const output = await replicate.run('black-forest-labs/flux-kontext-max', {
           input: {
             prompt: `Edit this eyewear photo: ${editDirection}. Keep the same eyewear frames. Professional Instagram quality.`,
-            image: dataUri,
+            input_image: imageUrl,
             aspect_ratio: '1:1',
           },
         });
-        if (output && typeof output === 'object' && 'url' in (output as object)) {
-          return (output as { url: () => string }).url();
+        // Output can be a ReadableStream, FileOutput, string, or array
+        if (output && typeof output === 'object' && 'url' in (output as Record<string, unknown>)) {
+          return String((output as Record<string, unknown>).url);
         }
-        return Array.isArray(output) ? String(output[0]) : typeof output === 'string' ? output : null;
+        if (Array.isArray(output)) return String(output[0]);
+        if (typeof output === 'string') return output;
+        // Try toString
+        return output ? String(output) : null;
       })(),
 
       // Task 4: Replicate FLUX Schnell — generate new
@@ -78,14 +83,16 @@ export async function POST(request: NextRequest) {
         const replicate = new Replicate({ auth: REPLICATE_TOKEN });
         const output = await replicate.run('black-forest-labs/flux-schnell', {
           input: {
-            prompt: `Professional eyewear Instagram post for ${brand}. Indian model wearing stylish frames. Premium photography, vibrant background. ${editDirection}`,
+            prompt: `Professional eyewear Instagram post. Indian model wearing stylish designer sunglasses. Premium fashion photography, vibrant colorful background. ${brand} brand aesthetic.`,
             aspect_ratio: '1:1',
           },
         });
-        if (output && typeof output === 'object' && 'url' in (output as object)) {
-          return (output as { url: () => string }).url();
+        if (output && typeof output === 'object' && 'url' in (output as Record<string, unknown>)) {
+          return String((output as Record<string, unknown>).url);
         }
-        return Array.isArray(output) ? String(output[0]) : typeof output === 'string' ? output : null;
+        if (Array.isArray(output)) return String(output[0]);
+        if (typeof output === 'string') return output;
+        return output ? String(output) : null;
       })(),
     ]);
 
@@ -104,10 +111,10 @@ export async function POST(request: NextRequest) {
       editedImages.push({ url: String(schnellResult.value), model: 'FLUX Schnell (new)', type: 'generated' });
     }
 
-    // Pollinations fallback (always works, free)
-    const fallback = `Professional eyewear photo. Indian model, ${brand}. ${editDirection}`;
+    // Pollinations fallback (always works, free) — keep prompt SHORT
+    const shortPrompt = `Indian model wearing stylish designer sunglasses, professional Instagram photo, ${brand} eyewear brand, premium fashion photography, vibrant background`;
     editedImages.push({
-      url: `https://image.pollinations.ai/prompt/${encodeURIComponent(fallback)}?width=1024&height=1024&model=flux&nologo=true&seed=${Date.now()}`,
+      url: `https://image.pollinations.ai/prompt/${encodeURIComponent(shortPrompt)}?width=1024&height=1024&model=flux&nologo=true&seed=${Date.now()}`,
       model: 'FLUX (text-to-image)', type: 'generated',
     });
 
