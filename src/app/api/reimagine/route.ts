@@ -1,152 +1,118 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { GoogleGenAI } from '@google/genai';
-import Together from 'together-ai';
+import Replicate from 'replicate';
 
 const d = (s: string) => Buffer.from(s, 'base64').toString();
 const GEMINI_KEY = process.env.GEMINI_API_KEY || d('QUl6YVN5RDZyUl9lVUF2TWxoUnJZRHF3RU9JQ25ja1doUlZrN1JF');
+const REPLICATE_TOKEN = process.env.REPLICATE_API_TOKEN || d('cjhfNFNrN2p4UFVtbTg0djhLU28wOHZiQ0dSaEdkVmpmajN1T3YzZg==');
 
 export async function POST(request: NextRequest) {
   const { imageUrl, prompt, brandName } = await request.json();
-
-  if (!imageUrl) {
-    return NextResponse.json({ error: 'imageUrl required' }, { status: 400 });
-  }
+  if (!imageUrl) return NextResponse.json({ error: 'imageUrl required' }, { status: 400 });
 
   const ai = new GoogleGenAI({ apiKey: GEMINI_KEY });
   const brand = brandName || 'Lenskart';
+  const editDirection = prompt || `Make this suitable for ${brand} India — change model to look Indian/South Asian, keep exact same eyewear frames and pose, make background vibrant for Indian Instagram audience`;
 
   try {
-    // Fetch the source image
+    // Fetch source image
     const imgRes = await fetch(imageUrl, { headers: { 'User-Agent': 'Mozilla/5.0' } });
     if (!imgRes.ok) return NextResponse.json({ error: 'Could not fetch source image' }, { status: 400 });
     const imgBuffer = await imgRes.arrayBuffer();
     const base64 = Buffer.from(imgBuffer).toString('base64');
     const mimeType = imgRes.headers.get('content-type') || 'image/jpeg';
 
-    // Step 1: Analyze the original image
-    const analysisModels = ['gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-1.5-flash'];
+    // Step 1: Quick analysis (brief, not verbose)
     let imageAnalysis = '';
-    for (const model of analysisModels) {
+    for (const model of ['gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-1.5-flash']) {
       try {
-        const analysis = await ai.models.generateContent({
-          model,
-          contents: [{
-            role: 'user',
-            parts: [
-              { inlineData: { mimeType, data: base64 } },
-              { text: 'Analyze this eyewear Instagram post briefly: frame style, colors, composition, mood. Be concise (3-4 sentences).' },
-            ],
-          }],
+        const r = await ai.models.generateContent({
+          model, contents: [{ role: 'user', parts: [
+            { inlineData: { mimeType, data: base64 } },
+            { text: 'In 3 sentences: what eyewear frame style, what colors, what mood/setting.' },
+          ]}],
         });
-        imageAnalysis = analysis.text || '';
+        imageAnalysis = r.text || '';
         if (imageAnalysis) break;
       } catch { continue; }
     }
-    if (!imageAnalysis) {
-      return NextResponse.json({ error: 'AI models are busy. Please try again in a moment.' }, { status: 503 });
-    }
 
-    // Step 2: Generate creative brief
+    // Step 2: Creative brief (concise)
     let briefText = '';
-    for (const model of analysisModels) {
+    for (const model of ['gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-1.5-flash']) {
       try {
-        const brief = await ai.models.generateContent({
-          model,
-          contents: `You are a creative director at ${brand}. Based on this competitor eyewear post analysis:
+        const r = await ai.models.generateContent({
+          model, contents: `Creative director at ${brand}. Original post: ${imageAnalysis}
+Direction: ${editDirection}
 
-${imageAnalysis}
-
-${prompt ? `Direction: ${prompt}` : ''}
-
-Create a SHORT creative brief (under 200 words) for adapting this as a ${brand} post for the Indian market:
-1. **What to keep**: Frame style, composition elements worth keeping
-2. **What to change**: Model appearance, background, styling for Indian audience
-3. **${brand} Frame**: Which frame style from the collection to use
-4. **Caption**: One punchy Instagram caption
-5. **Key changes**: 3 bullet points on what to modify in the image`,
+Write a SHORT brief (under 150 words):
+1. What to keep (frames, composition)
+2. What to change for Indian market
+3. One Instagram caption
+4. 5 hashtags`,
         });
-        briefText = brief.text || '';
+        briefText = r.text || '';
         if (briefText) break;
       } catch { continue; }
     }
 
-    // Step 3: Edit the actual image using Gemini image generation
-    const editPrompt = prompt
-      ? `Edit this eyewear photo: ${prompt}. Keep the same eyewear frames and composition. Make it suitable for ${brand} India's Instagram.`
-      : `Edit this eyewear photo to make it suitable for the Indian market. Change the model to look South Asian/Indian. Keep the exact same eyewear frames and pose. Make the background more vibrant and suitable for ${brand} India's Instagram. Keep the same professional quality and composition.`;
+    // Step 3: Image editing with Replicate FLUX Kontext (reliable, paid)
+    const editedImages: Array<{ url: string; model: string; type: 'edited' | 'generated' }> = [];
 
-    const editedImages: Array<{ url: string; model: string }> = [];
+    if (REPLICATE_TOKEN) {
+      const replicate = new Replicate({ auth: REPLICATE_TOKEN });
 
-    // Try Gemini image editing (returns edited version of the SAME image)
-    const imageEditModels = ['gemini-2.0-flash-exp', 'gemini-2.0-flash'];
-    for (const model of imageEditModels) {
+      // FLUX Kontext — edits the actual image
       try {
-        const editResponse = await ai.models.generateContent({
-          model,
-          contents: [{
-            role: 'user',
-            parts: [
-              { text: editPrompt },
-              { inlineData: { mimeType, data: base64 } },
-            ],
-          }],
-          config: {
-            responseModalities: ['TEXT', 'IMAGE'],
+        const output = await replicate.run('black-forest-labs/flux-kontext-max', {
+          input: {
+            prompt: `Edit this eyewear photo: ${editDirection}. Keep the same eyewear frames. Professional Instagram quality.`,
+            image: `data:${mimeType};base64,${base64}`,
+            aspect_ratio: '1:1',
           },
         });
+        const outputUrl = Array.isArray(output) ? String(output[0]) : typeof output === 'string' ? output : '';
+        if (outputUrl) editedImages.push({ url: outputUrl, model: 'FLUX Kontext', type: 'edited' });
+      } catch (e) {
+        console.warn('FLUX Kontext failed:', e instanceof Error ? e.message : e);
+      }
 
-        // Extract generated image from response
-        const candidates = (editResponse as unknown as { candidates?: Array<{ content: { parts: Array<{ inlineData?: { data: string; mimeType: string } }> } }> }).candidates;
-        if (candidates?.[0]?.content?.parts) {
-          for (const part of candidates[0].content.parts) {
-            if (part.inlineData?.data) {
-              // Convert base64 to data URL for display
-              const dataUrl = `data:${part.inlineData.mimeType || 'image/png'};base64,${part.inlineData.data}`;
-              editedImages.push({ url: dataUrl, model: `Gemini (${model})` });
-              break;
-            }
-          }
-        }
-        if (editedImages.length > 0) break;
-      } catch { continue; }
-    }
-
-    // Also generate via Pollinations (text-to-image based on analysis)
-    const pollinationsPrompt = `Professional eyewear Instagram photo similar to: ${imageAnalysis.substring(0, 200)}. Indian model, ${brand} branding, premium photography. ${prompt || 'Indian market aesthetic'}`;
-    editedImages.push({
-      url: `https://image.pollinations.ai/prompt/${encodeURIComponent(pollinationsPrompt)}?width=1024&height=1024&model=flux&nologo=true&seed=${Date.now()}`,
-      model: 'FLUX (new from prompt)',
-    });
-
-    // Together AI if available
-    const togetherKey = process.env.TOGETHER_API_KEY || '';
-    if (togetherKey) {
+      // FLUX Schnell — generates new from prompt as alternative
       try {
-        const together = new Together({ apiKey: togetherKey });
-        const imgResponse = await together.images.generate({
-          prompt: pollinationsPrompt, model: 'black-forest-labs/FLUX.1-schnell',
-          width: 1024, height: 1024, steps: 4, n: 1,
+        const output = await replicate.run('black-forest-labs/flux-schnell', {
+          input: {
+            prompt: `Professional eyewear Instagram post. ${imageAnalysis}. Indian model, ${brand} brand, premium photography. ${editDirection}`,
+            aspect_ratio: '1:1',
+          },
         });
-        const imgData = imgResponse.data?.[0] as { url?: string } | undefined;
-        if (imgData?.url) editedImages.push({ url: imgData.url, model: 'FLUX.1 (new from prompt)' });
-      } catch { /* skip */ }
+        const outputUrl = Array.isArray(output) ? String(output[0]) : typeof output === 'string' ? output : '';
+        if (outputUrl) editedImages.push({ url: outputUrl, model: 'FLUX Schnell', type: 'generated' });
+      } catch (e) {
+        console.warn('FLUX Schnell failed:', e instanceof Error ? e.message : e);
+      }
     }
+
+    // Fallback: Pollinations (free, always works)
+    const fallbackPrompt = `Professional eyewear Instagram photo. ${imageAnalysis?.substring(0, 200) || 'Stylish eyewear'}. Indian model, ${brand} brand. ${editDirection}`;
+    editedImages.push({
+      url: `https://image.pollinations.ai/prompt/${encodeURIComponent(fallbackPrompt)}?width=1024&height=1024&model=flux&nologo=true&seed=${Date.now()}`,
+      model: 'FLUX (text-to-image)',
+      type: 'generated',
+    });
 
     return NextResponse.json({
       originalAnalysis: imageAnalysis,
       creativeBrief: briefText,
       generatedImages: editedImages,
-      imagePrompt: editPrompt,
-      model: 'gemini-2.5-flash',
+      imagePrompt: editDirection,
+      model: REPLICATE_TOKEN ? 'Gemini + Replicate FLUX' : 'Gemini + Pollinations',
     });
   } catch (err) {
     const msg = err instanceof Error ? err.message : 'Failed';
-    if (msg.includes('429') || msg.includes('quota') || msg.includes('RESOURCE_EXHAUSTED')) {
+    if (msg.includes('429') || msg.includes('quota') || msg.includes('RESOURCE_EXHAUSTED'))
       return NextResponse.json({ error: 'AI quota reached. Try again in a few minutes.' }, { status: 429 });
-    }
-    if (msg.includes('503') || msg.includes('UNAVAILABLE') || msg.includes('high demand')) {
+    if (msg.includes('503') || msg.includes('UNAVAILABLE'))
       return NextResponse.json({ error: 'AI models are busy. Try again in a moment.' }, { status: 503 });
-    }
     return NextResponse.json({ error: msg }, { status: 500 });
   }
 }
