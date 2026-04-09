@@ -419,13 +419,29 @@ function Products() {
   );
 }
 
-/* ═══ Intel ═══ */
+/* ═══ Intel — Marketing & Merchandising Intelligence ═══ */
+interface Analysis {
+  insights: Array<{ icon: string; title: string; desc: string; impact: string }>;
+  contentPerformance: Array<{ type: string; count: number; avgLikes: number; pct: number }>;
+  captionPerformance: Array<{ label: string; count: number; avgLikes: number }>;
+  hashtagPerformance: Array<{ label: string; count: number; avgLikes: number }>;
+  brandLeaderboard: Array<{ name: string; handle: string; category: string; posts: number; avgLikes: number; videos: number; carousels: number; images: number }>;
+  topPosts: Array<{ brand: string; handle: string; caption: string; likes: number; comments: number; type: string; imageUrl: string; postUrl: string }>;
+  categories: Array<{ name: string; posts: number; avgLikes: number; brands: number }>;
+}
+
 function Intel({ stats }: { stats: Stats }) {
+  const [analysis, setAnalysis] = useState<Analysis | null>(null);
   const [messages, setMessages] = useState<Array<{ role: 'user'|'ai'; text: string; image?: string }>>([]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
   const [analyzeUrl, setAnalyzeUrl] = useState('');
+  const [view, setView] = useState<'insights'|'chat'>('insights');
   const chatEnd = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    fetch('/api/analysis').then(r => r.json()).then(setAnalysis);
+  }, []);
 
   const ask = async (question: string, imageUrl?: string) => {
     if (!question.trim()) return;
@@ -459,15 +475,154 @@ function Intel({ stats }: { stats: Stats }) {
 
   return (
     <div className="py-4 space-y-4">
-      {/* Stats row */}
-      <div className="grid grid-cols-3 gap-2">
-        {[{v:n(stats.totalPosts),l:'Posts'},{v:String(stats.totalBrands),l:'Brands'},{v:stats.avgEngagement+'%',l:'Engagement'}].map(s => (
-          <div key={s.l} className="bg-[var(--bg-alt)] rounded-xl p-3 text-center">
-            <div className="text-lg font-bold">{s.v}</div>
-            <div className="text-[10px] text-[var(--text-3)]">{s.l}</div>
-          </div>
-        ))}
+      {/* Toggle: Insights / AI Chat */}
+      <div className="flex bg-[var(--bg-alt)] rounded-lg p-[3px] mb-4">
+        <button onClick={() => setView('insights')} className={`flex-1 py-2 rounded-md text-[13px] font-medium transition-all ${view==='insights' ? 'bg-[var(--surface)] shadow-sm text-[var(--text)]' : 'text-[var(--text-3)]'}`}>Insights</button>
+        <button onClick={() => setView('chat')} className={`flex-1 py-2 rounded-md text-[13px] font-medium transition-all ${view==='chat' ? 'bg-[var(--surface)] shadow-sm text-[var(--text)]' : 'text-[var(--text-3)]'}`}>Ask AI</button>
       </div>
+
+      {/* ── INSIGHTS VIEW ── */}
+      {view === 'insights' && analysis && (
+        <div className="space-y-5">
+          {/* Key Findings */}
+          <div>
+            <h3 className="text-[14px] font-semibold mb-2">Key Findings</h3>
+            <div className="space-y-2">
+              {analysis.insights.map((ins, i) => (
+                <div key={i} className="bg-[var(--surface)] border border-[var(--line)] rounded-xl p-3 flex gap-3">
+                  <span className="text-xl flex-shrink-0">{ins.icon}</span>
+                  <div>
+                    <div className="text-[13px] font-semibold flex items-center gap-2">
+                      {ins.title}
+                      <span className={`text-[9px] px-1.5 py-0.5 rounded-full font-bold uppercase ${ins.impact==='high' ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400' : ins.impact==='medium' ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400' : 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400'}`}>{ins.impact}</span>
+                    </div>
+                    <p className="text-[12px] text-[var(--text-2)] mt-0.5 leading-relaxed">{ins.desc}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Content Type Performance */}
+          <div className="bg-[var(--surface)] border border-[var(--line)] rounded-xl p-3">
+            <h3 className="text-[13px] font-semibold mb-3">What content type works?</h3>
+            {analysis.contentPerformance.map((c, i) => {
+              const maxLikes = Math.max(...analysis.contentPerformance.map(x => x.avgLikes));
+              const colors = ['var(--brand)', '#3b82f6', '#8b5cf6', '#6b7280'];
+              return (
+                <div key={c.type} className="mb-3">
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="text-[12px] font-medium">{c.type} <span className="text-[var(--text-3)] font-normal">({c.count} posts)</span></span>
+                    <span className="text-[12px] font-bold" style={{ color: colors[i] }}>{n(c.avgLikes)} avg</span>
+                  </div>
+                  <div className="h-2 bg-[var(--bg-alt)] rounded-full overflow-hidden">
+                    <div className="h-full rounded-full transition-all duration-700" style={{ width: `${(c.avgLikes / maxLikes) * 100}%`, background: colors[i] }} />
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          {/* Caption + Hashtag side by side */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div className="bg-[var(--surface)] border border-[var(--line)] rounded-xl p-3">
+              <h3 className="text-[13px] font-semibold mb-2">Caption length matters</h3>
+              {analysis.captionPerformance.map(c => {
+                const max = Math.max(...analysis.captionPerformance.map(x => x.avgLikes));
+                return (
+                  <div key={c.label} className="flex items-center gap-2 mb-1.5">
+                    <span className="text-[11px] w-28 text-[var(--text-2)]">{c.label}</span>
+                    <div className="flex-1 h-[5px] bg-[var(--bg-alt)] rounded-full overflow-hidden">
+                      <div className="h-full bg-[var(--brand)] rounded-full" style={{ width: `${(c.avgLikes / max) * 100}%` }} />
+                    </div>
+                    <span className="text-[10px] font-bold w-12 text-right">{n(c.avgLikes)}</span>
+                  </div>
+                );
+              })}
+            </div>
+            <div className="bg-[var(--surface)] border border-[var(--line)] rounded-xl p-3">
+              <h3 className="text-[13px] font-semibold mb-2">Hashtag count sweet spot</h3>
+              {analysis.hashtagPerformance.map(h => {
+                const max = Math.max(...analysis.hashtagPerformance.map(x => x.avgLikes));
+                return (
+                  <div key={h.label} className="flex items-center gap-2 mb-1.5">
+                    <span className="text-[11px] w-20 text-[var(--text-2)]">{h.label}</span>
+                    <div className="flex-1 h-[5px] bg-[var(--bg-alt)] rounded-full overflow-hidden">
+                      <div className="h-full bg-[#3b82f6] rounded-full" style={{ width: `${(h.avgLikes / max) * 100}%` }} />
+                    </div>
+                    <span className="text-[10px] font-bold w-12 text-right">{n(h.avgLikes)}</span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Brand Leaderboard */}
+          <div className="bg-[var(--surface)] border border-[var(--line)] rounded-xl overflow-hidden">
+            <div className="p-3 border-b border-[var(--line)]">
+              <h3 className="text-[13px] font-semibold">Who&apos;s winning? (by avg likes/post)</h3>
+            </div>
+            {analysis.brandLeaderboard.slice(0, 10).map((b, i) => (
+              <div key={b.handle} className="flex items-center gap-2.5 px-3 py-2 border-b border-[var(--line)] last:border-0">
+                <span className="text-[14px] font-bold w-6 text-center" style={{ color: i < 3 ? 'var(--brand)' : 'var(--text-3)' }}>{i + 1}</span>
+                <div className="flex-1 min-w-0">
+                  <div className="text-[12px] font-semibold">{b.name} <span className="text-[10px] text-[var(--text-3)] font-normal">{b.category}</span></div>
+                  <div className="text-[10px] text-[var(--text-3)]">{b.posts} posts · V:{b.videos} C:{b.carousels} I:{b.images}</div>
+                </div>
+                <div className="text-right">
+                  <div className="text-[13px] font-bold">{n(b.avgLikes)}</div>
+                  <div className="text-[9px] text-[var(--text-3)]">avg/post</div>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* Category Performance */}
+          <div className="bg-[var(--surface)] border border-[var(--line)] rounded-xl p-3">
+            <h3 className="text-[13px] font-semibold mb-2">Category engagement ranking</h3>
+            {analysis.categories.map((c, i) => (
+              <div key={c.name} className="flex items-center gap-2 mb-1.5">
+                <span className="text-[11px] w-28 text-[var(--text-2)]">{c.name}</span>
+                <div className="flex-1 h-[5px] bg-[var(--bg-alt)] rounded-full overflow-hidden">
+                  <div className="h-full bg-[var(--brand)] rounded-full" style={{ width: `${(c.avgLikes / Math.max(...analysis.categories.map(x => x.avgLikes))) * 100}%`, opacity: 1 - i * 0.06 }} />
+                </div>
+                <span className="text-[10px] font-bold w-16 text-right">{n(c.avgLikes)} avg</span>
+              </div>
+            ))}
+          </div>
+
+          {/* Hashtags + Regions */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div className="bg-[var(--surface)] border border-[var(--line)] rounded-xl p-3">
+              <h3 className="text-[13px] font-semibold mb-2">Trending tags</h3>
+              <div className="flex flex-wrap gap-1.5">
+                {stats.topHashtags.map(h => (
+                  <span key={h.name} className="px-2 py-0.5 bg-[var(--bg-alt)] rounded-full text-[11px]">#{h.name} <span className="text-[var(--text-3)]">{h.count}</span></span>
+                ))}
+              </div>
+            </div>
+            <div className="bg-[var(--surface)] border border-[var(--line)] rounded-xl p-3">
+              <h3 className="text-[13px] font-semibold mb-2">Regions</h3>
+              <div className="grid grid-cols-2 gap-1.5">
+                {stats.byRegion.map(r => (
+                  <div key={r.name} className="bg-[var(--bg-alt)] rounded-lg p-2 flex items-center justify-between">
+                    <span className="text-[11px] text-[var(--text-2)]">{r.name}</span>
+                    <span className="text-[12px] font-bold">{r.count}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {view === 'insights' && !analysis && (
+        <div className="flex items-center justify-center py-16"><div className="w-8 h-8 border-2 border-[var(--line)] border-t-[var(--brand)] rounded-full animate-spin"/></div>
+      )}
+
+      {/* ── CHAT VIEW ── */}
+      {view === 'chat' && (
+      <>
 
       {/* AI Chat */}
       <div className="bg-[var(--surface)] rounded-xl border border-[var(--line)] overflow-hidden">
@@ -545,42 +700,8 @@ function Intel({ stats }: { stats: Stats }) {
         </div>
       </div>
 
-      {/* Category bars */}
-      <div className="bg-[var(--surface)] rounded-xl border border-[var(--line)] p-3">
-        <h3 className="text-[13px] font-semibold mb-3">By Category</h3>
-        {stats.byCategory.map(c => (
-          <div key={c.name} className="flex items-center gap-2 mb-2">
-            <span className="text-[11px] w-24 text-[var(--text-2)]">{c.name}</span>
-            <div className="flex-1 h-[5px] bg-[var(--bg-alt)] rounded-full overflow-hidden">
-              <div className="h-full bg-[var(--brand)] rounded-full" style={{width:`${(c.count/stats.totalPosts)*100}%`}} />
-            </div>
-            <span className="text-[10px] text-[var(--text-3)] w-8 text-right">{c.count}</span>
-          </div>
-        ))}
-      </div>
-
-      {/* Hashtags + Regions */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-        <div className="bg-[var(--surface)] rounded-xl border border-[var(--line)] p-3">
-          <h3 className="text-[13px] font-semibold mb-2">Trending Tags</h3>
-          <div className="flex flex-wrap gap-1.5">
-            {stats.topHashtags.map(h => (
-              <span key={h.name} className="px-2 py-0.5 bg-[var(--bg-alt)] rounded-full text-[11px]">#{h.name} <span className="text-[var(--text-3)]">{h.count}</span></span>
-            ))}
-          </div>
-        </div>
-        <div className="bg-[var(--surface)] rounded-xl border border-[var(--line)] p-3">
-          <h3 className="text-[13px] font-semibold mb-2">Regions</h3>
-          <div className="grid grid-cols-2 gap-1.5">
-            {stats.byRegion.map(r => (
-              <div key={r.name} className="bg-[var(--bg-alt)] rounded-lg p-2 flex items-center justify-between">
-                <span className="text-[11px] text-[var(--text-2)]">{r.name}</span>
-                <span className="text-[12px] font-bold">{r.count}</span>
-              </div>
-            ))}
-          </div>
-        </div>
-      </div>
+      </>
+      )}
     </div>
   );
 }
