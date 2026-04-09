@@ -33,7 +33,7 @@ export async function POST(request: NextRequest) {
 
     // Step 1: Analyze the original image
     const analysis = await ai.models.generateContent({
-      model: 'gemini-2.5-flash-preview-05-20',
+      model: 'gemini-2.0-flash',
       contents: [{
         role: 'user',
         parts: [
@@ -55,7 +55,7 @@ Be specific and concise.` },
 
     // Step 2: Generate creative brief for Lenskart version
     const brief = await ai.models.generateContent({
-      model: 'gemini-2.5-flash-preview-05-20',
+      model: 'gemini-2.0-flash',
       contents: `You are a creative director at ${brand}. Based on this analysis of a competitor's eyewear post:
 
 ${imageAnalysis}

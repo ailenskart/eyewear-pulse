@@ -120,7 +120,7 @@ Be specific with examples from the data.`,
 
   try {
     const response = await ai.models.generateContent({
-      model: 'gemma-3-27b-it',
+      model: 'gemini-2.0-flash',
       contents: `${prompt}\n\nDATA:\n${JSON.stringify(dataSummary, null, 2)}`,
     });
 
@@ -128,7 +128,7 @@ Be specific with examples from the data.`,
 
     return NextResponse.json({
       type,
-      model: 'gemma-3-27b-it',
+      model: 'gemini-2.0-flash',
       generatedAt: new Date().toISOString(),
       insights: text,
       dataPoints: {

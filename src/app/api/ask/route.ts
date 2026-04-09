@@ -68,7 +68,7 @@ Answer concisely and with specific data. If asked about design/style, reference 
       const mimeType = imgRes.headers.get('content-type') || 'image/jpeg';
 
       const response = await ai.models.generateContent({
-        model: 'gemini-2.5-flash-preview-05-20',
+        model: 'gemini-2.0-flash',
         contents: [
           {
             role: 'user',
@@ -82,20 +82,20 @@ Answer concisely and with specific data. If asked about design/style, reference 
 
       return NextResponse.json({
         answer: response.text || '',
-        model: 'gemini-2.5-flash (vision)',
+        model: 'gemini-2.0-flash (vision)',
         hasImage: true,
       });
     }
 
     // Text-only question
     const response = await ai.models.generateContent({
-      model: 'gemma-3-27b-it',
+      model: 'gemini-2.0-flash',
       contents: `${context}\n\nQuestion: ${question}`,
     });
 
     return NextResponse.json({
       answer: response.text || '',
-      model: 'gemma-3-27b-it',
+      model: 'gemini-2.0-flash',
       hasImage: false,
     });
   } catch (err) {
