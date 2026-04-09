@@ -314,6 +314,7 @@ export default function App() {
 function Sheet({ post, onClose }: { post: Post; onClose: () => void }) {
   const [si, setSi] = useState(0);
   const [err, setErr] = useState(false);
+  const [reimagine, setReimagine] = useState<{ loading: boolean; analysis: string; brief: string; prompt: string; editing: boolean }>({ loading: false, analysis: '', brief: '', prompt: '', editing: false });
   const slides = post.carouselSlides.length > 0 ? [post.imageUrl, ...post.carouselSlides.map(s => s.url)] : [post.imageUrl];
 
   return (
@@ -393,10 +394,67 @@ function Sheet({ post, onClose }: { post: Post; onClose: () => void }) {
               </div>
             </div>
 
+            {/* Reimagine panel */}
+            {reimagine.editing && (
+              <div className="p-3 border-t border-[var(--line)] space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-[13px] font-semibold">Reimagine for Lenskart</span>
+                  <button onClick={() => setReimagine(r => ({...r, editing: false}))} className="text-[var(--text-3)] text-[12px]">Close</button>
+                </div>
+                <input
+                  type="text" value={reimagine.prompt}
+                  onChange={e => setReimagine(r => ({...r, prompt: e.target.value}))}
+                  placeholder="Add direction (e.g. 'make it for Indian market', 'use John Jacobs frames')..."
+                  className="w-full bg-[var(--bg-alt)] rounded-lg px-3 py-2 text-[12px] outline-none placeholder:text-[var(--text-3)]"
+                />
+                <button
+                  disabled={reimagine.loading}
+                  onClick={async () => {
+                    setReimagine(r => ({...r, loading: true, analysis: '', brief: ''}));
+                    try {
+                      const res = await fetch('/api/reimagine', {
+                        method: 'POST',
+                        headers: {'Content-Type':'application/json'},
+                        body: JSON.stringify({ imageUrl: post.imageUrl, prompt: reimagine.prompt }),
+                      });
+                      const data = await res.json();
+                      setReimagine(r => ({...r, loading: false, analysis: data.originalAnalysis || '', brief: data.creativeBrief || data.error || ''}));
+                    } catch {
+                      setReimagine(r => ({...r, loading: false, brief: 'Failed to generate'}));
+                    }
+                  }}
+                  className="w-full py-2 rounded-lg bg-[var(--brand)] text-white text-[12px] font-semibold disabled:opacity-50"
+                >
+                  {reimagine.loading ? 'Analyzing with AI...' : 'Generate Creative Brief'}
+                </button>
+
+                {reimagine.brief && (
+                  <div className="mt-2 p-3 bg-[var(--bg-alt)] rounded-lg max-h-[300px] overflow-y-auto">
+                    {reimagine.analysis && (
+                      <details className="mb-3">
+                        <summary className="text-[11px] font-semibold text-[var(--text-2)] cursor-pointer">Original Image Analysis</summary>
+                        <p className="text-[11px] text-[var(--text-2)] mt-1 whitespace-pre-wrap leading-relaxed">{reimagine.analysis}</p>
+                      </details>
+                    )}
+                    <div className="text-[12px] whitespace-pre-wrap leading-relaxed">{reimagine.brief}</div>
+                  </div>
+                )}
+              </div>
+            )}
+
             {/* Actions */}
-            <div className="p-3 border-t border-[var(--line)] flex gap-2">
-              <a href={post.postUrl} target="_blank" rel="noopener noreferrer" className="flex-1 py-2.5 rounded-lg bg-[var(--brand)] text-white text-[13px] font-semibold text-center">View on Instagram</a>
-              <a href={`https://instagram.com/${post.brand.handle}`} target="_blank" rel="noopener noreferrer" className="py-2.5 px-4 rounded-lg border border-[var(--line)] text-[13px] font-medium text-center">Profile</a>
+            <div className="p-3 border-t border-[var(--line)] space-y-2 flex-shrink-0">
+              {!reimagine.editing && (
+                <button onClick={() => setReimagine(r => ({...r, editing: true}))}
+                  className="w-full py-2.5 rounded-lg bg-gradient-to-r from-orange-500 to-pink-500 text-white text-[13px] font-semibold text-center flex items-center justify-center gap-2">
+                  <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
+                  Reimagine for Lenskart
+                </button>
+              )}
+              <div className="flex gap-2">
+                <a href={post.postUrl} target="_blank" rel="noopener noreferrer" className="flex-1 py-2.5 rounded-lg bg-[var(--brand)] text-white text-[13px] font-semibold text-center">View on IG</a>
+                <a href={`https://instagram.com/${post.brand.handle}`} target="_blank" rel="noopener noreferrer" className="py-2.5 px-4 rounded-lg border border-[var(--line)] text-[13px] font-medium text-center">Profile</a>
+              </div>
             </div>
           </div>
         </div>
