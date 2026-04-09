@@ -421,48 +421,164 @@ function Products() {
 
 /* ═══ Intel ═══ */
 function Intel({ stats }: { stats: Stats }) {
+  const [messages, setMessages] = useState<Array<{ role: 'user'|'ai'; text: string; image?: string }>>([]);
+  const [input, setInput] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [analyzeUrl, setAnalyzeUrl] = useState('');
+  const chatEnd = useRef<HTMLDivElement>(null);
+
+  const ask = async (question: string, imageUrl?: string) => {
+    if (!question.trim()) return;
+    setMessages(prev => [...prev, { role: 'user', text: question, image: imageUrl }]);
+    setInput('');
+    setAnalyzeUrl('');
+    setLoading(true);
+    try {
+      const res = await fetch('/api/ask', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ question, imageUrl }),
+      });
+      const data = await res.json();
+      setMessages(prev => [...prev, { role: 'ai', text: data.answer || data.error || 'No response' }]);
+    } catch {
+      setMessages(prev => [...prev, { role: 'ai', text: 'Failed to get response. Check API key.' }]);
+    }
+    setLoading(false);
+    setTimeout(() => chatEnd.current?.scrollIntoView({ behavior: 'smooth' }), 100);
+  };
+
+  const suggestions = [
+    'What eyewear trends are dominating right now?',
+    'Which D2C brand has the best engagement?',
+    'What content strategy works best for eyewear?',
+    'Compare Warby Parker vs Lenskart posting strategy',
+    'What frame styles are trending this month?',
+    'Which regions have the most eyewear activity?',
+  ];
+
   return (
-    <div className="py-4 space-y-6">
+    <div className="py-4 space-y-4">
+      {/* Stats row */}
       <div className="grid grid-cols-3 gap-2">
-        {[{v:n(stats.totalPosts),l:'Posts'},{v:String(stats.totalBrands),l:'Brands'},{v:stats.avgEngagement+'%',l:'Avg Eng.'}].map(s => (
-          <div key={s.l} className="bg-[var(--bg-alt)] rounded-xl p-4 text-center">
-            <div className="text-xl font-bold">{s.v}</div>
-            <div className="text-[11px] text-[var(--text-3)] mt-0.5">{s.l}</div>
+        {[{v:n(stats.totalPosts),l:'Posts'},{v:String(stats.totalBrands),l:'Brands'},{v:stats.avgEngagement+'%',l:'Engagement'}].map(s => (
+          <div key={s.l} className="bg-[var(--bg-alt)] rounded-xl p-3 text-center">
+            <div className="text-lg font-bold">{s.v}</div>
+            <div className="text-[10px] text-[var(--text-3)]">{s.l}</div>
           </div>
         ))}
       </div>
 
-      <div>
-        <h3 className="text-[14px] font-semibold mb-3">By Category</h3>
-        {stats.byCategory.map(c => (
-          <div key={c.name} className="flex items-center gap-2 mb-2">
-            <span className="text-[12px] w-24 text-[var(--text-2)]">{c.name}</span>
-            <div className="flex-1 h-[6px] bg-[var(--bg-alt)] rounded-full overflow-hidden">
-              <div className="h-full bg-[var(--brand)] rounded-full transition-all" style={{width:`${(c.count/stats.totalPosts)*100}%`}} />
+      {/* AI Chat */}
+      <div className="bg-[var(--surface)] rounded-xl border border-[var(--line)] overflow-hidden">
+        <div className="p-3 border-b border-[var(--line)] flex items-center gap-2">
+          <div className="w-6 h-6 rounded-full bg-[var(--brand)] flex items-center justify-center">
+            <svg width="14" height="14" fill="white" viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"/></svg>
+          </div>
+          <span className="text-[13px] font-semibold">Ask about eyewear trends</span>
+          <span className="text-[10px] text-[var(--text-3)] ml-auto">Powered by Gemma AI</span>
+        </div>
+
+        {/* Messages */}
+        <div className="max-h-[400px] overflow-y-auto p-3 space-y-3">
+          {messages.length === 0 && (
+            <div className="space-y-2">
+              <p className="text-[12px] text-[var(--text-3)]">Ask anything about the {stats.totalPosts} posts from {stats.totalBrands} eyewear brands. Or paste an image URL to analyze a post.</p>
+              <div className="flex flex-wrap gap-1.5">
+                {suggestions.map(s => (
+                  <button key={s} onClick={() => ask(s)} className="px-2.5 py-1.5 rounded-lg bg-[var(--bg-alt)] text-[11px] text-[var(--text-2)] hover:bg-[var(--brand)] hover:text-white transition-colors text-left">
+                    {s}
+                  </button>
+                ))}
+              </div>
             </div>
-            <span className="text-[11px] text-[var(--text-3)] w-8 text-right">{c.count}</span>
-          </div>
-        ))}
-      </div>
+          )}
 
-      <div>
-        <h3 className="text-[14px] font-semibold mb-3">Trending Tags</h3>
-        <div className="flex flex-wrap gap-2">
-          {stats.topHashtags.map(h => (
-            <span key={h.name} className="px-2.5 py-1 bg-[var(--bg-alt)] rounded-full text-[12px]">#{h.name} <span className="text-[var(--text-3)]">{h.count}</span></span>
+          {messages.map((m, i) => (
+            <div key={i} className={`flex gap-2 ${m.role === 'user' ? 'justify-end' : ''}`}>
+              {m.role === 'ai' && <div className="w-6 h-6 rounded-full bg-[var(--brand)] flex-shrink-0 flex items-center justify-center mt-0.5"><svg width="12" height="12" fill="white" viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2z"/></svg></div>}
+              <div className={`max-w-[85%] rounded-xl px-3 py-2 text-[13px] leading-relaxed ${m.role === 'user' ? 'bg-[var(--brand)] text-white' : 'bg-[var(--bg-alt)]'}`}>
+                {m.image && <img src={m.image} alt="" className="w-20 h-20 rounded-lg object-cover mb-2" />}
+                <div className="whitespace-pre-wrap">{m.text}</div>
+              </div>
+            </div>
           ))}
+
+          {loading && (
+            <div className="flex gap-2">
+              <div className="w-6 h-6 rounded-full bg-[var(--brand)] flex-shrink-0 flex items-center justify-center"><svg width="12" height="12" fill="white" viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2z"/></svg></div>
+              <div className="bg-[var(--bg-alt)] rounded-xl px-3 py-2 flex gap-1">
+                <div className="w-2 h-2 rounded-full bg-[var(--text-3)] animate-bounce" style={{animationDelay:'0ms'}} />
+                <div className="w-2 h-2 rounded-full bg-[var(--text-3)] animate-bounce" style={{animationDelay:'150ms'}} />
+                <div className="w-2 h-2 rounded-full bg-[var(--text-3)] animate-bounce" style={{animationDelay:'300ms'}} />
+              </div>
+            </div>
+          )}
+          <div ref={chatEnd} />
+        </div>
+
+        {/* Image URL input (for vision analysis) */}
+        {analyzeUrl && (
+          <div className="px-3 pb-2 flex items-center gap-2">
+            <img src={analyzeUrl} alt="" className="w-10 h-10 rounded object-cover" />
+            <span className="text-[11px] text-[var(--text-2)] flex-1 truncate">{analyzeUrl}</span>
+            <button onClick={() => setAnalyzeUrl('')} className="text-[var(--text-3)] text-xs">Remove</button>
+          </div>
+        )}
+
+        {/* Input */}
+        <div className="p-2 border-t border-[var(--line)] flex gap-2">
+          <button onClick={() => { const url = prompt('Paste image URL to analyze:'); if (url) setAnalyzeUrl(url); }}
+            className="p-2 rounded-lg bg-[var(--bg-alt)] text-[var(--text-2)] flex-shrink-0" title="Analyze image">
+            <svg width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="m21 15-5-5L5 21"/></svg>
+          </button>
+          <input
+            type="text" value={input} onChange={e => setInput(e.target.value)}
+            onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); ask(input, analyzeUrl || undefined); }}}
+            placeholder="Ask about trends, brands, strategies..."
+            className="flex-1 bg-[var(--bg-alt)] rounded-lg px-3 py-2 text-[13px] outline-none placeholder:text-[var(--text-3)]"
+          />
+          <button onClick={() => ask(input, analyzeUrl || undefined)} disabled={!input.trim() || loading}
+            className="p-2 rounded-lg bg-[var(--brand)] text-white flex-shrink-0 disabled:opacity-40">
+            <svg width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+          </button>
         </div>
       </div>
 
-      <div>
-        <h3 className="text-[14px] font-semibold mb-3">Regions</h3>
-        <div className="grid grid-cols-2 gap-2">
-          {stats.byRegion.map(r => (
-            <div key={r.name} className="bg-[var(--bg-alt)] rounded-lg p-3 flex items-center justify-between">
-              <span className="text-[12px] text-[var(--text-2)]">{r.name}</span>
-              <span className="text-[13px] font-bold">{r.count}</span>
+      {/* Category bars */}
+      <div className="bg-[var(--surface)] rounded-xl border border-[var(--line)] p-3">
+        <h3 className="text-[13px] font-semibold mb-3">By Category</h3>
+        {stats.byCategory.map(c => (
+          <div key={c.name} className="flex items-center gap-2 mb-2">
+            <span className="text-[11px] w-24 text-[var(--text-2)]">{c.name}</span>
+            <div className="flex-1 h-[5px] bg-[var(--bg-alt)] rounded-full overflow-hidden">
+              <div className="h-full bg-[var(--brand)] rounded-full" style={{width:`${(c.count/stats.totalPosts)*100}%`}} />
             </div>
-          ))}
+            <span className="text-[10px] text-[var(--text-3)] w-8 text-right">{c.count}</span>
+          </div>
+        ))}
+      </div>
+
+      {/* Hashtags + Regions */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <div className="bg-[var(--surface)] rounded-xl border border-[var(--line)] p-3">
+          <h3 className="text-[13px] font-semibold mb-2">Trending Tags</h3>
+          <div className="flex flex-wrap gap-1.5">
+            {stats.topHashtags.map(h => (
+              <span key={h.name} className="px-2 py-0.5 bg-[var(--bg-alt)] rounded-full text-[11px]">#{h.name} <span className="text-[var(--text-3)]">{h.count}</span></span>
+            ))}
+          </div>
+        </div>
+        <div className="bg-[var(--surface)] rounded-xl border border-[var(--line)] p-3">
+          <h3 className="text-[13px] font-semibold mb-2">Regions</h3>
+          <div className="grid grid-cols-2 gap-1.5">
+            {stats.byRegion.map(r => (
+              <div key={r.name} className="bg-[var(--bg-alt)] rounded-lg p-2 flex items-center justify-between">
+                <span className="text-[11px] text-[var(--text-2)]">{r.name}</span>
+                <span className="text-[12px] font-bold">{r.count}</span>
+              </div>
+            ))}
+          </div>
         </div>
       </div>
     </div>
