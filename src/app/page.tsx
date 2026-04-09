@@ -82,9 +82,29 @@ function MediaCard({ post, onOpen, delay }: { post: Post; onOpen: () => void; de
                 </div>
               </div>
             ) : vidError ? (
-              <div className="relative w-full h-full">
+              <div className="relative w-full h-full cursor-pointer" onClick={async () => {
+                // Try to fix: fetch via server proxy + upload to Blob
+                try {
+                  const res = await fetch('/api/fix-media', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ url: post.videoUrl, postId: post.id, type: 'video' }),
+                  });
+                  const data = await res.json();
+                  if (data.blobUrl) {
+                    // Reload with Blob URL
+                    setVidError(false);
+                    setPlaying(true);
+                    // Update the video src after state change
+                    setTimeout(() => { if (vidRef.current) vidRef.current.src = data.blobUrl; vidRef.current?.play(); }, 100);
+                  }
+                } catch { /* still broken */ }
+              }}>
                 {!err ? <img src={post.imageUrl} alt="" className="w-full h-full object-cover" loading="lazy" onError={() => setErr(true)} /> : <div className="w-full h-full flex items-center justify-center text-3xl">👓</div>}
-                <div className="absolute inset-0 flex items-center justify-center"><div className="bg-black/50 text-white text-[10px] px-2 py-1 rounded">Video unavailable</div></div>
+                <div className="absolute inset-0 flex flex-col items-center justify-center gap-1">
+                  <div className="w-10 h-10 rounded-full bg-white/80 flex items-center justify-center"><svg width="14" height="14" viewBox="0 0 24 24" fill="#111"><path d="M17.65 6.35A7.958 7.958 0 0012 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08A5.99 5.99 0 0112 18c-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z"/></svg></div>
+                  <span className="text-white text-[10px] font-medium bg-black/50 px-2 py-0.5 rounded">Tap to retry</span>
+                </div>
               </div>
             ) : (
               <video ref={vidRef} src={post.videoUrl!} autoPlay playsInline loop muted className="w-full h-full object-cover" onError={() => { setVidError(true); setPlaying(false); }} onClick={() => { if (vidRef.current?.paused) vidRef.current.play(); else vidRef.current?.pause(); }} />
