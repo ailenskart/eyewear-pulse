@@ -3,7 +3,7 @@ import { GoogleGenAI } from '@google/genai';
 import { ALL_POSTS, FEED_STATS } from '@/lib/feed';
 
 const d = (s: string) => Buffer.from(s, 'base64').toString();
-const GEMINI_KEY = process.env.GEMINI_API_KEY || d('QUl6YVN5QWVlYTl0bnVCQVdLc0I3LUJHZHYzMHdjalk1ZGFWcHU0');
+const GEMINI_KEY = process.env.GEMINI_API_KEY || d('QUl6YVN5RDZyUl9lVUF2TWxoUnJZRHF3RU9JQ25ja1doUlZrN1JF');
 
 export async function GET(request: NextRequest) {
   const type = request.nextUrl.searchParams.get('type') || 'weekly';
@@ -120,7 +120,7 @@ Be specific with examples from the data.`,
 
   try {
     const response = await ai.models.generateContent({
-      model: 'gemini-2.0-flash',
+      model: 'gemini-flash-latest',
       contents: `${prompt}\n\nDATA:\n${JSON.stringify(dataSummary, null, 2)}`,
     });
 
@@ -128,7 +128,7 @@ Be specific with examples from the data.`,
 
     return NextResponse.json({
       type,
-      model: 'gemini-2.0-flash',
+      model: 'gemini-flash-latest',
       generatedAt: new Date().toISOString(),
       insights: text,
       dataPoints: {

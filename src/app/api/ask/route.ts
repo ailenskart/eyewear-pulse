@@ -3,7 +3,7 @@ import { GoogleGenAI } from '@google/genai';
 import { ALL_POSTS, FEED_STATS } from '@/lib/feed';
 
 const d = (s: string) => Buffer.from(s, 'base64').toString();
-const GEMINI_KEY = process.env.GEMINI_API_KEY || d('QUl6YVN5QWVlYTl0bnVCQVdLc0I3LUJHZHYzMHdjalk1ZGFWcHU0');
+const GEMINI_KEY = process.env.GEMINI_API_KEY || d('QUl6YVN5RDZyUl9lVUF2TWxoUnJZRHF3RU9JQ25ja1doUlZrN1JF');
 
 export async function POST(request: NextRequest) {
   if (!GEMINI_KEY) {
@@ -68,7 +68,7 @@ Answer concisely and with specific data. If asked about design/style, reference 
       const mimeType = imgRes.headers.get('content-type') || 'image/jpeg';
 
       const response = await ai.models.generateContent({
-        model: 'gemini-2.0-flash',
+        model: 'gemini-flash-latest',
         contents: [
           {
             role: 'user',
@@ -82,20 +82,20 @@ Answer concisely and with specific data. If asked about design/style, reference 
 
       return NextResponse.json({
         answer: response.text || '',
-        model: 'gemini-2.0-flash (vision)',
+        model: 'gemini-flash-latest (vision)',
         hasImage: true,
       });
     }
 
     // Text-only question
     const response = await ai.models.generateContent({
-      model: 'gemini-2.0-flash',
+      model: 'gemini-flash-latest',
       contents: `${context}\n\nQuestion: ${question}`,
     });
 
     return NextResponse.json({
       answer: response.text || '',
-      model: 'gemini-2.0-flash',
+      model: 'gemini-flash-latest',
       hasImage: false,
     });
   } catch (err) {

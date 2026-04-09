@@ -3,7 +3,7 @@ import { GoogleGenAI } from '@google/genai';
 import Together from 'together-ai';
 
 const d = (s: string) => Buffer.from(s, 'base64').toString();
-const GEMINI_KEY = process.env.GEMINI_API_KEY || d('QUl6YVN5QWVlYTl0bnVCQVdLc0I3LUJHZHYzMHdjalk1ZGFWcHU0');
+const GEMINI_KEY = process.env.GEMINI_API_KEY || d('QUl6YVN5RDZyUl9lVUF2TWxoUnJZRHF3RU9JQ25ja1doUlZrN1JF');
 
 /**
  * POST /api/reimagine
@@ -34,7 +34,7 @@ export async function POST(request: NextRequest) {
 
     // Step 1: Analyze the original image
     const analysis = await ai.models.generateContent({
-      model: 'gemini-2.0-flash',
+      model: 'gemini-flash-latest',
       contents: [{
         role: 'user',
         parts: [
@@ -56,7 +56,7 @@ Be specific and concise.` },
 
     // Step 2: Generate creative brief for Lenskart version
     const brief = await ai.models.generateContent({
-      model: 'gemini-2.0-flash',
+      model: 'gemini-flash-latest',
       contents: `You are a creative director at ${brand}. Based on this analysis of a competitor's eyewear post:
 
 ${imageAnalysis}
@@ -97,7 +97,7 @@ Be specific and actionable for the creative team.`,
       originalAnalysis: imageAnalysis,
       creativeBrief: brief.text || '',
       generatedImage: generatedImageUrl,
-      model: generatedImageUrl ? 'gemini-2.0-flash + FLUX.1' : 'gemini-2.0-flash',
+      model: generatedImageUrl ? 'gemini-flash-latest + FLUX.1' : 'gemini-flash-latest',
     });
   } catch (err) {
     const msg = err instanceof Error ? err.message : 'Failed to generate';
