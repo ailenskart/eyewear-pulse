@@ -16,27 +16,34 @@ interface Feed { posts: Post[]; total: number; page: number; totalPages: number;
 const n = (v: number) => v >= 1e6 ? (v/1e6).toFixed(1)+'M' : v >= 1e3 ? (v/1e3).toFixed(1)+'K' : String(v);
 const t = (d: string) => { const h = Math.floor((Date.now()-new Date(d).getTime())/36e5); return h<1?'now':h<24?h+'h':Math.floor(h/24)+'d'; };
 
-/* ═══ List Carousel (swipeable in list view) ═══ */
+/* ═══ List Carousel (tap left/right to navigate) ═══ */
 function ListCarousel({ post, onOpen }: { post: Post; onOpen: () => void }) {
   const [si, setSi] = useState(0);
   const [err, setErr] = useState(false);
   const slides = post.carouselSlides.length > 0 ? [post.imageUrl, ...post.carouselSlides.map(s => s.url)] : [post.imageUrl];
 
+  const handleTap = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (slides.length <= 1) { onOpen(); return; }
+    const rect = e.currentTarget.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    if (x < rect.width * 0.3) setSi(i => Math.max(0, i - 1));
+    else if (x > rect.width * 0.7) setSi(i => Math.min(slides.length - 1, i + 1));
+    else onOpen();
+  };
+
   return (
-    <div className="relative">
+    <div className="relative cursor-pointer" onClick={handleTap}>
       {err ? (
-        <div className="aspect-[4/5] flex items-center justify-center bg-[var(--bg-alt)] text-4xl cursor-pointer" onClick={onOpen}>👓</div>
+        <div className="aspect-[4/5] flex items-center justify-center bg-[var(--bg-alt)] text-4xl">👓</div>
       ) : (
-        <img src={slides[si]} alt="" className="w-full max-h-[70vh] object-contain cursor-pointer" onClick={onOpen} loading="lazy" onError={() => setErr(true)} />
+        <img src={slides[si]} alt="" className="w-full max-h-[70vh] object-contain" loading="lazy" onError={() => setErr(true)} />
       )}
       {slides.length > 1 && (
         <>
-          {si > 0 && <button onClick={() => setSi(i=>i-1)} className="absolute left-2 top-1/2 -translate-y-1/2 w-8 h-8 rounded-full bg-white/90 shadow-md flex items-center justify-center font-bold">‹</button>}
-          {si < slides.length-1 && <button onClick={() => setSi(i=>i+1)} className="absolute right-2 top-1/2 -translate-y-1/2 w-8 h-8 rounded-full bg-white/90 shadow-md flex items-center justify-center font-bold">›</button>}
           <div className="absolute bottom-3 left-1/2 -translate-x-1/2 flex gap-1.5">
-            {slides.map((_,i) => <div key={i} className={`w-1.5 h-1.5 rounded-full transition-all ${i===si ? 'bg-white w-3' : 'bg-white/40'}`}/>)}
+            {slides.map((_, i) => <div key={i} className={`h-[3px] rounded-full transition-all duration-200 ${i === si ? 'bg-white w-4' : 'bg-white/40 w-1.5'}`} />)}
           </div>
-          <div className="absolute top-2 right-2 bg-black/50 text-white text-[10px] font-bold px-2 py-0.5 rounded-full">{si+1}/{slides.length}</div>
+          <div className="absolute top-2 right-2 bg-black/50 text-white text-[10px] font-bold px-2 py-0.5 rounded-full">{si + 1}/{slides.length}</div>
         </>
       )}
     </div>
@@ -81,22 +88,24 @@ function MediaCard({ post, onOpen, delay }: { post: Post; onOpen: () => void; de
             )}
           </>
         ) : (
-          /* Image / Carousel */
-          <div className="relative w-full h-full">
+          /* Image / Carousel — tap left/right to navigate */
+          <div className="relative w-full h-full cursor-pointer" onClick={(e) => {
+            if (!hasSlides) { onOpen(); return; }
+            const rect = e.currentTarget.getBoundingClientRect();
+            const x = e.clientX - rect.left;
+            if (x < rect.width * 0.3) setSi(i => Math.max(0, i - 1));
+            else if (x > rect.width * 0.7) setSi(i => Math.min(slides.length - 1, i + 1));
+            else onOpen();
+          }}>
             {!err ? (
-              <img src={slides[si]} alt="" className="w-full h-full object-cover cursor-pointer transition-opacity duration-200" loading="lazy" onClick={onOpen} onError={() => setErr(true)} />
+              <img src={slides[si]} alt="" className="w-full h-full object-cover transition-opacity duration-200" loading="lazy" onError={() => setErr(true)} />
             ) : (
-              <div className="w-full h-full flex items-center justify-center text-3xl cursor-pointer" onClick={onOpen}>👓</div>
+              <div className="w-full h-full flex items-center justify-center text-3xl">👓</div>
             )}
-            {/* Carousel arrows */}
             {hasSlides && (
-              <>
-                {si > 0 && <button onClick={(e) => { e.stopPropagation(); setSi(i=>i-1); }} className="absolute left-1 top-1/2 -translate-y-1/2 w-6 h-6 rounded-full bg-white/80 shadow flex items-center justify-center text-xs font-bold">‹</button>}
-                {si < slides.length-1 && <button onClick={(e) => { e.stopPropagation(); setSi(i=>i+1); }} className="absolute right-1 top-1/2 -translate-y-1/2 w-6 h-6 rounded-full bg-white/80 shadow flex items-center justify-center text-xs font-bold">›</button>}
-                <div className="absolute bottom-2 left-1/2 -translate-x-1/2 flex gap-1">
-                  {slides.map((_,i) => <div key={i} className={`w-1 h-1 rounded-full transition-all ${i===si ? 'bg-white w-2.5' : 'bg-white/40'}`}/>)}
-                </div>
-              </>
+              <div className="absolute bottom-1.5 left-1/2 -translate-x-1/2 flex gap-1">
+                {slides.map((_,i) => <div key={i} className={`h-[2px] rounded-full transition-all duration-200 ${i===si ? 'bg-white w-3' : 'bg-white/40 w-1'}`}/>)}
+              </div>
             )}
           </div>
         )}
@@ -304,15 +313,21 @@ function Sheet({ post, onClose }: { post: Post; onClose: () => void }) {
             ) : err ? (
               <div className="w-full aspect-[4/5] sm:h-full flex items-center justify-center bg-[var(--bg-alt)] text-4xl">👓</div>
             ) : (
-              <img src={slides[si]} alt="" className="w-full max-h-[55vh] sm:max-h-none sm:h-full object-contain" onError={() => setErr(true)} />
+              <div className="w-full max-h-[55vh] sm:max-h-none sm:h-full cursor-pointer" onClick={(e) => {
+                if (slides.length <= 1) return;
+                const rect = e.currentTarget.getBoundingClientRect();
+                const x = e.clientX - rect.left;
+                if (x < rect.width * 0.3) setSi(i => Math.max(0, i - 1));
+                else if (x > rect.width * 0.7) setSi(i => Math.min(slides.length - 1, i + 1));
+              }}>
+                <img src={slides[si]} alt="" className="w-full h-full object-contain" onError={() => setErr(true)} />
+              </div>
             )}
-            {/* Carousel nav */}
+            {/* Carousel dots */}
             {slides.length > 1 && !post.isVideo && (
               <>
-                {si > 0 && <button onClick={() => setSi(i=>i-1)} className="absolute left-2 top-1/2 -translate-y-1/2 w-8 h-8 rounded-full bg-white/90 shadow flex items-center justify-center text-sm font-bold">‹</button>}
-                {si < slides.length-1 && <button onClick={() => setSi(i=>i+1)} className="absolute right-2 top-1/2 -translate-y-1/2 w-8 h-8 rounded-full bg-white/90 shadow flex items-center justify-center text-sm font-bold">›</button>}
                 <div className="absolute bottom-3 left-1/2 -translate-x-1/2 flex gap-1.5">
-                  {slides.map((_,i) => <div key={i} className={`w-1.5 h-1.5 rounded-full transition-all ${i===si ? 'bg-white w-4' : 'bg-white/40'}`}/>)}
+                  {slides.map((_,i) => <div key={i} className={`h-[3px] rounded-full transition-all duration-200 ${i===si ? 'bg-white w-5' : 'bg-white/40 w-1.5'}`}/>)}
                 </div>
               </>
             )}
