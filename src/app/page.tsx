@@ -16,6 +16,114 @@ interface Feed { posts: Post[]; total: number; page: number; totalPages: number;
 const n = (v: number) => v >= 1e6 ? (v/1e6).toFixed(1)+'M' : v >= 1e3 ? (v/1e3).toFixed(1)+'K' : String(v);
 const t = (d: string) => { const h = Math.floor((Date.now()-new Date(d).getTime())/36e5); return h<1?'now':h<24?h+'h':Math.floor(h/24)+'d'; };
 
+/* ═══ List Carousel (swipeable in list view) ═══ */
+function ListCarousel({ post, onOpen }: { post: Post; onOpen: () => void }) {
+  const [si, setSi] = useState(0);
+  const [err, setErr] = useState(false);
+  const slides = post.carouselSlides.length > 0 ? [post.imageUrl, ...post.carouselSlides.map(s => s.url)] : [post.imageUrl];
+
+  return (
+    <div className="relative">
+      {err ? (
+        <div className="aspect-[4/5] flex items-center justify-center bg-[var(--bg-alt)] text-4xl cursor-pointer" onClick={onOpen}>👓</div>
+      ) : (
+        <img src={slides[si]} alt="" className="w-full max-h-[70vh] object-contain cursor-pointer" onClick={onOpen} loading="lazy" onError={() => setErr(true)} />
+      )}
+      {slides.length > 1 && (
+        <>
+          {si > 0 && <button onClick={() => setSi(i=>i-1)} className="absolute left-2 top-1/2 -translate-y-1/2 w-8 h-8 rounded-full bg-white/90 shadow-md flex items-center justify-center font-bold">‹</button>}
+          {si < slides.length-1 && <button onClick={() => setSi(i=>i+1)} className="absolute right-2 top-1/2 -translate-y-1/2 w-8 h-8 rounded-full bg-white/90 shadow-md flex items-center justify-center font-bold">›</button>}
+          <div className="absolute bottom-3 left-1/2 -translate-x-1/2 flex gap-1.5">
+            {slides.map((_,i) => <div key={i} className={`w-1.5 h-1.5 rounded-full transition-all ${i===si ? 'bg-white w-3' : 'bg-white/40'}`}/>)}
+          </div>
+          <div className="absolute top-2 right-2 bg-black/50 text-white text-[10px] font-bold px-2 py-0.5 rounded-full">{si+1}/{slides.length}</div>
+        </>
+      )}
+    </div>
+  );
+}
+
+/* ═══ Media Card (inline video + carousel) ═══ */
+function MediaCard({ post, onOpen, delay }: { post: Post; onOpen: () => void; delay: number }) {
+  const [si, setSi] = useState(0);
+  const [playing, setPlaying] = useState(false);
+  const [err, setErr] = useState(false);
+  const vidRef = useRef<HTMLVideoElement>(null);
+  const slides = post.carouselSlides.length > 0 ? [post.imageUrl, ...post.carouselSlides.map(s => s.url)] : [post.imageUrl];
+  const hasSlides = slides.length > 1;
+
+  return (
+    <div className="overflow-hidden rounded-sm sm:rounded-lg" style={{ animation: `up 0.3s ease ${delay}ms both` }}>
+      {/* Media area */}
+      <div className="relative aspect-square bg-[var(--bg-alt)] overflow-hidden">
+
+        {/* Video */}
+        {post.isVideo && post.videoUrl ? (
+          <>
+            {!playing ? (
+              <div className="relative w-full h-full cursor-pointer" onClick={() => setPlaying(true)}>
+                {!err ? (
+                  <img src={post.imageUrl} alt="" className="w-full h-full object-cover" loading="lazy" onError={() => setErr(true)} />
+                ) : (
+                  <div className="w-full h-full flex items-center justify-center text-3xl">👓</div>
+                )}
+                <div className="absolute inset-0 flex items-center justify-center">
+                  <div className="w-12 h-12 rounded-full bg-white/90 shadow-lg flex items-center justify-center">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="#111"><path d="M8 5v14l11-7z"/></svg>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <video ref={vidRef} src={post.videoUrl} autoPlay playsInline loop muted className="w-full h-full object-cover" onClick={() => { if (vidRef.current?.paused) vidRef.current.play(); else vidRef.current?.pause(); }} />
+            )}
+            {playing && (
+              <button onClick={() => setPlaying(false)} className="absolute top-2 right-2 w-7 h-7 rounded-full bg-black/50 text-white flex items-center justify-center text-xs">✕</button>
+            )}
+          </>
+        ) : (
+          /* Image / Carousel */
+          <div className="relative w-full h-full">
+            {!err ? (
+              <img src={slides[si]} alt="" className="w-full h-full object-cover cursor-pointer transition-opacity duration-200" loading="lazy" onClick={onOpen} onError={() => setErr(true)} />
+            ) : (
+              <div className="w-full h-full flex items-center justify-center text-3xl cursor-pointer" onClick={onOpen}>👓</div>
+            )}
+            {/* Carousel arrows */}
+            {hasSlides && (
+              <>
+                {si > 0 && <button onClick={(e) => { e.stopPropagation(); setSi(i=>i-1); }} className="absolute left-1 top-1/2 -translate-y-1/2 w-6 h-6 rounded-full bg-white/80 shadow flex items-center justify-center text-xs font-bold">‹</button>}
+                {si < slides.length-1 && <button onClick={(e) => { e.stopPropagation(); setSi(i=>i+1); }} className="absolute right-1 top-1/2 -translate-y-1/2 w-6 h-6 rounded-full bg-white/80 shadow flex items-center justify-center text-xs font-bold">›</button>}
+                <div className="absolute bottom-2 left-1/2 -translate-x-1/2 flex gap-1">
+                  {slides.map((_,i) => <div key={i} className={`w-1 h-1 rounded-full transition-all ${i===si ? 'bg-white w-2.5' : 'bg-white/40'}`}/>)}
+                </div>
+              </>
+            )}
+          </div>
+        )}
+
+        {/* Top-right badge */}
+        {post.isVideo && !playing && <div className="absolute top-1.5 right-1.5 bg-black/50 text-white text-[9px] font-bold px-1.5 py-0.5 rounded-full flex items-center gap-0.5"><svg width="8" height="8" viewBox="0 0 24 24" fill="white"><path d="M8 5v14l11-7z"/></svg>Video</div>}
+        {hasSlides && !post.isVideo && <div className="absolute top-1.5 right-1.5 bg-black/50 text-white text-[9px] font-bold px-1.5 py-0.5 rounded-full">{si+1}/{slides.length}</div>}
+      </div>
+
+      {/* Info bar */}
+      <div className="p-2 sm:p-2.5 bg-[var(--surface)] border-t border-[var(--line)] cursor-pointer" onClick={onOpen}>
+        <div className="flex items-center justify-between">
+          <span className="text-[11px] sm:text-[12px] font-semibold truncate">{post.brand.name}</span>
+          <span className="text-[10px] text-[var(--text-3)]">{t(post.postedAt)}</span>
+        </div>
+        <div className="flex gap-2 mt-0.5 text-[10px] text-[var(--text-3)]">
+          <span className="font-medium text-[var(--text)]">{n(post.likes)}</span> likes
+          <span>·</span>
+          <span>{n(post.comments)} comments</span>
+          <span>·</span>
+          <span className="text-[var(--brand)]">{post.engagement}%</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /* ═══ App ═══ */
 export default function App() {
   const [tab, setTab] = useState<'feed'|'products'|'intel'>('feed');
@@ -93,45 +201,36 @@ export default function App() {
 
         {/* ── Grid View ── */}
         {tab === 'feed' && mode === 'grid' && (
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-[3px] sm:gap-2 pb-4">
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-1 sm:gap-2 pb-4">
             {data?.posts.map((p, i) => (
-              <div key={p.id} className="relative cursor-pointer group overflow-hidden rounded-sm sm:rounded-lg" onClick={() => setOpen(p)} style={{ animation: `up 0.3s ease ${i*20}ms both` }}>
-                <div className="aspect-square bg-[var(--bg-alt)] overflow-hidden">
-                  <img src={p.imageUrl} alt="" className="w-full h-full object-cover group-hover:scale-[1.03] transition-transform duration-300" loading="lazy" onError={e => { (e.target as HTMLImageElement).style.display='none'; }} />
-                </div>
-                {/* Hover info */}
-                <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col justify-end p-2 sm:p-3">
-                  <div className="text-white text-[11px] sm:text-[12px] font-semibold">{p.brand.name}</div>
-                  <div className="flex gap-3 text-white/80 text-[10px] sm:text-[11px] mt-0.5">
-                    <span>{n(p.likes)} likes</span>
-                    <span>{n(p.comments)} comments</span>
-                  </div>
-                </div>
-                {/* Badges */}
-                {p.isVideo && <div className="absolute top-1.5 right-1.5 w-5 h-5 rounded-full bg-white/80 flex items-center justify-center"><svg width="10" height="10" viewBox="0 0 24 24" fill="#111"><path d="M8 5v14l11-7z"/></svg></div>}
-                {p.carouselSlides.length > 0 && !p.isVideo && <div className="absolute top-1.5 right-1.5 bg-black/50 text-white text-[9px] font-bold px-1.5 py-0.5 rounded-full">{p.carouselSlides.length+1}</div>}
-              </div>
+              <MediaCard key={p.id} post={p} onOpen={() => setOpen(p)} delay={i * 15} />
             ))}
           </div>
         )}
 
         {/* ── List View ── */}
         {tab === 'feed' && mode === 'list' && (
-          <div className="pb-4 max-w-xl mx-auto divide-y divide-[var(--line)]">
+          <div className="pb-4 max-w-xl mx-auto space-y-3">
             {data?.posts.map((p, i) => (
-              <div key={p.id} className="flex gap-3 py-3 cursor-pointer" onClick={() => setOpen(p)} style={{ animation: `up 0.3s ease ${i*30}ms both` }}>
-                <div className="w-20 h-20 sm:w-24 sm:h-24 rounded-lg overflow-hidden bg-[var(--bg-alt)] flex-shrink-0">
-                  <img src={p.imageUrl} alt="" className="w-full h-full object-cover" loading="lazy" onError={e => { (e.target as HTMLImageElement).style.display='none'; }} />
+              <div key={p.id} className="rounded-xl overflow-hidden border border-[var(--line)] bg-[var(--surface)]" style={{ animation: `up 0.3s ease ${i*25}ms both` }}>
+                {/* Full-width media */}
+                <div className="relative bg-[var(--bg-alt)]">
+                  {p.isVideo && p.videoUrl ? (
+                    <video src={p.videoUrl} controls playsInline preload="none" poster={p.imageUrl} className="w-full max-h-[70vh] object-contain" />
+                  ) : (
+                    <ListCarousel post={p} onOpen={() => setOpen(p)} />
+                  )}
                 </div>
-                <div className="flex-1 min-w-0 py-0.5">
-                  <div className="flex items-center gap-2">
+                {/* Info */}
+                <div className="p-3 cursor-pointer" onClick={() => setOpen(p)}>
+                  <div className="flex items-center justify-between mb-1">
                     <span className="text-[13px] font-semibold">{p.brand.name}</span>
-                    <span className="text-[10px] text-[var(--text-3)]">{t(p.postedAt)}</span>
+                    <span className="text-[11px] text-[var(--text-3)]">{t(p.postedAt)}</span>
                   </div>
-                  <p className="text-[12px] text-[var(--text-2)] mt-0.5 line-clamp-2 leading-relaxed">{p.caption}</p>
-                  <div className="flex gap-3 mt-1.5 text-[11px] text-[var(--text-3)]">
-                    <span className="font-semibold text-[var(--text)]">{n(p.likes)} likes</span>
-                    <span>{n(p.comments)} comments</span>
+                  <p className="text-[12px] text-[var(--text-2)] line-clamp-2 leading-relaxed">{p.caption}</p>
+                  <div className="flex gap-3 mt-2 text-[11px]">
+                    <span className="font-semibold">{n(p.likes)} likes</span>
+                    <span className="text-[var(--text-3)]">{n(p.comments)} comments</span>
                     <span className="text-[var(--brand)]">{p.engagement}%</span>
                   </div>
                 </div>
