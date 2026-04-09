@@ -54,6 +54,7 @@ function ListCarousel({ post, onOpen }: { post: Post; onOpen: () => void }) {
 function MediaCard({ post, onOpen, delay }: { post: Post; onOpen: () => void; delay: number }) {
   const [si, setSi] = useState(0);
   const [playing, setPlaying] = useState(false);
+  const [vidError, setVidError] = useState(false);
   const [err, setErr] = useState(false);
   const vidRef = useRef<HTMLVideoElement>(null);
   const slides = post.carouselSlides.length > 0 ? [post.imageUrl, ...post.carouselSlides.map(s => s.url)] : [post.imageUrl];
@@ -80,8 +81,13 @@ function MediaCard({ post, onOpen, delay }: { post: Post; onOpen: () => void; de
                   </div>
                 </div>
               </div>
+            ) : vidError ? (
+              <div className="relative w-full h-full">
+                {!err ? <img src={post.imageUrl} alt="" className="w-full h-full object-cover" loading="lazy" onError={() => setErr(true)} /> : <div className="w-full h-full flex items-center justify-center text-3xl">👓</div>}
+                <div className="absolute inset-0 flex items-center justify-center"><div className="bg-black/50 text-white text-[10px] px-2 py-1 rounded">Video unavailable</div></div>
+              </div>
             ) : (
-              <video ref={vidRef} src={post.videoUrl} autoPlay playsInline loop muted className="w-full h-full object-cover" onClick={() => { if (vidRef.current?.paused) vidRef.current.play(); else vidRef.current?.pause(); }} />
+              <video ref={vidRef} src={post.videoUrl!} autoPlay playsInline loop muted className="w-full h-full object-cover" onError={() => { setVidError(true); setPlaying(false); }} onClick={() => { if (vidRef.current?.paused) vidRef.current.play(); else vidRef.current?.pause(); }} />
             )}
             {playing && (
               <button onClick={() => setPlaying(false)} className="absolute top-2 right-2 w-7 h-7 rounded-full bg-black/50 text-white flex items-center justify-center text-xs">✕</button>
