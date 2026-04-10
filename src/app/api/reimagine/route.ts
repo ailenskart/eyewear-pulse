@@ -115,6 +115,59 @@ async function callReplicateSlug(modelSlug: string, input: Record<string, unknow
   }
 }
 
+/**
+ * Fetch a product page and extract the primary product image URL.
+ * Works with Lenskart, John Jacobs, and most e-commerce sites (og:image, JSON-LD, etc.)
+ */
+async function extractProductImage(productUrl: string): Promise<string | null> {
+  try {
+    const res = await fetch(productUrl, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36',
+        'Accept': 'text/html,application/xhtml+xml',
+      },
+    });
+    if (!res.ok) {
+      console.warn(`[extractProductImage] ${productUrl} returned ${res.status}`);
+      return null;
+    }
+    const html = await res.text();
+
+    // Try og:image first (most reliable)
+    const ogMatch = html.match(/<meta[^>]+property=["']og:image["'][^>]+content=["']([^"']+)["']/i)
+      || html.match(/<meta[^>]+content=["']([^"']+)["'][^>]+property=["']og:image["']/i);
+    if (ogMatch && ogMatch[1]) return ogMatch[1];
+
+    // Try twitter:image
+    const twMatch = html.match(/<meta[^>]+name=["']twitter:image["'][^>]+content=["']([^"']+)["']/i);
+    if (twMatch && twMatch[1]) return twMatch[1];
+
+    // Try JSON-LD product image
+    const jsonLdMatches = html.matchAll(/<script[^>]+type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi);
+    for (const m of jsonLdMatches) {
+      try {
+        const data = JSON.parse(m[1]);
+        const items = Array.isArray(data) ? data : [data];
+        for (const item of items) {
+          const img = item.image || item.mainEntity?.image;
+          if (typeof img === 'string') return img;
+          if (Array.isArray(img) && img.length > 0) return typeof img[0] === 'string' ? img[0] : img[0]?.url;
+          if (img?.url) return img.url;
+        }
+      } catch { continue; }
+    }
+
+    // Lenskart-specific: look for their CDN image pattern in the HTML
+    const lenskartMatch = html.match(/https?:\/\/[^"'\s]*static\.lenskart\.com[^"'\s]*\.(?:jpg|jpeg|png|webp)/i);
+    if (lenskartMatch) return lenskartMatch[0];
+
+    return null;
+  } catch (e) {
+    console.warn('[extractProductImage] error:', e instanceof Error ? e.message : e);
+    return null;
+  }
+}
+
 export async function POST(request: NextRequest) {
   const { imageUrl, prompt, brandName } = await request.json();
   if (!imageUrl) return NextResponse.json({ error: 'imageUrl required' }, { status: 400 });
@@ -126,14 +179,6 @@ export async function POST(request: NextRequest) {
   const productUrl = urlMatch ? urlMatch[0] : null;
   const userNote = prompt ? prompt.replace(/https?:\/\/[^\s]+/, '').trim() : '';
 
-  // Build CONSERVATIVE edit prompt — only change identity ~10%, keep everything else
-  let editDirection: string;
-  if (productUrl) {
-    editDirection = `Replace ONLY the eyewear/sunglasses in this photo with the frames from this product: ${productUrl}. Keep the exact same model, pose, lighting, background, clothing, composition, and color grading. Only swap the eyewear frames. ${userNote}`;
-  } else {
-    editDirection = `Subtle identity change only: make the model's face look subtly Indian/South Asian (slightly darker skin tone, Indian facial features) while keeping everything else EXACTLY the same — same pose, same eyewear frames, same background, same lighting, same clothing, same composition, same color grading, same mood. This is a minimal 10% identity edit, not a style change. ${userNote}`;
-  }
-
   try {
     // Fetch source image
     const imgRes = await fetch(imageUrl, { headers: { 'User-Agent': 'Mozilla/5.0' } });
@@ -141,6 +186,54 @@ export async function POST(request: NextRequest) {
     const imgBuffer = await imgRes.arrayBuffer();
     const base64 = Buffer.from(imgBuffer).toString('base64');
     const mimeType = imgRes.headers.get('content-type') || 'image/jpeg';
+
+    // If product URL provided, fetch the product image and describe it with Gemini vision
+    // so FLUX Kontext gets a CONCRETE visual description (not just a dead URL string).
+    let productFrameDescription = '';
+    let productImageUrl: string | null = null;
+    if (productUrl) {
+      productImageUrl = await extractProductImage(productUrl);
+      console.log('[reimagine] product URL:', productUrl, '→ image:', productImageUrl);
+      if (productImageUrl) {
+        try {
+          const prodRes = await fetch(productImageUrl, { headers: { 'User-Agent': 'Mozilla/5.0' } });
+          if (prodRes.ok) {
+            const prodBuf = await prodRes.arrayBuffer();
+            const prodBase64 = Buffer.from(prodBuf).toString('base64');
+            const prodMime = prodRes.headers.get('content-type') || 'image/jpeg';
+            const ai = new GoogleGenAI({ apiKey: GEMINI_KEY });
+            for (const model of ['gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-1.5-flash']) {
+              try {
+                const r = await ai.models.generateContent({
+                  model,
+                  contents: [{
+                    role: 'user',
+                    parts: [
+                      { inlineData: { mimeType: prodMime, data: prodBase64 } },
+                      { text: 'Describe ONLY these eyewear frames for an image-editing AI. Cover: frame shape (aviator/round/square/cat-eye/rectangular/wayfarer/oversized), frame color and finish (gloss/matte), temple color, bridge type, lens color/tint, material (acetate/metal/titanium/plastic), and any distinctive details (rivets, logo placement, etc). Be concrete and visual. Maximum 60 words, no preamble.' },
+                    ],
+                  }],
+                });
+                if (r.text) { productFrameDescription = r.text.trim(); break; }
+              } catch { continue; }
+            }
+          }
+        } catch (e) {
+          console.warn('[reimagine] product image describe failed:', e);
+        }
+      }
+    }
+
+    // Build CONSERVATIVE edit prompt
+    let editDirection: string;
+    if (productUrl && productFrameDescription) {
+      editDirection = `Replace ONLY the eyewear frames on the person in this photo with these new frames: ${productFrameDescription}. CRITICAL: Keep the exact same person — same face, same skin tone, same hair, same identity. Keep the same pose, lighting, background, clothing, composition, and color grading. Only the frames change; nothing else. ${userNote}`.trim();
+    } else if (productUrl && !productFrameDescription) {
+      // Couldn't fetch product image — fall back to a safe no-op-ish instruction
+      editDirection = `Replace the eyewear frames with stylish premium sunglasses. CRITICAL: Keep the exact same person — same face, same skin tone, same hair, same identity. Keep the same pose, lighting, background, clothing, composition. Only the frames change. ${userNote}`.trim();
+    } else {
+      editDirection = `Subtle identity change only: make the model's face look subtly Indian/South Asian (slightly darker skin tone, Indian facial features) while keeping everything else EXACTLY the same — same pose, same eyewear frames, same background, same lighting, same clothing, same composition, same color grading, same mood. This is a minimal 10% identity edit, not a style change. ${userNote}`.trim();
+    }
 
     // Run all in parallel
     const [analysisResult, briefResult, kontextResult, schnellResult] = await Promise.allSettled([
@@ -165,7 +258,7 @@ export async function POST(request: NextRequest) {
       (async () => {
         const ai = new GoogleGenAI({ apiKey: GEMINI_KEY });
         const briefContext = productUrl
-          ? `Creative brief: swap eyewear to ${brand} product (${productUrl}). Keep the original post style and composition. Write ONE Instagram caption adapted for ${brand} India audience (max 30 words) + 5 hashtags.`
+          ? `Creative brief: swap the eyewear in this post to a ${brand} product${productFrameDescription ? ` (${productFrameDescription})` : ` (${productUrl})`}. Keep the original post's model, style and composition. Write ONE Instagram caption adapted for ${brand} India audience (max 30 words) + 5 hashtags.`
           : `Creative brief for ${brand} India. We're making a subtle identity edit (Indian model) on this post, keeping everything else the same. Write ONE Instagram caption adapted for Indian audience (max 30 words) + 5 hashtags. ${userNote ? 'User note: ' + userNote : ''}`;
         for (const model of ['gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-1.5-flash']) {
           try {
@@ -219,6 +312,8 @@ export async function POST(request: NextRequest) {
         creativeBrief: briefText,
         generatedImages: editedImages,
         imagePrompt: editDirection,
+        productImageUrl,
+        productFrameDescription,
         warning: `Replicate failed: ${errorDetail}. Using free fallback.`,
       });
     }
@@ -228,6 +323,8 @@ export async function POST(request: NextRequest) {
       creativeBrief: briefText,
       generatedImages: editedImages,
       imagePrompt: editDirection,
+      productImageUrl,
+      productFrameDescription,
     });
   } catch (err) {
     return NextResponse.json({ error: err instanceof Error ? err.message : 'Failed' }, { status: 500 });

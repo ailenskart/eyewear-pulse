@@ -13,6 +13,8 @@ interface Iteration {
   brief: string;
   images: GeneratedImage[];
   imagePrompt: string;
+  productImageUrl?: string | null;
+  productFrameDescription?: string;
   comment: string;
   createdAt: string;
 }
@@ -93,6 +95,8 @@ export default function ReimagineStudio() {
         brief: data.creativeBrief || data.error || '',
         images: data.generatedImages || [],
         imagePrompt: data.imagePrompt || '',
+        productImageUrl: data.productImageUrl || null,
+        productFrameDescription: data.productFrameDescription || '',
         comment: '',
         createdAt: new Date().toISOString(),
       };
@@ -208,19 +212,31 @@ export default function ReimagineStudio() {
 
         {view === 'studio' && active && (
           <div className="space-y-4">
-            {/* Source post */}
+            {/* Source post — big, Instagram-style */}
             <div className="bg-[var(--surface)] border border-[var(--line)] rounded-xl overflow-hidden">
-              <div className="flex gap-3 p-3 border-b border-[var(--line)]">
-                <img src={active.sourceImage} alt="" className="w-14 h-14 rounded-lg object-cover flex-shrink-0" />
+              <div className="flex items-center gap-2 px-3 py-2.5 border-b border-[var(--line)]">
+                <div className="w-7 h-7 rounded-full bg-gradient-to-br from-[var(--brand)] to-purple-500 flex-shrink-0" />
                 <div className="flex-1 min-w-0">
-                  <div className="text-[13px] font-semibold">Original: {active.sourceBrand}</div>
-                  <p className="text-[11px] text-[var(--text-2)] line-clamp-2 mt-0.5">{active.sourceCaption}</p>
+                  <div className="text-[12px] font-semibold truncate">{active.sourceBrand}</div>
+                  <div className="text-[10px] text-[var(--text-3)]">Original post</div>
                 </div>
                 {active.sourcePostUrl && (
-                  <a href={active.sourcePostUrl} target="_blank" rel="noopener noreferrer" className="text-[var(--brand)] text-[11px] font-semibold self-start">IG</a>
+                  <a href={active.sourcePostUrl} target="_blank" rel="noopener noreferrer" className="text-[var(--brand)] text-[11px] font-semibold px-2 py-1">View on IG</a>
                 )}
               </div>
+              <img src={active.sourceImage} alt="" className="w-full aspect-square object-cover" />
+              {active.sourceCaption && (
+                <p className="px-3 py-2.5 text-[12px] text-[var(--text-2)] leading-relaxed whitespace-pre-wrap">{active.sourceCaption}</p>
+              )}
             </div>
+
+            {/* Thread connector */}
+            {(active.iterations.length > 0 || loading) && (
+              <div className="flex items-center gap-2 pl-4">
+                <div className="w-px h-6 bg-[var(--line)]" />
+                <span className="text-[10px] text-[var(--text-3)] uppercase tracking-wider font-medium">Reimagined thread</span>
+              </div>
+            )}
 
             {/* Iterations */}
             {active.iterations.map((it, idx) => (
@@ -233,6 +249,19 @@ export default function ReimagineStudio() {
                   </div>
                   <span className="text-[10px] text-[var(--text-3)]">{new Date(it.createdAt).toLocaleTimeString()}</span>
                 </div>
+
+                {/* Product reference (when Lenskart URL was provided) */}
+                {it.productImageUrl && (
+                  <div className="flex items-center gap-3 px-3 py-2 bg-[var(--bg-alt)] border-b border-[var(--line)]">
+                    <img src={it.productImageUrl} alt="Target frames" className="w-14 h-14 rounded-lg object-cover bg-white flex-shrink-0" />
+                    <div className="flex-1 min-w-0">
+                      <div className="text-[10px] text-[var(--brand)] font-semibold uppercase tracking-wide">Target frames</div>
+                      {it.productFrameDescription && (
+                        <p className="text-[11px] text-[var(--text-2)] leading-snug line-clamp-2 mt-0.5">{it.productFrameDescription}</p>
+                      )}
+                    </div>
+                  </div>
+                )}
 
                 {/* Generated images — multiple models */}
                 {it.images && it.images.length > 0 && (
