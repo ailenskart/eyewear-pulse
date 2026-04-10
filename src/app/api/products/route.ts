@@ -92,6 +92,19 @@ export async function GET(request: NextRequest) {
   const page = parseInt(searchParams.get('page') || '1');
   const limit = parseInt(searchParams.get('limit') || '40');
   const mix = searchParams.get('mix') === '1';
+  const id = searchParams.get('id');
+
+  // ── Direct product lookup for deep-links (/products/<id>) ─────────
+  if (id) {
+    const match = CLEAN.find(p => p.id === id || p.url === id);
+    return NextResponse.json({
+      products: match ? [match] : [],
+      total: match ? 1 : 0,
+      brands: ALL_BRANDS,
+      totalProducts: CLEAN.length,
+      totalBrands: ALL_BRANDS.length,
+    });
+  }
 
   // ── Per-brand equal sampling mode for the "All" feed ────────────
   if (mix && (!brand || brand === 'All') && !search) {

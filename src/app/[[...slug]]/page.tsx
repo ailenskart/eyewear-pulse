@@ -1,5 +1,6 @@
 'use client';
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import { useParams, useRouter } from 'next/navigation';
 
 /* ═══ Types ═══ */
 interface Post {
@@ -160,8 +161,31 @@ function MediaCard({ post, onOpen, delay }: { post: Post; onOpen: () => void; de
 }
 
 /* ═══ App ═══ */
+type Tab = 'feed' | 'products' | 'intel';
+
 export default function App() {
-  const [tab, setTab] = useState<'feed'|'products'|'intel'>('feed');
+  const router = useRouter();
+  const params = useParams<{ slug?: string[] }>();
+
+  // Derive the current tab + any deep-link product ID from the URL.
+  //   /               → feed
+  //   /products       → products
+  //   /products/<id>  → products + focused product
+  //   /intel          → intel
+  const slug = (params?.slug || []) as string[];
+  const tab: Tab = useMemo(() => {
+    const first = slug[0]?.toLowerCase();
+    if (first === 'products') return 'products';
+    if (first === 'intel') return 'intel';
+    return 'feed';
+  }, [slug]);
+  const focusedProductId = slug[0]?.toLowerCase() === 'products' ? (slug[1] || null) : null;
+
+  const setTab = (next: Tab) => {
+    if (next === 'feed') router.push('/');
+    else router.push(`/${next}`);
+  };
+
   const [mode, setMode] = useState<'grid'|'list'>('grid');
   const [data, setData] = useState<Feed|null>(null);
   const [loading, setLoading] = useState(true);
@@ -275,7 +299,7 @@ export default function App() {
         )}
 
         {/* ── Products ── */}
-        {tab === 'products' && <Products />}
+        {tab === 'products' && <Products focusedId={focusedProductId} />}
 
         {/* ── Intel ── */}
         {tab === 'intel' && data?.stats && <Intel stats={data.stats} />}
@@ -471,7 +495,7 @@ function spreadByBrand<T extends { brand: string }>(items: T[]): T[] {
   return out;
 }
 
-function Products() {
+function Products({ focusedId }: { focusedId: string | null }) {
   const [allItems, setAllItems] = useState<ProductItem[]>([]);
   const [brands, setBrands] = useState<string[]>([]);
   const [brand, setBrand] = useState('All');
@@ -486,6 +510,19 @@ function Products() {
   });
   const [onlySaved, setOnlySaved] = useState(false);
   const [downloading, setDownloading] = useState<string | null>(null);
+  const [sharedId, setSharedId] = useState<string | null>(null);
+
+  // When landing on /products/<id>, fetch that specific product so the
+  // deep-link works even before the brand pool finishes loading.
+  const [focused, setFocused] = useState<ProductItem | null>(null);
+  useEffect(() => {
+    setFocused(null);
+    if (!focusedId) return;
+    fetch(`/api/products?id=${encodeURIComponent(focusedId)}&limit=1`).then(r=>r.json()).then(d => {
+      const match = (d.products || []).find((p: ProductItem) => String(p.id || p.url) === focusedId);
+      if (match) setFocused(match);
+    }).catch(() => {});
+  }, [focusedId]);
 
   useEffect(() => {
     setLoading(true);
@@ -550,9 +587,37 @@ function Products() {
     window.location.href = `/reimagine?${params.toString()}`;
   };
 
+  const shareProduct = async (p: ProductItem) => {
+    const id = String(p.id || p.url);
+    const deepLink = `${window.location.origin}/products/${encodeURIComponent(id)}`;
+    const text = `${p.brand} — ${p.name}${p.price ? ` (${p.price})` : ''}`;
+    // Prefer the native Web Share API (mobile), fall back to clipboard copy
+    if (typeof navigator !== 'undefined' && 'share' in navigator) {
+      try {
+        await (navigator as Navigator & { share: (d: { title: string; text: string; url: string }) => Promise<void> }).share({
+          title: `Lenzy · ${p.brand}`,
+          text,
+          url: deepLink,
+        });
+        return;
+      } catch {
+        // user dismissed — fall through to clipboard
+      }
+    }
+    try {
+      await navigator.clipboard.writeText(deepLink);
+      setSharedId(id);
+      setTimeout(() => setSharedId(null), 1600);
+    } catch {
+      window.prompt('Copy this link to share:', deepLink);
+    }
+  };
+
+  // If we arrived at /products/<id>, prepend the focused product (if loaded)
+  // so it renders at the top of the feed with a highlighted border.
   const pool = onlySaved
     ? allItems.filter(p => savedIds.has(String(p.id || p.url)))
-    : allItems;
+    : (focused ? [focused, ...allItems.filter(p => String(p.id || p.url) !== focusedId)] : allItems);
   const displayed = pool.slice(0, visible);
   const canLoadMore = !onlySaved && visible < pool.length;
 
@@ -601,7 +666,7 @@ function Products() {
           return (
             <article
               key={id + i}
-              className="bg-[var(--surface)] rounded-2xl overflow-hidden border border-[var(--line)] shadow-sm"
+              className={`bg-[var(--surface)] rounded-2xl overflow-hidden border shadow-sm ${focusedId === id ? 'border-[var(--brand)] ring-2 ring-[var(--brand)]/30' : 'border-[var(--line)]'}`}
               style={{ animation: `up 0.35s ease ${Math.min(i, 10) * 20}ms both` }}
             >
               {/* Header: brand + price */}
@@ -648,6 +713,17 @@ function Products() {
                 >
                   <svg width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
                   Reimagine
+                </button>
+                <button
+                  onClick={() => shareProduct(p)}
+                  title={sharedId === id ? 'Link copied!' : 'Share product'}
+                  className={`p-2 rounded-lg hover:bg-[var(--bg-alt)] transition-colors ${sharedId === id ? 'text-[var(--brand)]' : 'text-[var(--text-3)]'}`}
+                >
+                  {sharedId === id ? (
+                    <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>
+                  ) : (
+                    <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>
+                  )}
                 </button>
                 <button
                   onClick={() => toggleSave(id)}
