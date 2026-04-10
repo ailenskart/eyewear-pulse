@@ -161,25 +161,29 @@ function MediaCard({ post, onOpen, delay }: { post: Post; onOpen: () => void; de
 }
 
 /* ═══ App ═══ */
-type Tab = 'feed' | 'products' | 'intel';
+type Tab = 'feed' | 'products' | 'boards' | 'intel';
 
 export default function App() {
   const router = useRouter();
   const params = useParams<{ slug?: string[] }>();
 
-  // Derive the current tab + any deep-link product ID from the URL.
+  // Derive the current tab + any deep-link ID from the URL.
   //   /               → feed
   //   /products       → products
   //   /products/<id>  → products + focused product
+  //   /boards         → board list
+  //   /boards/<id>    → specific board view
   //   /intel          → intel
   const slug = (params?.slug || []) as string[];
   const tab: Tab = useMemo(() => {
     const first = slug[0]?.toLowerCase();
     if (first === 'products') return 'products';
+    if (first === 'boards') return 'boards';
     if (first === 'intel') return 'intel';
     return 'feed';
   }, [slug]);
   const focusedProductId = slug[0]?.toLowerCase() === 'products' ? (slug[1] || null) : null;
+  const focusedBoardId = slug[0]?.toLowerCase() === 'boards' ? (slug[1] || null) : null;
 
   const setTab = (next: Tab) => {
     if (next === 'feed') router.push('/');
@@ -301,6 +305,9 @@ export default function App() {
         {/* ── Products ── */}
         {tab === 'products' && <Products focusedId={focusedProductId} />}
 
+        {/* ── Boards ── */}
+        {tab === 'boards' && <Boards focusedBoardId={focusedBoardId} />}
+
         {/* ── Intel ── */}
         {tab === 'intel' && data?.stats && <Intel stats={data.stats} />}
 
@@ -319,6 +326,7 @@ export default function App() {
         {[
           { k: 'feed', l: 'Feed', svg: <svg width="22" height="22" fill="none" stroke="currentColor" strokeWidth="1.8" viewBox="0 0 24 24"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><path d="M9 22V12h6v10"/></svg> },
           { k: 'products', l: 'Products', svg: <svg width="22" height="22" fill="none" stroke="currentColor" strokeWidth="1.8" viewBox="0 0 24 24"><path d="M6 2L3 6v14a2 2 0 002 2h14a2 2 0 002-2V6l-3-4z"/><path d="M3 6h18"/><path d="M16 10a4 4 0 01-8 0"/></svg> },
+          { k: 'boards', l: 'Boards', svg: <svg width="22" height="22" fill="none" stroke="currentColor" strokeWidth="1.8" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg> },
           { k: 'intel', l: 'Intel', svg: <svg width="22" height="22" fill="none" stroke="currentColor" strokeWidth="1.8" viewBox="0 0 24 24"><path d="M18 20V10M12 20V4M6 20v-6"/></svg> },
         ].map(x => (
           <button key={x.k} onClick={() => setTab(x.k as typeof tab)} className={`flex flex-col items-center gap-[2px] py-1 px-3 ${tab===x.k ? 'text-[var(--brand)]' : 'text-[var(--text-3)]'}`}>
@@ -338,7 +346,66 @@ export default function App() {
 function Sheet({ post, onClose }: { post: Post; onClose: () => void }) {
   const [si, setSi] = useState(0);
   const [err, setErr] = useState(false);
+  const [showBoardPicker, setShowBoardPicker] = useState(false);
+  const [briefLoading, setBriefLoading] = useState(false);
+  const [brief, setBrief] = useState<string>('');
   const slides = post.carouselSlides.length > 0 ? [post.imageUrl, ...post.carouselSlides.map(s => s.url)] : [post.imageUrl];
+
+  const generateBrief = async () => {
+    setBriefLoading(true);
+    setBrief('');
+    try {
+      const res = await fetch('/api/brief', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          imageUrl: post.rawImageUrl || post.imageUrl,
+          caption: post.caption,
+          brand: post.brand.name,
+        }),
+      });
+      const data = await res.json();
+      setBrief(data.brief || data.error || 'Brief generation failed');
+    } catch {
+      setBrief('Network error');
+    }
+    setBriefLoading(false);
+  };
+
+  const addPostToBoard = (boardId: string) => {
+    const boards = loadBoards();
+    const item: BoardItem = {
+      id: `post_${post.id}_${Date.now().toString(36)}`,
+      kind: 'post',
+      imageUrl: post.rawImageUrl || post.imageUrl,
+      caption: post.caption.substring(0, 300),
+      brand: post.brand.name,
+      sourceUrl: post.postUrl,
+      addedAt: new Date().toISOString(),
+    };
+    saveBoards(boards.map(b => b.id === boardId ? { ...b, items: [item, ...b.items] } : b));
+    setShowBoardPicker(false);
+  };
+
+  const createBoardWithPost = (title: string) => {
+    const boards = loadBoards();
+    const board: Board = {
+      id: Date.now().toString(36),
+      title: title.trim() || 'Untitled board',
+      items: [{
+        id: `post_${post.id}_${Date.now().toString(36)}`,
+        kind: 'post',
+        imageUrl: post.rawImageUrl || post.imageUrl,
+        caption: post.caption.substring(0, 300),
+        brand: post.brand.name,
+        sourceUrl: post.postUrl,
+        addedAt: new Date().toISOString(),
+      }],
+      createdAt: new Date().toISOString(),
+    };
+    saveBoards([board, ...boards]);
+    setShowBoardPicker(false);
+  };
 
   return (
     <div className="fixed inset-0 z-50" onClick={onClose}>
@@ -417,6 +484,16 @@ function Sheet({ post, onClose }: { post: Post; onClose: () => void }) {
               </div>
             </div>
 
+            {/* AI Brief output */}
+            {brief && (
+              <div className="px-4 pb-4 flex-shrink-0">
+                <div className="bg-[var(--bg-alt)] rounded-lg p-3 max-h-[300px] overflow-y-auto">
+                  <div className="text-[10px] uppercase tracking-wider font-bold text-[var(--brand)] mb-1">AI Brief</div>
+                  <div className="text-[11px] leading-relaxed whitespace-pre-wrap">{brief}</div>
+                </div>
+              </div>
+            )}
+
             {/* Actions */}
             <div className="p-3 border-t border-[var(--line)] space-y-2 flex-shrink-0">
               <a href={`/reimagine?image=${encodeURIComponent(post.rawImageUrl || post.imageUrl)}&brand=${encodeURIComponent(post.brand.name)}&caption=${encodeURIComponent(post.caption.substring(0,200))}&postUrl=${encodeURIComponent(post.postUrl)}`}
@@ -424,6 +501,20 @@ function Sheet({ post, onClose }: { post: Post; onClose: () => void }) {
                 <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
                 Reimagine for Lenskart
               </a>
+              <div className="grid grid-cols-2 gap-2">
+                <button onClick={generateBrief} disabled={briefLoading} className="py-2 rounded-lg bg-[var(--bg-alt)] text-[12px] font-semibold flex items-center justify-center gap-1.5 disabled:opacity-50">
+                  {briefLoading ? (
+                    <div className="w-3 h-3 border-2 border-[var(--brand)] border-t-transparent rounded-full animate-spin" />
+                  ) : (
+                    <svg width="13" height="13" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="9" y1="15" x2="15" y2="15"/><line x1="9" y1="11" x2="13" y2="11"/></svg>
+                  )}
+                  {briefLoading ? 'Writing…' : 'AI Brief'}
+                </button>
+                <button onClick={() => setShowBoardPicker(true)} className="py-2 rounded-lg bg-[var(--bg-alt)] text-[12px] font-semibold flex items-center justify-center gap-1.5">
+                  <svg width="13" height="13" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+                  Save to board
+                </button>
+              </div>
               <div className="flex gap-2">
                 <a href={post.postUrl} target="_blank" rel="noopener noreferrer" className="flex-1 py-2.5 rounded-lg bg-[var(--brand)] text-white text-[13px] font-semibold text-center">View on IG</a>
                 <a href={`https://instagram.com/${post.brand.handle}`} target="_blank" rel="noopener noreferrer" className="py-2.5 px-4 rounded-lg border border-[var(--line)] text-[13px] font-medium text-center">Profile</a>
@@ -432,6 +523,15 @@ function Sheet({ post, onClose }: { post: Post; onClose: () => void }) {
           </div>
         </div>
       </div>
+
+      {showBoardPicker && (
+        <BoardPicker
+          item={{ brand: post.brand.name, caption: post.caption, imageUrl: post.rawImageUrl || post.imageUrl }}
+          onAdd={addPostToBoard}
+          onCreate={createBoardWithPost}
+          onClose={() => setShowBoardPicker(false)}
+        />
+      )}
     </div>
   );
 }
@@ -511,6 +611,7 @@ function Products({ focusedId }: { focusedId: string | null }) {
   const [onlySaved, setOnlySaved] = useState(false);
   const [downloading, setDownloading] = useState<string | null>(null);
   const [sharedId, setSharedId] = useState<string | null>(null);
+  const [boardPickerFor, setBoardPickerFor] = useState<ProductItem | null>(null);
 
   // When landing on /products/<id>, fetch that specific product so the
   // deep-link works even before the brand pool finishes loading.
@@ -585,6 +686,43 @@ function Products({ focusedId }: { focusedId: string | null }) {
       postUrl: p.url,
     });
     window.location.href = `/reimagine?${params.toString()}`;
+  };
+
+  const addToBoard = (p: ProductItem, boardId: string) => {
+    const boards = loadBoards();
+    const item: BoardItem = {
+      id: `prod_${p.id || p.url}_${Date.now().toString(36)}`,
+      kind: 'product',
+      imageUrl: p.image,
+      caption: `${p.brand} — ${p.name}${p.price ? ` (${p.price})` : ''}`,
+      brand: p.brand,
+      type: p.type,
+      sourceUrl: p.url,
+      addedAt: new Date().toISOString(),
+    };
+    saveBoards(boards.map(b => b.id === boardId ? { ...b, items: [item, ...b.items] } : b));
+    setBoardPickerFor(null);
+  };
+
+  const createBoardWith = (title: string, p: ProductItem) => {
+    const boards = loadBoards();
+    const board: Board = {
+      id: Date.now().toString(36),
+      title: title.trim() || 'Untitled board',
+      items: [{
+        id: `prod_${p.id || p.url}_${Date.now().toString(36)}`,
+        kind: 'product',
+        imageUrl: p.image,
+        caption: `${p.brand} — ${p.name}${p.price ? ` (${p.price})` : ''}`,
+        brand: p.brand,
+        type: p.type,
+        sourceUrl: p.url,
+        addedAt: new Date().toISOString(),
+      }],
+      createdAt: new Date().toISOString(),
+    };
+    saveBoards([board, ...boards]);
+    setBoardPickerFor(null);
   };
 
   const shareProduct = async (p: ProductItem) => {
@@ -733,6 +871,13 @@ function Products({ focusedId }: { focusedId: string | null }) {
                   <svg width="16" height="16" fill={saved ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
                 </button>
                 <button
+                  onClick={() => setBoardPickerFor(p)}
+                  title="Add to board"
+                  className="p-2 rounded-lg hover:bg-[var(--bg-alt)] transition-colors text-[var(--text-3)]"
+                >
+                  <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+                </button>
+                <button
                   onClick={() => downloadImage(p)}
                   disabled={downloading === id}
                   title="Download image"
@@ -774,6 +919,376 @@ function Products({ focusedId }: { focusedId: string | null }) {
         <div className="flex items-center justify-center py-20 text-[var(--text-3)] text-[12px]">
           <div className="w-5 h-5 border-2 border-[var(--brand)] border-t-transparent rounded-full animate-spin mr-2" />
           Loading products…
+        </div>
+      )}
+
+      {/* Board picker modal */}
+      {boardPickerFor && (
+        <BoardPicker
+          item={boardPickerFor}
+          onAdd={(boardId) => addToBoard(boardPickerFor, boardId)}
+          onCreate={(title) => createBoardWith(title, boardPickerFor)}
+          onClose={() => setBoardPickerFor(null)}
+        />
+      )}
+    </div>
+  );
+}
+
+/* ═══ Shared board picker modal ═══ */
+function BoardPicker({
+  item, onAdd, onCreate, onClose,
+}: {
+  item: { brand: string; name?: string; caption?: string; image?: string; imageUrl?: string };
+  onAdd: (boardId: string) => void;
+  onCreate: (title: string) => void;
+  onClose: () => void;
+}) {
+  const [boards, setBoardsList] = useState<Board[]>([]);
+  const [newTitle, setNewTitle] = useState('');
+  const [creating, setCreating] = useState(false);
+  useEffect(() => { setBoardsList(loadBoards()); }, []);
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/60 backdrop-blur-sm" onClick={onClose}>
+      <div onClick={e => e.stopPropagation()} className="bg-[var(--surface)] w-full sm:max-w-md sm:mx-4 rounded-t-2xl sm:rounded-2xl border border-[var(--line)] p-4" style={{ paddingBottom: 'max(16px, env(safe-area-inset-bottom))' }}>
+        <div className="flex items-center justify-between mb-3">
+          <div className="text-[14px] font-semibold">Add to board</div>
+          <button onClick={onClose} className="text-[var(--text-3)] text-[20px] leading-none px-1">×</button>
+        </div>
+        <div className="flex items-center gap-2 p-2 bg-[var(--bg-alt)] rounded-lg mb-3">
+          <img src={item.image || item.imageUrl || ''} alt="" className="w-10 h-10 rounded object-cover bg-white flex-shrink-0" onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }} />
+          <div className="flex-1 min-w-0 text-[11px]">
+            <div className="font-semibold truncate">{item.brand}</div>
+            <div className="text-[var(--text-3)] truncate">{item.name || item.caption}</div>
+          </div>
+        </div>
+
+        {!creating && (
+          <button
+            onClick={() => setCreating(true)}
+            className="w-full flex items-center gap-2 px-3 py-2.5 bg-[var(--bg-alt)] rounded-lg text-[12px] font-semibold mb-2 hover:bg-[var(--line)]"
+          >
+            <svg width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>
+            Create new board
+          </button>
+        )}
+        {creating && (
+          <div className="flex gap-2 mb-2">
+            <input
+              type="text" value={newTitle} onChange={e => setNewTitle(e.target.value)}
+              autoFocus placeholder="Board name…"
+              className="flex-1 min-w-0 bg-[var(--bg-alt)] rounded-lg px-3 py-2 text-[12px] outline-none"
+              onKeyDown={e => { if (e.key === 'Enter' && newTitle.trim()) { onCreate(newTitle); } }}
+            />
+            <button onClick={() => { if (newTitle.trim()) onCreate(newTitle); }} className="px-3 bg-[var(--brand)] text-white text-[11px] font-semibold rounded-lg">Create</button>
+          </div>
+        )}
+
+        {boards.length > 0 && (
+          <div className="max-h-60 overflow-y-auto space-y-1">
+            {boards.map(b => (
+              <button
+                key={b.id}
+                onClick={() => onAdd(b.id)}
+                className="w-full flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-[var(--bg-alt)] text-left"
+              >
+                <div className="w-8 h-8 bg-[var(--bg-alt)] rounded grid grid-cols-2 grid-rows-2 gap-[1px] overflow-hidden flex-shrink-0">
+                  {b.items.slice(0, 4).map((it, i) => (
+                    <img key={i} src={it.imageUrl} alt="" className="w-full h-full object-cover" />
+                  ))}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="text-[12px] font-semibold truncate">{b.title}</div>
+                  <div className="text-[10px] text-[var(--text-3)]">{b.items.length} item{b.items.length !== 1 ? 's' : ''}</div>
+                </div>
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/* ═══ Boards — Swipe file / mood boards with per-item rating + notes ═══ */
+
+interface BoardItem {
+  id: string;
+  kind: 'post' | 'product';
+  imageUrl: string;
+  caption: string;
+  brand: string;
+  type?: string;
+  sourceUrl?: string;
+  addedAt: string;
+  rating?: number; // 1-5
+  note?: string;
+}
+
+interface Board {
+  id: string;
+  title: string;
+  description?: string;
+  items: BoardItem[];
+  createdAt: string;
+}
+
+function loadBoards(): Board[] {
+  if (typeof window === 'undefined') return [];
+  try {
+    const raw = localStorage.getItem('lenzy-boards');
+    if (raw) return JSON.parse(raw);
+  } catch {}
+  return [];
+}
+
+function saveBoards(boards: Board[]) {
+  localStorage.setItem('lenzy-boards', JSON.stringify(boards));
+}
+
+function Boards({ focusedBoardId }: { focusedBoardId: string | null }) {
+  const router = useRouter();
+  const [boards, setBoards] = useState<Board[]>([]);
+  const [creating, setCreating] = useState(false);
+  const [newTitle, setNewTitle] = useState('');
+  const [briefLoading, setBriefLoading] = useState(false);
+  const [brief, setBrief] = useState<string>('');
+  const [briefAngle, setBriefAngle] = useState('');
+
+  useEffect(() => { setBoards(loadBoards()); }, []);
+
+  const persist = (next: Board[]) => { setBoards(next); saveBoards(next); };
+
+  const createBoard = () => {
+    const title = newTitle.trim() || 'Untitled board';
+    const b: Board = {
+      id: Date.now().toString(36),
+      title,
+      items: [],
+      createdAt: new Date().toISOString(),
+    };
+    persist([b, ...boards]);
+    setNewTitle('');
+    setCreating(false);
+    router.push(`/boards/${b.id}`);
+  };
+
+  const deleteBoard = (id: string) => {
+    if (!confirm('Delete this board? Items inside will be removed.')) return;
+    persist(boards.filter(b => b.id !== id));
+    if (focusedBoardId === id) router.push('/boards');
+  };
+
+  const removeItem = (boardId: string, itemId: string) => {
+    persist(boards.map(b => b.id === boardId ? { ...b, items: b.items.filter(i => i.id !== itemId) } : b));
+  };
+
+  const updateItem = (boardId: string, itemId: string, patch: Partial<BoardItem>) => {
+    persist(boards.map(b => b.id === boardId
+      ? { ...b, items: b.items.map(i => i.id === itemId ? { ...i, ...patch } : i) }
+      : b));
+  };
+
+  const shareBoard = async (b: Board) => {
+    const link = `${window.location.origin}/boards/${b.id}`;
+    if (typeof navigator !== 'undefined' && 'share' in navigator) {
+      try {
+        await (navigator as Navigator & { share: (d: { title: string; url: string }) => Promise<void> }).share({
+          title: `Lenzy Board · ${b.title}`,
+          url: link,
+        });
+        return;
+      } catch {}
+    }
+    try {
+      await navigator.clipboard.writeText(link);
+      alert('Board link copied!');
+    } catch {
+      window.prompt('Copy this link:', link);
+    }
+  };
+
+  const generateBoardBrief = async (b: Board) => {
+    setBriefLoading(true);
+    setBrief('');
+    try {
+      const res = await fetch('/api/brief', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          boardTitle: b.title,
+          items: b.items.map(i => ({
+            imageUrl: i.imageUrl,
+            caption: i.caption,
+            brand: i.brand,
+            type: i.kind,
+          })),
+          angle: briefAngle.trim() || undefined,
+        }),
+      });
+      const data = await res.json();
+      setBrief(data.brief || data.error || 'Brief generation failed');
+    } catch {
+      setBrief('Network error');
+    }
+    setBriefLoading(false);
+  };
+
+  const focused = focusedBoardId ? boards.find(b => b.id === focusedBoardId) : null;
+
+  // ── Individual board view ──
+  if (focused) {
+    return (
+      <div className="py-4">
+        {/* Board header */}
+        <div className="flex items-start gap-3 mb-4">
+          <button onClick={() => router.push('/boards')} className="text-[var(--text-2)] p-1 flex-shrink-0">
+            <svg width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
+          </button>
+          <div className="flex-1 min-w-0">
+            <h2 className="text-[22px] font-bold tracking-tight">{focused.title}</h2>
+            <div className="text-[11px] text-[var(--text-3)] mt-0.5">{focused.items.length} item{focused.items.length !== 1 ? 's' : ''} · created {new Date(focused.createdAt).toLocaleDateString()}</div>
+          </div>
+          <button onClick={() => shareBoard(focused)} className="px-3 py-1.5 bg-[var(--bg-alt)] rounded-lg text-[11px] font-semibold flex items-center gap-1.5">
+            <svg width="12" height="12" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>
+            Share
+          </button>
+          <button onClick={() => deleteBoard(focused.id)} className="p-1.5 text-[var(--text-3)]">
+            <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M3 6h18M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/></svg>
+          </button>
+        </div>
+
+        {/* AI Brief generator */}
+        <div className="bg-[var(--surface)] border border-[var(--line)] rounded-xl p-3 mb-4">
+          <div className="flex items-center gap-2 mb-2">
+            <svg width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24" className="text-[var(--brand)]"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
+            <div className="text-[12px] font-semibold">Generate creative brief from this board</div>
+          </div>
+          <div className="flex gap-2">
+            <input
+              type="text" value={briefAngle} onChange={e => setBriefAngle(e.target.value)}
+              placeholder="Optional angle — e.g. 'target Gen Z on TikTok'"
+              className="flex-1 min-w-0 bg-[var(--bg-alt)] rounded-lg px-3 py-2 text-[12px] outline-none placeholder:text-[var(--text-3)]"
+            />
+            <button
+              onClick={() => generateBoardBrief(focused)}
+              disabled={briefLoading || focused.items.length === 0}
+              className="px-3 py-2 bg-[var(--brand)] text-white text-[11px] font-semibold rounded-lg disabled:opacity-40 flex-shrink-0"
+            >
+              {briefLoading ? 'Generating…' : 'Generate'}
+            </button>
+          </div>
+          {brief && (
+            <div className="mt-3 max-h-[500px] overflow-y-auto bg-[var(--bg-alt)] rounded-lg p-3 text-[12px] leading-relaxed whitespace-pre-wrap">
+              {brief}
+            </div>
+          )}
+        </div>
+
+        {/* Items */}
+        {focused.items.length === 0 ? (
+          <div className="text-center py-16 text-[var(--text-3)]">
+            <p className="text-[13px]">This board is empty</p>
+            <p className="text-[11px] mt-1">Open any post or product and tap the board icon to add it here.</p>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            {focused.items.map(it => (
+              <div key={it.id} className="bg-[var(--surface)] border border-[var(--line)] rounded-xl overflow-hidden">
+                <div className="flex items-center justify-between px-3 py-2 border-b border-[var(--line)]">
+                  <div className="text-[11px] font-semibold truncate">{it.brand}</div>
+                  <span className="text-[9px] text-[var(--text-3)] uppercase tracking-wider">{it.kind}</span>
+                </div>
+                <img src={it.imageUrl} alt={it.caption} className="w-full aspect-square object-cover bg-[var(--bg)]" loading="lazy" onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }} />
+                <div className="p-3 space-y-2">
+                  <p className="text-[11px] text-[var(--text-2)] line-clamp-2 leading-snug">{it.caption}</p>
+                  {/* Rating */}
+                  <div className="flex items-center gap-0.5">
+                    {[1,2,3,4,5].map(n => (
+                      <button key={n} onClick={() => updateItem(focused.id, it.id, { rating: it.rating === n ? 0 : n })} className="p-0.5">
+                        <svg width="14" height="14" fill={(it.rating || 0) >= n ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24" className={(it.rating || 0) >= n ? 'text-[var(--brand)]' : 'text-[var(--text-3)]'}><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+                      </button>
+                    ))}
+                  </div>
+                  {/* Note */}
+                  <input
+                    type="text" value={it.note || ''}
+                    onChange={e => updateItem(focused.id, it.id, { note: e.target.value })}
+                    placeholder="Add a note…"
+                    className="w-full bg-[var(--bg-alt)] rounded-md px-2 py-1.5 text-[11px] outline-none placeholder:text-[var(--text-3)]"
+                  />
+                  <div className="flex gap-1">
+                    {it.sourceUrl && (
+                      <a href={it.sourceUrl} target="_blank" rel="noopener noreferrer" className="flex-1 text-center py-1.5 bg-[var(--bg-alt)] rounded text-[10px] font-semibold text-[var(--text-2)]">View source</a>
+                    )}
+                    <button onClick={() => removeItem(focused.id, it.id)} className="px-2 py-1.5 bg-[var(--bg-alt)] rounded text-[10px] text-[var(--text-3)]">Remove</button>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  // ── Board list view ──
+  return (
+    <div className="py-4">
+      <div className="flex items-center justify-between mb-4">
+        <div>
+          <h2 className="text-[20px] font-bold tracking-tight">Boards</h2>
+          <p className="text-[11px] text-[var(--text-3)] mt-0.5">Swipe files for your next campaign</p>
+        </div>
+        <button onClick={() => setCreating(true)} className="px-3 py-2 bg-[var(--brand)] text-white text-[12px] font-semibold rounded-lg flex items-center gap-1.5">
+          <svg width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>
+          New board
+        </button>
+      </div>
+
+      {creating && (
+        <div className="bg-[var(--surface)] border border-[var(--brand)] rounded-xl p-3 mb-4 flex gap-2">
+          <input
+            type="text" value={newTitle} onChange={e => setNewTitle(e.target.value)}
+            autoFocus placeholder="Board name — e.g. 'Q2 summer campaign inspo'"
+            className="flex-1 min-w-0 bg-[var(--bg-alt)] rounded-lg px-3 py-2 text-[12px] outline-none"
+            onKeyDown={e => { if (e.key === 'Enter') createBoard(); }}
+          />
+          <button onClick={createBoard} className="px-3 py-2 bg-[var(--brand)] text-white text-[11px] font-semibold rounded-lg">Create</button>
+          <button onClick={() => { setCreating(false); setNewTitle(''); }} className="px-2 text-[11px] text-[var(--text-3)]">Cancel</button>
+        </div>
+      )}
+
+      {boards.length === 0 && !creating ? (
+        <div className="text-center py-16 text-[var(--text-3)]">
+          <svg width="42" height="42" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24" className="mx-auto mb-2 opacity-30"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+          <p className="text-[13px]">No boards yet</p>
+          <p className="text-[11px] mt-1">Create a board to start collecting posts and products.</p>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          {boards.map(b => (
+            <button
+              key={b.id}
+              onClick={() => router.push(`/boards/${b.id}`)}
+              className="bg-[var(--surface)] border border-[var(--line)] rounded-xl overflow-hidden text-left hover:border-[var(--brand)] transition-colors"
+            >
+              {/* Cover — 2x2 grid of first 4 items, or placeholder */}
+              <div className="aspect-[16/10] bg-[var(--bg-alt)] grid grid-cols-2 grid-rows-2 gap-[1px]">
+                {b.items.slice(0, 4).map((it, i) => (
+                  <img key={i} src={it.imageUrl} alt="" className="w-full h-full object-cover" loading="lazy" onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }} />
+                ))}
+                {b.items.length === 0 && (
+                  <div className="col-span-2 row-span-2 flex items-center justify-center text-[var(--text-3)] text-[11px]">Empty</div>
+                )}
+              </div>
+              <div className="p-3">
+                <div className="text-[14px] font-semibold truncate">{b.title}</div>
+                <div className="text-[11px] text-[var(--text-3)] mt-0.5">{b.items.length} item{b.items.length !== 1 ? 's' : ''}</div>
+              </div>
+            </button>
+          ))}
         </div>
       )}
     </div>
