@@ -93,8 +93,15 @@ export default function ReimagineStudio() {
       };
       setActive(newProject);
       setView('studio');
-      // Auto-generate first iteration
-      generateIteration(newProject, '');
+      // NOTE: Do NOT auto-generate. FLUX Kontext has strong priors and any
+      // "change the face" instruction drifts the ethnicity. The user must
+      // explicitly upload frames or paste a product URL to trigger an edit.
+      // Persist the new project so it's there when they do.
+      setProjects(prev => {
+        const next = [newProject, ...prev];
+        localStorage.setItem('reimagine-projects', JSON.stringify(next));
+        return next;
+      });
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -399,10 +406,17 @@ export default function ReimagineStudio() {
               </div>
             )}
 
-            {/* New iteration input */}
-            {!loading && active.iterations.length > 0 && (
+            {/* New iteration input — always visible so users can act on the source photo */}
+            {!loading && (
               <div className="bg-[var(--surface)] border border-[var(--line)] rounded-xl p-3">
-                <div className="text-[12px] font-semibold mb-2">Edit & iterate</div>
+                <div className="text-[12px] font-semibold mb-2">
+                  {active.iterations.length === 0 ? 'Swap the frames' : 'Edit & iterate'}
+                </div>
+                {active.iterations.length === 0 && (
+                  <p className="text-[11px] text-[var(--text-2)] leading-relaxed mb-3">
+                    Upload a clean photo of the target eyewear, or paste a product URL. The model in the original photo is preserved — only the frames change.
+                  </p>
+                )}
 
                 {/* Uploaded frame preview */}
                 {frameUpload && (

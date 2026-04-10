@@ -335,8 +335,22 @@ export async function POST(request: NextRequest) {
     } else if (hasFrameSource) {
       // Couldn't even parse the slug — fall back to a safe no-op-ish instruction
       editDirection = `Replace the eyewear frames with stylish premium sunglasses. CRITICAL: Keep the exact same person — same face, same skin tone, same hair, same identity, same ethnicity. Keep the same pose, lighting, background, clothing, composition. Only the frames change. ${userNote}`.trim();
+    } else if (userNote) {
+      // User gave a free-text note but no frame source — honor their note
+      // while locking down identity so FLUX Kontext doesn't drift ethnicity.
+      editDirection = `${userNote}. CRITICAL: Keep the exact same person — same face, same skin tone, same ethnicity, same hair, same eyes, same identity. Keep the same pose, background, lighting, clothing, composition, color grading, and expression. Do NOT change the person's race or ethnicity.`.trim();
     } else {
-      editDirection = `Tiny face-only variation: make this a slightly different person, but keep the SAME ethnicity, SAME skin tone, SAME hair color and length, SAME age, SAME gender, and SAME overall look as the original. Just nudge the facial features a little (slightly different nose, jawline, or eyes) so it's technically not the same individual. Do NOT make the person Indian. Do NOT change ethnicity. Do NOT change skin tone. Keep EVERYTHING else exactly the same — same pose, same eyewear frames, same background, same lighting, same clothing, same composition, same color grading, same expression, same mood. This is the smallest possible change, just enough that it's a different face. ${userNote}`.trim();
+      // No frame source and no note → there's nothing to do. Return the
+      // original image untouched rather than risk FLUX drifting identity.
+      return NextResponse.json({
+        originalAnalysis: '',
+        creativeBrief: 'Upload a photo of the target eyewear frames, or paste a product URL, to generate a reimagined version. The original post is shown above — no edit was made because no frame source was provided.',
+        generatedImages: [],
+        imagePrompt: '',
+        productImageUrl: null,
+        productFrameDescription: '',
+        warning: 'No frame source provided — no edit was performed.',
+      });
     }
 
     // Run all in parallel
