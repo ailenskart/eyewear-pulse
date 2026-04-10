@@ -312,7 +312,7 @@ export default function ReimagineStudio() {
                 <div className="flex gap-2">
                   <input
                     type="text" value={editPrompt} onChange={e => setEditPrompt(e.target.value)}
-                    placeholder="e.g. 'Make it more colorful', 'Use John Jacobs frames', 'Target Gen Z'..."
+                    placeholder="Paste Lenskart product URL to swap frames, or add edit notes..."
                     className="flex-1 bg-[var(--bg-alt)] rounded-lg px-3 py-2.5 text-[12px] outline-none placeholder:text-[var(--text-3)]"
                     onKeyDown={e => { if (e.key === 'Enter' && editPrompt.trim()) { generateIteration(active, editPrompt); setEditPrompt(''); }}}
                   />

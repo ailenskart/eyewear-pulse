@@ -120,7 +120,19 @@ export async function POST(request: NextRequest) {
   if (!imageUrl) return NextResponse.json({ error: 'imageUrl required' }, { status: 400 });
 
   const brand = brandName || 'Lenskart';
-  const editDirection = prompt || `Make suitable for ${brand} India — change model to look Indian/South Asian, keep the exact same eyewear frames, make background vibrant`;
+
+  // Detect if prompt contains a product URL
+  const urlMatch = (prompt || '').match(/https?:\/\/[^\s]+/);
+  const productUrl = urlMatch ? urlMatch[0] : null;
+  const userNote = prompt ? prompt.replace(/https?:\/\/[^\s]+/, '').trim() : '';
+
+  // Build CONSERVATIVE edit prompt — only change identity ~10%, keep everything else
+  let editDirection: string;
+  if (productUrl) {
+    editDirection = `Replace ONLY the eyewear/sunglasses in this photo with the frames from this product: ${productUrl}. Keep the exact same model, pose, lighting, background, clothing, composition, and color grading. Only swap the eyewear frames. ${userNote}`;
+  } else {
+    editDirection = `Subtle identity change only: make the model's face look subtly Indian/South Asian (slightly darker skin tone, Indian facial features) while keeping everything else EXACTLY the same — same pose, same eyewear frames, same background, same lighting, same clothing, same composition, same color grading, same mood. This is a minimal 10% identity edit, not a style change. ${userNote}`;
+  }
 
   try {
     // Fetch source image
@@ -152,31 +164,32 @@ export async function POST(request: NextRequest) {
       // Gemini brief
       (async () => {
         const ai = new GoogleGenAI({ apiKey: GEMINI_KEY });
+        const briefContext = productUrl
+          ? `Creative brief: swap eyewear to ${brand} product (${productUrl}). Keep the original post style and composition. Write ONE Instagram caption adapted for ${brand} India audience (max 30 words) + 5 hashtags.`
+          : `Creative brief for ${brand} India. We're making a subtle identity edit (Indian model) on this post, keeping everything else the same. Write ONE Instagram caption adapted for Indian audience (max 30 words) + 5 hashtags. ${userNote ? 'User note: ' + userNote : ''}`;
         for (const model of ['gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-1.5-flash']) {
           try {
-            const r = await ai.models.generateContent({
-              model, contents: `Creative director at ${brand}. Direction: ${editDirection}\nWrite a SHORT brief (under 100 words): what to keep, what to change for Indian market, one Instagram caption, 5 hashtags.`,
-            });
+            const r = await ai.models.generateContent({ model, contents: briefContext });
             if (r.text) return r.text;
           } catch { continue; }
         }
         return '';
       })(),
 
-      // FLUX Kontext — edit the original image (img2img)
+      // FLUX Kontext Max — edit the original image (preserves everything else)
       callReplicateSlug('black-forest-labs/flux-kontext-max', {
-        prompt: `Edit this eyewear photo: ${editDirection}. Keep the same eyewear frames and pose. Professional Instagram quality.`,
+        prompt: editDirection,
         input_image: imageUrl,
-        aspect_ratio: '1:1',
+        aspect_ratio: 'match_input_image',
         output_format: 'jpg',
       }),
 
-      // FLUX Schnell — fast text-to-image
-      callReplicateSlug('black-forest-labs/flux-schnell', {
-        prompt: `Professional eyewear Instagram photo. Indian model wearing stylish designer sunglasses, vibrant background, ${brand} brand, fashion photography`,
-        aspect_ratio: '1:1',
+      // FLUX Kontext Pro — second variant with same conservative edit
+      callReplicateSlug('black-forest-labs/flux-kontext-pro', {
+        prompt: editDirection,
+        input_image: imageUrl,
+        aspect_ratio: 'match_input_image',
         output_format: 'jpg',
-        num_outputs: 1,
       }),
     ]);
 
@@ -187,8 +200,8 @@ export async function POST(request: NextRequest) {
 
     const editedImages: Array<{ url: string; model: string; type: 'edited' | 'generated' }> = [];
 
-    if (kontext.url) editedImages.push({ url: kontext.url, model: 'FLUX Kontext (edited)', type: 'edited' });
-    if (schnell.url) editedImages.push({ url: schnell.url, model: 'FLUX Schnell (new)', type: 'generated' });
+    if (kontext.url) editedImages.push({ url: kontext.url, model: 'FLUX Kontext Max', type: 'edited' });
+    if (schnell.url) editedImages.push({ url: schnell.url, model: 'FLUX Kontext Pro', type: 'edited' });
 
     // If both Replicate calls failed, fall back to Pollinations (free)
     if (editedImages.length === 0) {
