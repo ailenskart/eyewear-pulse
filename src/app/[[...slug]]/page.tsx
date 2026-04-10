@@ -161,7 +161,7 @@ function MediaCard({ post, onOpen, delay }: { post: Post; onOpen: () => void; de
 }
 
 /* ═══ App ═══ */
-type Tab = 'feed' | 'products' | 'boards' | 'ads' | 'watchlist' | 'intel' | 'brand';
+type Tab = 'feed' | 'products' | 'boards' | 'ads' | 'watchlist' | 'intel' | 'brand' | 'sources';
 
 export default function App() {
   const router = useRouter();
@@ -186,6 +186,7 @@ export default function App() {
     if (first === 'watchlist') return 'watchlist';
     if (first === 'intel') return 'intel';
     if (first === 'brands') return 'brand';
+    if (first === 'sources') return 'sources';
     return 'feed';
   }, [slug]);
   const focusedProductId = slug[0]?.toLowerCase() === 'products' ? (slug[1] || null) : null;
@@ -318,6 +319,9 @@ export default function App() {
         {/* ── Meta Ad Library ── */}
         {tab === 'ads' && <AdLibrary />}
 
+        {/* ── Intelligence Sources ── */}
+        {tab === 'sources' && <Sources />}
+
         {/* ── Watchlist ── */}
         {tab === 'watchlist' && <Watchlist onOpen={setOpen} />}
 
@@ -342,10 +346,10 @@ export default function App() {
         {[
           { k: 'feed', l: 'Feed', svg: <svg width="20" height="20" fill="none" stroke="currentColor" strokeWidth="1.8" viewBox="0 0 24 24"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><path d="M9 22V12h6v10"/></svg> },
           { k: 'ads', l: 'Ads', svg: <svg width="20" height="20" fill="none" stroke="currentColor" strokeWidth="1.8" viewBox="0 0 24 24"><path d="M3 11l18-5v12L3 13v-2z"/><path d="M11.6 16.8a3 3 0 11-5.8-1.6"/></svg> },
-          { k: 'products', l: 'Products', svg: <svg width="20" height="20" fill="none" stroke="currentColor" strokeWidth="1.8" viewBox="0 0 24 24"><path d="M6 2L3 6v14a2 2 0 002 2h14a2 2 0 002-2V6l-3-4z"/><path d="M3 6h18"/><path d="M16 10a4 4 0 01-8 0"/></svg> },
+          { k: 'sources', l: 'Intel', svg: <svg width="20" height="20" fill="none" stroke="currentColor" strokeWidth="1.8" viewBox="0 0 24 24"><path d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg> },
+          { k: 'products', l: 'Shop', svg: <svg width="20" height="20" fill="none" stroke="currentColor" strokeWidth="1.8" viewBox="0 0 24 24"><path d="M6 2L3 6v14a2 2 0 002 2h14a2 2 0 002-2V6l-3-4z"/><path d="M3 6h18"/><path d="M16 10a4 4 0 01-8 0"/></svg> },
           { k: 'watchlist', l: 'Watch', svg: <svg width="20" height="20" fill="none" stroke="currentColor" strokeWidth="1.8" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="3"/></svg> },
           { k: 'boards', l: 'Boards', svg: <svg width="20" height="20" fill="none" stroke="currentColor" strokeWidth="1.8" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg> },
-          { k: 'intel', l: 'Intel', svg: <svg width="20" height="20" fill="none" stroke="currentColor" strokeWidth="1.8" viewBox="0 0 24 24"><path d="M18 20V10M12 20V4M6 20v-6"/></svg> },
         ].map(x => (
           <button key={x.k} onClick={() => setTab(x.k as typeof tab)} className={`flex flex-col items-center gap-[2px] py-1 px-3 ${tab===x.k ? 'text-[var(--brand)]' : 'text-[var(--text-3)]'}`}>
             {x.svg}
@@ -1759,6 +1763,460 @@ function AdLibrary() {
               </div>
             </article>
           ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ═══ Sources — Unified intelligence hub (Shopify + Trends + Reddit + Google Ads) ═══ */
+
+type SourceTab = 'shopify' | 'trends' | 'reddit' | 'google-ads';
+
+interface ShopifyStore { handle: string; domain: string; name: string }
+interface ShopifyProd { id: number; title: string; image: string; price: string; comparePrice: string | null; available: boolean; createdAt: string; url: string; variantCount: number; soldOut: boolean }
+interface ShopifyStats { totalProducts: number; totalActive: number; totalVariants: number; avgPrice: number; minPrice: number; maxPrice: number; newThisWeek: number; topTypes: Array<{ name: string; count: number }>; topTags: Array<{ name: string; count: number }> }
+
+function Sources() {
+  const [sub, setSub] = useState<SourceTab>('shopify');
+
+  return (
+    <div className="py-4">
+      <div className="mb-4">
+        <h2 className="text-[20px] font-bold tracking-tight">Intelligence Sources</h2>
+        <p className="text-[11px] text-[var(--text-3)] mt-0.5">Live data from every corner of the eyewear market</p>
+      </div>
+
+      {/* Sub-tabs */}
+      <div className="flex gap-2 mb-4 overflow-x-auto" style={{ scrollbarWidth: 'none' }}>
+        {[
+          { k: 'shopify', l: 'Shopify catalogs', icon: '🛍️' },
+          { k: 'trends', l: 'Google Trends', icon: '📈' },
+          { k: 'reddit', l: 'Reddit buzz', icon: '💬' },
+          { k: 'google-ads', l: 'Google Ads', icon: '🎯' },
+        ].map(t => (
+          <button
+            key={t.k}
+            onClick={() => setSub(t.k as SourceTab)}
+            className={`px-3 py-2 rounded-lg text-[12px] font-semibold whitespace-nowrap flex-shrink-0 flex items-center gap-1.5 ${sub === t.k ? 'bg-[var(--brand)] text-white' : 'bg-[var(--bg-alt)] text-[var(--text-2)]'}`}
+          >
+            <span>{t.icon}</span>{t.l}
+          </button>
+        ))}
+      </div>
+
+      {sub === 'shopify' && <ShopifySource />}
+      {sub === 'trends' && <TrendsSource />}
+      {sub === 'reddit' && <RedditSource />}
+      {sub === 'google-ads' && <GoogleAdsSource />}
+    </div>
+  );
+}
+
+/* ── Shopify storefront scraper ── */
+function ShopifySource() {
+  const [stores, setStores] = useState<ShopifyStore[]>([]);
+  const [store, setStore] = useState<string>('warbyparker.com');
+  const [customStore, setCustomStore] = useState('');
+  const [products, setProducts] = useState<ShopifyProd[]>([]);
+  const [stats, setStats] = useState<ShopifyStats | null>(null);
+  const [recent, setRecent] = useState<ShopifyProd[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [err, setErr] = useState('');
+
+  useEffect(() => {
+    fetch('/api/shopify?list=1').then(r => r.json()).then(d => setStores(d.stores || []));
+  }, []);
+
+  const load = useCallback(async (targetDomain: string) => {
+    if (!targetDomain) return;
+    setLoading(true);
+    setErr('');
+    try {
+      const res = await fetch(`/api/shopify?store=${encodeURIComponent(targetDomain)}&limit=50`);
+      const data = await res.json();
+      if (data.error) {
+        setErr(data.error);
+        setProducts([]);
+        setStats(null);
+        setRecent([]);
+      } else {
+        setProducts(data.products || []);
+        setStats(data.stats || null);
+        setRecent(data.recentlyAdded || []);
+      }
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : 'Fetch failed');
+    }
+    setLoading(false);
+  }, []);
+
+  useEffect(() => { load(store); }, [store, load]);
+
+  return (
+    <div>
+      {/* Store picker */}
+      <div className="bg-[var(--surface)] border border-[var(--line)] rounded-xl p-3 mb-4">
+        <div className="flex gap-2 mb-2">
+          <input
+            type="text" value={customStore} onChange={e => setCustomStore(e.target.value)}
+            placeholder="Enter any Shopify store domain…"
+            className="flex-1 min-w-0 bg-[var(--bg-alt)] rounded-lg px-3 py-2 text-[12px] outline-none"
+            onKeyDown={e => { if (e.key === 'Enter' && customStore.trim()) { setStore(customStore.trim()); setCustomStore(''); } }}
+          />
+          <button
+            onClick={() => { if (customStore.trim()) { setStore(customStore.trim()); setCustomStore(''); } }}
+            className="px-3 py-2 bg-[var(--brand)] text-white text-[11px] font-semibold rounded-lg"
+          >
+            Scan
+          </button>
+        </div>
+        <div className="flex gap-1.5 overflow-x-auto" style={{ scrollbarWidth: 'none' }}>
+          {stores.map(s => (
+            <button
+              key={s.handle}
+              onClick={() => setStore(s.domain)}
+              className={`px-2.5 py-1 rounded-full text-[11px] font-medium whitespace-nowrap flex-shrink-0 ${store === s.domain ? 'bg-[var(--text)] text-[var(--bg)]' : 'bg-[var(--bg-alt)] text-[var(--text-2)]'}`}
+            >
+              {s.name}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {loading && <div className="flex items-center justify-center py-12 text-[var(--text-3)] text-[12px]"><div className="w-4 h-4 border-2 border-[var(--brand)] border-t-transparent rounded-full animate-spin mr-2" />Scanning {store}…</div>}
+
+      {err && <div className="bg-red-500/10 border border-red-500/30 text-red-400 rounded-xl p-3 text-[12px] mb-4">{err}</div>}
+
+      {stats && !loading && (
+        <>
+          {/* Stats row */}
+          <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 mb-4">
+            <StatTile label="Products" value={String(stats.totalProducts)} />
+            <StatTile label="Active" value={String(stats.totalActive)} />
+            <StatTile label="Variants" value={String(stats.totalVariants)} />
+            <StatTile label="Avg price" value={`$${stats.avgPrice}`} accent />
+            <StatTile label="New this week" value={String(stats.newThisWeek)} accent={stats.newThisWeek > 0} />
+          </div>
+
+          {/* New this week */}
+          {recent.length > 0 && (
+            <div className="mb-4">
+              <div className="text-[11px] uppercase tracking-wider font-bold text-[var(--brand)] mb-2">🔥 New this week</div>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                {recent.map(p => (
+                  <a key={p.id} href={p.url} target="_blank" rel="noopener noreferrer" className="bg-[var(--surface)] border border-[var(--brand)] rounded-xl overflow-hidden">
+                    <div className="aspect-square bg-white"><img src={p.image} alt={p.title} className="w-full h-full object-contain p-2" loading="lazy" onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }} /></div>
+                    <div className="p-2">
+                      <div className="text-[11px] font-semibold line-clamp-1">{p.title}</div>
+                      <div className="text-[11px] text-[var(--brand)] font-bold">${p.price}</div>
+                    </div>
+                  </a>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Top tags */}
+          {stats.topTags.length > 0 && (
+            <div className="mb-4">
+              <div className="text-[11px] uppercase tracking-wider font-bold text-[var(--text-3)] mb-2">Top tags</div>
+              <div className="flex flex-wrap gap-1.5">
+                {stats.topTags.map(t => (
+                  <span key={t.name} className="text-[11px] px-2 py-1 bg-[var(--bg-alt)] rounded-full">{t.name} <span className="text-[var(--text-3)]">{t.count}</span></span>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Product grid */}
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+            {products.map(p => (
+              <a key={p.id} href={p.url} target="_blank" rel="noopener noreferrer" className="bg-[var(--surface)] border border-[var(--line)] rounded-xl overflow-hidden">
+                <div className="aspect-square bg-white relative">
+                  <img src={p.image} alt={p.title} className="w-full h-full object-contain p-3" loading="lazy" onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }} />
+                  {p.soldOut && <div className="absolute top-2 left-2 bg-black/80 text-white text-[9px] uppercase font-bold tracking-wider px-1.5 py-0.5 rounded">Sold out</div>}
+                </div>
+                <div className="p-2.5">
+                  <div className="text-[11px] font-semibold line-clamp-2 leading-snug">{p.title}</div>
+                  <div className="flex items-baseline gap-1.5 mt-1">
+                    <span className="text-[13px] font-bold">${p.price}</span>
+                    {p.comparePrice && Number(p.comparePrice) > 0 && <span className="text-[10px] text-[var(--text-3)] line-through">${p.comparePrice}</span>}
+                  </div>
+                  <div className="text-[9px] text-[var(--text-3)] mt-0.5">{p.variantCount} variant{p.variantCount !== 1 ? 's' : ''}</div>
+                </div>
+              </a>
+            ))}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+function StatTile({ label, value, accent }: { label: string; value: string; accent?: boolean }) {
+  return (
+    <div className="bg-[var(--surface)] border border-[var(--line)] rounded-xl p-3">
+      <div className="text-[9px] uppercase tracking-wider text-[var(--text-3)] font-bold">{label}</div>
+      <div className={`text-[16px] font-bold ${accent ? 'text-[var(--brand)]' : ''}`}>{value}</div>
+    </div>
+  );
+}
+
+/* ── Google Trends ── */
+function TrendsSource() {
+  const [q, setQ] = useState('sunglasses,eyeglasses,ray-ban');
+  const [geo, setGeo] = useState('IN');
+  const [timeframe, setTimeframe] = useState('today 3-m');
+  const [data, setData] = useState<{ relatedQueries?: unknown; relatedTopics?: unknown; timeline?: unknown; error?: string; hint?: string } | null>(null);
+  const [loading, setLoading] = useState(false);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await fetch(`/api/trends?q=${encodeURIComponent(q)}&geo=${geo}&timeframe=${encodeURIComponent(timeframe)}`);
+      setData(await res.json());
+    } catch (e) {
+      setData({ error: e instanceof Error ? e.message : 'Fetch failed' });
+    }
+    setLoading(false);
+  }, [q, geo, timeframe]);
+
+  useEffect(() => { load(); }, [load]);
+
+  // Related queries structure varies — extract rising + top
+  const extractRanked = (widget: unknown): Array<{ query: string; value: number | string }> => {
+    try {
+      const w = widget as { default?: { rankedList?: Array<{ rankedKeyword?: Array<{ query?: string; topic?: { title: string }; value?: number; formattedValue?: string }> }> } };
+      const list = w?.default?.rankedList?.[0]?.rankedKeyword || [];
+      return list.slice(0, 20).map(k => ({ query: k.query || k.topic?.title || '?', value: k.formattedValue || k.value || '' }));
+    } catch { return []; }
+  };
+
+  const top = data ? extractRanked(data.relatedQueries) : [];
+  const topics = data ? extractRanked(data.relatedTopics) : [];
+
+  return (
+    <div>
+      <div className="bg-[var(--surface)] border border-[var(--line)] rounded-xl p-3 mb-4 space-y-2">
+        <input
+          type="text" value={q} onChange={e => setQ(e.target.value)}
+          placeholder="comma-separated terms — e.g. ray-ban,oakley,lenskart"
+          className="w-full bg-[var(--bg-alt)] rounded-lg px-3 py-2 text-[12px] outline-none"
+          onKeyDown={e => { if (e.key === 'Enter') load(); }}
+        />
+        <div className="flex gap-2">
+          <select value={geo} onChange={e => setGeo(e.target.value)} className="bg-[var(--bg-alt)] rounded-lg px-2 py-2 text-[11px] outline-none">
+            <option value="">Worldwide</option>
+            <option value="IN">🇮🇳 India</option>
+            <option value="US">🇺🇸 USA</option>
+            <option value="GB">🇬🇧 UK</option>
+            <option value="AE">🇦🇪 UAE</option>
+            <option value="SG">🇸🇬 SG</option>
+            <option value="AU">🇦🇺 AU</option>
+            <option value="CA">🇨🇦 CA</option>
+          </select>
+          <select value={timeframe} onChange={e => setTimeframe(e.target.value)} className="bg-[var(--bg-alt)] rounded-lg px-2 py-2 text-[11px] outline-none flex-1">
+            <option value="now 1-d">Past 24h</option>
+            <option value="now 7-d">Past 7 days</option>
+            <option value="today 1-m">Past month</option>
+            <option value="today 3-m">Past 3 months</option>
+            <option value="today 12-m">Past year</option>
+            <option value="today 5-y">Past 5 years</option>
+          </select>
+          <button onClick={load} disabled={loading} className="px-4 py-2 bg-[var(--brand)] text-white text-[12px] font-semibold rounded-lg disabled:opacity-50">{loading ? '…' : 'Search'}</button>
+        </div>
+      </div>
+
+      {data?.error && <div className="bg-red-500/10 border border-red-500/30 text-red-400 rounded-xl p-3 text-[12px] mb-4">{data.error}{data.hint && ` — ${data.hint}`}</div>}
+
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        {/* Related queries */}
+        <div className="bg-[var(--surface)] border border-[var(--line)] rounded-xl p-4">
+          <div className="text-[11px] uppercase tracking-wider font-bold text-[var(--brand)] mb-2">🔥 Related queries</div>
+          {top.length === 0 ? (
+            <div className="text-[11px] text-[var(--text-3)]">No data</div>
+          ) : (
+            <div className="space-y-1.5">
+              {top.map((k, i) => (
+                <div key={i} className="flex items-center justify-between text-[12px]">
+                  <span className="truncate">{k.query}</span>
+                  <span className="text-[var(--text-3)] flex-shrink-0 ml-2">{String(k.value)}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Related topics */}
+        <div className="bg-[var(--surface)] border border-[var(--line)] rounded-xl p-4">
+          <div className="text-[11px] uppercase tracking-wider font-bold text-[var(--brand)] mb-2">📈 Related topics</div>
+          {topics.length === 0 ? (
+            <div className="text-[11px] text-[var(--text-3)]">No data</div>
+          ) : (
+            <div className="space-y-1.5">
+              {topics.map((k, i) => (
+                <div key={i} className="flex items-center justify-between text-[12px]">
+                  <span className="truncate">{k.query}</span>
+                  <span className="text-[var(--text-3)] flex-shrink-0 ml-2">{String(k.value)}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ── Reddit mentions ── */
+interface RedditResultPost { id: string; title: string; snippet: string; subreddit: string; author: string; score: number; upvoteRatio: number; comments: number; createdAt: string; permalink: string; thumbnail: string }
+function RedditSource() {
+  const [q, setQ] = useState('lenskart');
+  const [sub, setSub] = useState('');
+  const [sort, setSort] = useState('relevance');
+  const [time, setTime] = useState('month');
+  const [posts, setPosts] = useState<RedditResultPost[]>([]);
+  const [stats, setStats] = useState<{ totalScore: number; totalComments: number; avgUpvoteRatio: number; subBreakdown: Array<{ name: string; count: number }> } | null>(null);
+  const [loading, setLoading] = useState(false);
+
+  const load = useCallback(async () => {
+    if (!q.trim()) return;
+    setLoading(true);
+    try {
+      const p = new URLSearchParams({ q, sort, time, limit: '30' });
+      if (sub) p.set('sub', sub);
+      const res = await fetch(`/api/reddit?${p}`);
+      const data = await res.json();
+      setPosts(data.posts || []);
+      setStats(data.stats || null);
+    } catch {}
+    setLoading(false);
+  }, [q, sub, sort, time]);
+
+  useEffect(() => { load(); }, [load]);
+
+  return (
+    <div>
+      <div className="bg-[var(--surface)] border border-[var(--line)] rounded-xl p-3 mb-4 space-y-2">
+        <div className="flex gap-2">
+          <input type="text" value={q} onChange={e => setQ(e.target.value)} placeholder="Brand or topic" className="flex-1 min-w-0 bg-[var(--bg-alt)] rounded-lg px-3 py-2 text-[12px] outline-none" onKeyDown={e => { if (e.key === 'Enter') load(); }} />
+          <input type="text" value={sub} onChange={e => setSub(e.target.value)} placeholder="subreddit (opt)" className="w-32 bg-[var(--bg-alt)] rounded-lg px-3 py-2 text-[12px] outline-none" />
+          <button onClick={load} disabled={loading} className="px-4 py-2 bg-[var(--brand)] text-white text-[12px] font-semibold rounded-lg disabled:opacity-50">{loading ? '…' : 'Search'}</button>
+        </div>
+        <div className="flex gap-2">
+          <select value={sort} onChange={e => setSort(e.target.value)} className="flex-1 bg-[var(--bg-alt)] rounded-lg px-2 py-1.5 text-[11px] outline-none">
+            <option value="relevance">Relevance</option>
+            <option value="hot">Hot</option>
+            <option value="top">Top</option>
+            <option value="new">New</option>
+            <option value="comments">Most comments</option>
+          </select>
+          <select value={time} onChange={e => setTime(e.target.value)} className="flex-1 bg-[var(--bg-alt)] rounded-lg px-2 py-1.5 text-[11px] outline-none">
+            <option value="day">24h</option>
+            <option value="week">Week</option>
+            <option value="month">Month</option>
+            <option value="year">Year</option>
+            <option value="all">All time</option>
+          </select>
+        </div>
+      </div>
+
+      {stats && (
+        <div className="grid grid-cols-3 gap-2 mb-4">
+          <StatTile label="Total upvotes" value={n(stats.totalScore)} accent />
+          <StatTile label="Comments" value={n(stats.totalComments)} />
+          <StatTile label="Upvote ratio" value={`${Math.round(stats.avgUpvoteRatio * 100)}%`} />
+        </div>
+      )}
+
+      {stats && stats.subBreakdown.length > 0 && (
+        <div className="mb-4">
+          <div className="text-[11px] uppercase tracking-wider font-bold text-[var(--text-3)] mb-2">Posts by subreddit</div>
+          <div className="flex flex-wrap gap-1.5">
+            {stats.subBreakdown.map(s => (
+              <span key={s.name} className="text-[11px] px-2 py-1 bg-[var(--bg-alt)] rounded-full">r/{s.name} <span className="text-[var(--brand)] font-semibold">{s.count}</span></span>
+            ))}
+          </div>
+        </div>
+      )}
+
+      <div className="space-y-2">
+        {posts.map(p => (
+          <a key={p.id} href={p.permalink} target="_blank" rel="noopener noreferrer" className="block bg-[var(--surface)] border border-[var(--line)] rounded-xl p-3 hover:border-[var(--brand)]">
+            <div className="flex gap-3">
+              {p.thumbnail && <img src={p.thumbnail} alt="" className="w-16 h-16 rounded object-cover flex-shrink-0 bg-[var(--bg-alt)]" onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }} />}
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2 mb-1 text-[10px] text-[var(--text-3)]">
+                  <span className="font-semibold">r/{p.subreddit}</span>
+                  <span>·</span>
+                  <span>u/{p.author}</span>
+                  <span>·</span>
+                  <span>{new Date(p.createdAt).toLocaleDateString()}</span>
+                </div>
+                <div className="text-[12px] font-semibold line-clamp-2">{p.title}</div>
+                {p.snippet && <p className="text-[11px] text-[var(--text-2)] line-clamp-2 mt-1">{p.snippet}</p>}
+                <div className="flex gap-3 mt-1.5 text-[11px] text-[var(--text-3)]">
+                  <span>↑ {n(p.score)}</span>
+                  <span>💬 {n(p.comments)}</span>
+                  <span>{Math.round(p.upvoteRatio * 100)}% upvoted</span>
+                </div>
+              </div>
+            </div>
+          </a>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/* ── Google Ads Transparency ── */
+function GoogleAdsSource() {
+  const [advertiser, setAdvertiser] = useState('Lenskart');
+  const [region, setRegion] = useState('IN');
+  const [data, setData] = useState<{ advertiserId?: string; advertiserName?: string; profileUrl?: string; note?: string; error?: string } | null>(null);
+  const [loading, setLoading] = useState(false);
+
+  const load = async () => {
+    if (!advertiser.trim()) return;
+    setLoading(true);
+    try {
+      const res = await fetch(`/api/google-ads?advertiser=${encodeURIComponent(advertiser)}&region=${region}`);
+      setData(await res.json());
+    } catch (e) {
+      setData({ error: e instanceof Error ? e.message : 'Fetch failed' });
+    }
+    setLoading(false);
+  };
+
+  return (
+    <div>
+      <div className="bg-[var(--surface)] border border-[var(--line)] rounded-xl p-3 mb-4 flex gap-2">
+        <input type="text" value={advertiser} onChange={e => setAdvertiser(e.target.value)} placeholder="Advertiser name" className="flex-1 min-w-0 bg-[var(--bg-alt)] rounded-lg px-3 py-2 text-[12px] outline-none" onKeyDown={e => { if (e.key === 'Enter') load(); }} />
+        <select value={region} onChange={e => setRegion(e.target.value)} className="bg-[var(--bg-alt)] rounded-lg px-2 text-[11px] outline-none">
+          <option value="IN">🇮🇳</option><option value="US">🇺🇸</option><option value="GB">🇬🇧</option><option value="AE">🇦🇪</option>
+        </select>
+        <button onClick={load} disabled={loading} className="px-4 py-2 bg-[var(--brand)] text-white text-[12px] font-semibold rounded-lg disabled:opacity-50">{loading ? '…' : 'Find'}</button>
+      </div>
+
+      {data?.error && <div className="bg-red-500/10 border border-red-500/30 text-red-400 rounded-xl p-3 text-[12px] mb-4">{data.error}</div>}
+
+      {data && !data.error && (
+        <div className="bg-[var(--surface)] border border-[var(--line)] rounded-xl p-4">
+          {data.advertiserId ? (
+            <>
+              <div className="text-[13px] font-semibold">{data.advertiserName}</div>
+              <div className="text-[11px] text-[var(--text-3)] mt-0.5">Advertiser ID: {data.advertiserId}</div>
+              <a href={data.profileUrl} target="_blank" rel="noopener noreferrer" className="inline-block mt-3 px-3 py-2 bg-[var(--brand)] text-white text-[11px] font-semibold rounded-lg">
+                View all ads on Google →
+              </a>
+            </>
+          ) : (
+            <div className="text-[12px] text-[var(--text-2)]">{data.note || 'No advertiser found.'}</div>
+          )}
+          <p className="text-[10px] text-[var(--text-3)] mt-3 leading-relaxed">
+            Google Ads Transparency Center is a JavaScript-heavy SPA — full ad creatives require deeper protobuf parsing of their batchexecute RPC. For now we surface the advertiser profile page which opens directly in Google&apos;s UI with every ad they&apos;re running.
+          </p>
         </div>
       )}
     </div>
