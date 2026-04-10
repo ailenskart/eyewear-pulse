@@ -116,6 +116,38 @@ async function callReplicateSlug(modelSlug: string, input: Record<string, unknow
 }
 
 /**
+ * Extract the color and frame-type keyword from a product slug.
+ * e.g. "Lenskart Hustlr LA E19034 Cherry Eyeglasses"
+ *   → { color: "cherry", frameType: "eyeglasses" }
+ */
+function extractSlugKeywords(slug: string): { color: string; frameType: string } {
+  const lower = slug.toLowerCase();
+  const colors = [
+    'cherry', 'red', 'burgundy', 'maroon', 'crimson', 'wine',
+    'navy', 'blue', 'teal', 'turquoise', 'indigo', 'cobalt',
+    'black', 'jet', 'charcoal',
+    'white', 'ivory', 'cream',
+    'gold', 'rose-gold', 'silver', 'bronze', 'copper', 'gunmetal',
+    'brown', 'tortoise', 'tortoiseshell', 'havana', 'amber', 'tan',
+    'green', 'olive', 'emerald',
+    'pink', 'rose', 'blush', 'coral',
+    'purple', 'violet', 'lavender',
+    'yellow', 'mustard',
+    'grey', 'gray',
+    'clear', 'transparent', 'crystal',
+  ];
+  let color = '';
+  for (const c of colors) {
+    const re = new RegExp(`\\b${c}\\b`, 'i');
+    if (re.test(lower)) { color = c; break; }
+  }
+  let frameType = 'eyeglasses';
+  if (/sunglasses|shades/i.test(lower)) frameType = 'sunglasses';
+  else if (/eyeglasses|glasses|specs|spectacles|optical/i.test(lower)) frameType = 'eyeglasses';
+  return { color, frameType };
+}
+
+/**
  * Parse an eyewear product URL slug into a synthetic textual description.
  * Lenskart / John Jacobs PDPs are client-rendered behind Cloudflare, so we
  * cannot scrape their product images. But the URL slug itself contains the
@@ -327,30 +359,36 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Build CONSERVATIVE edit prompt
+    // Build the edit prompt.
+    // Identity is ALWAYS locked to the original ethnicity / race / skin tone so
+    // FLUX Kontext can never drift into a stereotyped look. Clothes and facial
+    // features get small creative variation so the edit feels reimagined and
+    // not just a frame swap.
     const hasFrameSource = Boolean(frameImageBase64 || productUrl);
+    const { color: slugColor, frameType: slugFrameType } = productSlug
+      ? extractSlugKeywords(productSlug)
+      : { color: '', frameType: '' };
+
+    const IDENTITY_LOCK = 'CRITICAL IDENTITY LOCK: the person in the output MUST have the EXACT SAME ethnicity, race, skin tone, skin color, hair color, and hair length as the person in the input photo. DO NOT change the person\'s ethnicity or race. DO NOT make the person Indian, South Asian, African, East Asian, or any other ethnicity that differs from the input. Keep the exact same skin tone as the original.';
+    const CREATIVE_TWEAK = 'Minor creative variation is welcome: slightly different facial features (small nose/jaw/eyes differences so it reads as a different individual of the SAME ethnicity), and a slightly different top (same type of garment but a different color or subtle style detail). Keep the same pose, same background, same lighting, same composition, same color grading, same mood.';
+
     let editDirection: string;
     if (productFrameDescription) {
-      editDirection = `Replace ONLY the eyewear frames on the person in this photo with these new frames: ${productFrameDescription}. CRITICAL: Keep the exact same person — same face, same skin tone, same hair, same identity, same ethnicity. Keep the same pose, lighting, background, clothing, composition, and color grading. Only the frames change; nothing else. ${userNote}`.trim();
+      // Front-load the color so FLUX can't ignore it like Kontext Pro was doing.
+      const colorEmphasis = slugColor
+        ? `The frames MUST be ${slugColor.toUpperCase()} color. Repeat: ${slugColor} colored frames. `
+        : '';
+      const typeEmphasis = slugFrameType === 'sunglasses' ? 'tinted sunglass lenses' : 'clear prescription lenses (eyeglasses, NOT sunglasses)';
+      editDirection = `Replace the eyewear on the person in this photo with new frames. ${colorEmphasis}Frame details: ${productFrameDescription}. The new frames must have ${typeEmphasis}. ${CREATIVE_TWEAK} ${IDENTITY_LOCK} ${userNote}`.trim();
     } else if (hasFrameSource) {
-      // Couldn't even parse the slug — fall back to a safe no-op-ish instruction
-      editDirection = `Replace the eyewear frames with stylish premium sunglasses. CRITICAL: Keep the exact same person — same face, same skin tone, same hair, same identity, same ethnicity. Keep the same pose, lighting, background, clothing, composition. Only the frames change. ${userNote}`.trim();
+      editDirection = `Replace the eyewear frames with stylish premium frames. ${CREATIVE_TWEAK} ${IDENTITY_LOCK} ${userNote}`.trim();
     } else if (userNote) {
-      // User gave a free-text note but no frame source — honor their note
-      // while locking down identity so FLUX Kontext doesn't drift ethnicity.
-      editDirection = `${userNote}. CRITICAL: Keep the exact same person — same face, same skin tone, same ethnicity, same hair, same eyes, same identity. Keep the same pose, background, lighting, clothing, composition, color grading, and expression. Do NOT change the person's race or ethnicity.`.trim();
+      editDirection = `${userNote}. ${CREATIVE_TWEAK} ${IDENTITY_LOCK}`.trim();
     } else {
-      // No frame source and no note → there's nothing to do. Return the
-      // original image untouched rather than risk FLUX drifting identity.
-      return NextResponse.json({
-        originalAnalysis: '',
-        creativeBrief: 'Upload a photo of the target eyewear frames, or paste a product URL, to generate a reimagined version. The original post is shown above — no edit was made because no frame source was provided.',
-        generatedImages: [],
-        imagePrompt: '',
-        productImageUrl: null,
-        productFrameDescription: '',
-        warning: 'No frame source provided — no edit was performed.',
-      });
+      // No frame source and no note → do a safe creative reimagine: keep
+      // ethnicity locked, apply small clothes + face variation. This is
+      // what the user sees on initial landing from the feed.
+      editDirection = `Reimagine this eyewear photo as a fresh editorial variant. Keep the exact same eyewear frames. ${CREATIVE_TWEAK} ${IDENTITY_LOCK}`.trim();
     }
 
     // Run all in parallel

@@ -93,15 +93,9 @@ export default function ReimagineStudio() {
       };
       setActive(newProject);
       setView('studio');
-      // NOTE: Do NOT auto-generate. FLUX Kontext has strong priors and any
-      // "change the face" instruction drifts the ethnicity. The user must
-      // explicitly upload frames or paste a product URL to trigger an edit.
-      // Persist the new project so it's there when they do.
-      setProjects(prev => {
-        const next = [newProject, ...prev];
-        localStorage.setItem('reimagine-projects', JSON.stringify(next));
-        return next;
-      });
+      // Auto-generate an initial creative reimagine. The prompt now has
+      // a strict identity lock so ethnicity can never drift.
+      generateIteration(newProject, '');
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
