@@ -1,17 +1,121 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { GoogleGenAI } from '@google/genai';
-import Replicate from 'replicate';
 
 const d = (s: string) => Buffer.from(s, 'base64').toString();
 const GEMINI_KEY = process.env.GEMINI_API_KEY || d('QUl6YVN5RDZyUl9lVUF2TWxoUnJZRHF3RU9JQ25ja1doUlZrN1JF');
 const REPLICATE_TOKEN = process.env.REPLICATE_API_TOKEN || d('cjhfNFNrN2p4UFVtbTg0djhLU28wOHZiQ0dSaEdkVmpmajN1T3YzZg==');
+
+/**
+ * Call Replicate HTTP API directly — no SDK, fully in control.
+ * Returns the first image URL or null.
+ */
+async function callReplicate(modelVersion: string, input: Record<string, unknown>): Promise<string | null> {
+  try {
+    // Create prediction
+    const createRes = await fetch('https://api.replicate.com/v1/predictions', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${REPLICATE_TOKEN}`,
+        'Content-Type': 'application/json',
+        'Prefer': 'wait=60', // wait up to 60s for completion
+      },
+      body: JSON.stringify({ version: modelVersion, input }),
+    });
+
+    const data = await createRes.json();
+
+    // If already completed (due to Prefer: wait)
+    if (data.status === 'succeeded' && data.output) {
+      if (Array.isArray(data.output)) return String(data.output[0]);
+      if (typeof data.output === 'string') return data.output;
+    }
+
+    // Otherwise poll
+    const pollUrl = data.urls?.get;
+    if (!pollUrl) {
+      console.warn('No poll URL:', JSON.stringify(data).substring(0, 300));
+      return null;
+    }
+
+    for (let i = 0; i < 30; i++) {
+      await new Promise(r => setTimeout(r, 2000));
+      const pollRes = await fetch(pollUrl, {
+        headers: { 'Authorization': `Bearer ${REPLICATE_TOKEN}` },
+      });
+      const pollData = await pollRes.json();
+
+      if (pollData.status === 'succeeded' && pollData.output) {
+        if (Array.isArray(pollData.output)) return String(pollData.output[0]);
+        if (typeof pollData.output === 'string') return pollData.output;
+      }
+      if (pollData.status === 'failed' || pollData.status === 'canceled') {
+        console.warn('Prediction failed:', pollData.error);
+        return null;
+      }
+    }
+    return null;
+  } catch (e) {
+    console.warn('Replicate error:', e instanceof Error ? e.message : e);
+    return null;
+  }
+}
+
+/**
+ * Call Replicate using model slug (let Replicate pick latest version)
+ */
+async function callReplicateSlug(modelSlug: string, input: Record<string, unknown>): Promise<string | null> {
+  try {
+    const res = await fetch(`https://api.replicate.com/v1/models/${modelSlug}/predictions`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${REPLICATE_TOKEN}`,
+        'Content-Type': 'application/json',
+        'Prefer': 'wait=60',
+      },
+      body: JSON.stringify({ input }),
+    });
+    const data = await res.json();
+
+    if (data.status === 'succeeded' && data.output) {
+      if (Array.isArray(data.output)) return String(data.output[0]);
+      if (typeof data.output === 'string') return data.output;
+    }
+
+    const pollUrl = data.urls?.get;
+    if (!pollUrl) {
+      console.warn(`${modelSlug} no poll URL:`, JSON.stringify(data).substring(0, 300));
+      return null;
+    }
+
+    for (let i = 0; i < 30; i++) {
+      await new Promise(r => setTimeout(r, 2000));
+      const pollRes = await fetch(pollUrl, {
+        headers: { 'Authorization': `Bearer ${REPLICATE_TOKEN}` },
+      });
+      const pollData = await pollRes.json();
+
+      if (pollData.status === 'succeeded' && pollData.output) {
+        if (Array.isArray(pollData.output)) return String(pollData.output[0]);
+        if (typeof pollData.output === 'string') return pollData.output;
+      }
+      if (pollData.status === 'failed' || pollData.status === 'canceled') {
+        console.warn(`${modelSlug} failed:`, pollData.error);
+        return null;
+      }
+    }
+    return null;
+  } catch (e) {
+    console.warn(`${modelSlug} error:`, e instanceof Error ? e.message : e);
+    return null;
+  }
+}
 
 export async function POST(request: NextRequest) {
   const { imageUrl, prompt, brandName } = await request.json();
   if (!imageUrl) return NextResponse.json({ error: 'imageUrl required' }, { status: 400 });
 
   const brand = brandName || 'Lenskart';
-  const editDirection = prompt || `Make this suitable for ${brand} India — change model to look Indian/South Asian, keep exact same eyewear frames and pose, make background vibrant for Indian Instagram audience`;
+  const editDirection = prompt || `Make suitable for ${brand} India — change model to look Indian/South Asian, keep the exact same eyewear frames, make background vibrant`;
 
   try {
     // Fetch source image
@@ -20,11 +124,10 @@ export async function POST(request: NextRequest) {
     const imgBuffer = await imgRes.arrayBuffer();
     const base64 = Buffer.from(imgBuffer).toString('base64');
     const mimeType = imgRes.headers.get('content-type') || 'image/jpeg';
-    const dataUri = `data:${mimeType};base64,${base64}`;
 
-    // Run ALL tasks in parallel — don't let Gemini block Replicate
+    // Run all in parallel
     const [analysisResult, briefResult, kontextResult, schnellResult] = await Promise.allSettled([
-      // Task 1: Gemini image analysis
+      // Gemini analysis
       (async () => {
         const ai = new GoogleGenAI({ apiKey: GEMINI_KEY });
         for (const model of ['gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-1.5-flash']) {
@@ -32,7 +135,7 @@ export async function POST(request: NextRequest) {
             const r = await ai.models.generateContent({
               model, contents: [{ role: 'user', parts: [
                 { inlineData: { mimeType, data: base64 } },
-                { text: 'In 3 sentences: what eyewear frame style, what colors, what mood/setting.' },
+                { text: 'In 3 sentences: frame style, colors, mood.' },
               ]}],
             });
             if (r.text) return r.text;
@@ -41,7 +144,7 @@ export async function POST(request: NextRequest) {
         return '';
       })(),
 
-      // Task 2: Gemini creative brief
+      // Gemini brief
       (async () => {
         const ai = new GoogleGenAI({ apiKey: GEMINI_KEY });
         for (const model of ['gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-1.5-flash']) {
@@ -55,78 +158,43 @@ export async function POST(request: NextRequest) {
         return '';
       })(),
 
-      // Task 3: Replicate FLUX Kontext — EDIT the actual image
-      (async () => {
-        if (!REPLICATE_TOKEN) return null;
-        const replicate = new Replicate({ auth: REPLICATE_TOKEN });
-        // Try with image URL directly (Replicate can fetch URLs)
-        const output = await replicate.run('black-forest-labs/flux-kontext-max', {
-          input: {
-            prompt: `Edit this eyewear photo: ${editDirection}. Keep the same eyewear frames. Professional Instagram quality.`,
-            input_image: imageUrl,
-            aspect_ratio: '1:1',
-          },
-        });
-        // Output can be a ReadableStream, FileOutput, string, or array
-        if (output && typeof output === 'object' && 'url' in (output as Record<string, unknown>)) {
-          return String((output as Record<string, unknown>).url);
-        }
-        if (Array.isArray(output)) return String(output[0]);
-        if (typeof output === 'string') return output;
-        // Try toString
-        return output ? String(output) : null;
-      })(),
+      // FLUX Kontext — edit the original image (img2img)
+      callReplicateSlug('black-forest-labs/flux-kontext-max', {
+        prompt: `Edit this eyewear photo: ${editDirection}. Keep the same eyewear frames and pose. Professional Instagram quality.`,
+        input_image: imageUrl,
+        aspect_ratio: '1:1',
+        output_format: 'jpg',
+      }),
 
-      // Task 4: Replicate FLUX Schnell — generate new
-      (async () => {
-        if (!REPLICATE_TOKEN) return null;
-        const replicate = new Replicate({ auth: REPLICATE_TOKEN });
-        const output = await replicate.run('black-forest-labs/flux-schnell', {
-          input: {
-            prompt: `Professional eyewear Instagram post. Indian model wearing stylish designer sunglasses. Premium fashion photography, vibrant colorful background. ${brand} brand aesthetic.`,
-            aspect_ratio: '1:1',
-          },
-        });
-        if (output && typeof output === 'object' && 'url' in (output as Record<string, unknown>)) {
-          return String((output as Record<string, unknown>).url);
-        }
-        if (Array.isArray(output)) return String(output[0]);
-        if (typeof output === 'string') return output;
-        return output ? String(output) : null;
-      })(),
+      // FLUX Schnell — fast text-to-image
+      callReplicateSlug('black-forest-labs/flux-schnell', {
+        prompt: `Professional eyewear Instagram photo. Indian model wearing stylish designer sunglasses, vibrant background, ${brand} brand, fashion photography`,
+        aspect_ratio: '1:1',
+        output_format: 'jpg',
+        num_outputs: 1,
+      }),
     ]);
 
     const imageAnalysis = analysisResult.status === 'fulfilled' ? (analysisResult.value || '') : '';
     const briefText = briefResult.status === 'fulfilled' ? (briefResult.value || '') : '';
+    const kontextUrl = kontextResult.status === 'fulfilled' ? kontextResult.value : null;
+    const schnellUrl = schnellResult.status === 'fulfilled' ? schnellResult.value : null;
 
     const editedImages: Array<{ url: string; model: string; type: 'edited' | 'generated' }> = [];
 
-    // Add Kontext result (edited original)
-    if (kontextResult.status === 'fulfilled' && kontextResult.value) {
-      editedImages.push({ url: String(kontextResult.value), model: 'FLUX Kontext (edited)', type: 'edited' });
-    }
+    if (kontextUrl) editedImages.push({ url: kontextUrl, model: 'FLUX Kontext (edited)', type: 'edited' });
+    if (schnellUrl) editedImages.push({ url: schnellUrl, model: 'FLUX Schnell (new)', type: 'generated' });
 
-    // Add Schnell result (new generation)
-    if (schnellResult.status === 'fulfilled' && schnellResult.value) {
-      editedImages.push({ url: String(schnellResult.value), model: 'FLUX Schnell (new)', type: 'generated' });
-    }
-
-    // Pollinations fallback (always works, free) — keep prompt SHORT
-    const shortPrompt = `Indian model wearing stylish designer sunglasses, professional Instagram photo, ${brand} eyewear brand, premium fashion photography, vibrant background`;
-    editedImages.push({
-      url: `https://image.pollinations.ai/prompt/${encodeURIComponent(shortPrompt)}?width=1024&height=1024&model=flux&nologo=true&seed=${Date.now()}`,
-      model: 'FLUX (text-to-image)', type: 'generated',
-    });
-
-    // If we got nothing at all (no analysis, no brief, no images), report error
-    if (!imageAnalysis && !briefText && editedImages.length <= 1) {
-      const errors = [];
-      if (kontextResult.status === 'rejected') errors.push(`Kontext: ${kontextResult.reason}`);
-      if (schnellResult.status === 'rejected') errors.push(`Schnell: ${schnellResult.reason}`);
+    // Debug info if nothing worked
+    if (editedImages.length === 0) {
+      const debug: string[] = [];
+      if (kontextResult.status === 'rejected') debug.push(`Kontext: ${kontextResult.reason}`);
+      if (schnellResult.status === 'rejected') debug.push(`Schnell: ${schnellResult.reason}`);
       return NextResponse.json({
-        error: `AI services failed. ${errors.join('. ')}. Only fallback image available.`,
-        generatedImages: editedImages,
-      }, { status: 503 });
+        error: `Image generation failed. ${debug.join('. ') || 'Both Replicate models returned null. Check model slugs.'}`,
+        originalAnalysis: imageAnalysis,
+        creativeBrief: briefText,
+      }, { status: 502 });
     }
 
     return NextResponse.json({
