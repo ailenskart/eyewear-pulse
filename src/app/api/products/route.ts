@@ -1,201 +1,173 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { supabase } from '@/lib/supabase';
+import productsData from '@/data/products.json';
+
+/**
+ * Products API — reads from src/data/products.json (21k+ products
+ * across 45+ brands). Previously hit Supabase which had a stale
+ * 1000-row subset of only 5 brands.
+ *
+ * JSON schema (compact keys to keep the file size manageable):
+ *   b  = brand
+ *   n  = name
+ *   p  = price (string)
+ *   cp = compare price (string)
+ *   i  = image URL
+ *   t  = product type
+ *   u  = product URL
+ */
+
+interface RawProduct {
+  b?: string;
+  n?: string;
+  p?: string | number;
+  cp?: string | number;
+  i?: string;
+  t?: string;
+  u?: string;
+}
+
+interface OutProduct {
+  id: string;
+  brand: string;
+  name: string;
+  price: string;
+  comparePrice: string;
+  image: string;
+  type: string;
+  url: string;
+}
+
+const ALL: RawProduct[] = productsData as RawProduct[];
+
+// Pre-compute the clean, deduped list once per server cold start.
+const CLEAN: OutProduct[] = (() => {
+  const seen = new Set<string>();
+  const out: OutProduct[] = [];
+  for (const p of ALL) {
+    if (!p.b || !p.n || !p.i) continue;
+    const url = p.u || '';
+    // Dedupe by product URL (or brand+name if URL missing)
+    const key = url || `${p.b}|${p.n}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push({
+      id: key,
+      brand: p.b,
+      name: p.n,
+      price: p.p ? `$${Number(p.p).toFixed(2)}` : '',
+      comparePrice: p.cp && Number(p.cp) > 0 ? `$${Number(p.cp).toFixed(2)}` : '',
+      image: p.i,
+      type: p.t || 'Eyewear',
+      url,
+    });
+  }
+  return out;
+})();
+
+const ALL_BRANDS = [...new Set(CLEAN.map(p => p.brand))].sort();
+
+// Pre-group by brand so the mix=1 fast path doesn't have to re-scan.
+const BY_BRAND: Map<string, OutProduct[]> = (() => {
+  const m = new Map<string, OutProduct[]>();
+  for (const p of CLEAN) {
+    if (!m.has(p.brand)) m.set(p.brand, []);
+    m.get(p.brand)!.push(p);
+  }
+  return m;
+})();
+
+function fisherYates<T>(arr: T[]): T[] {
+  for (let i = arr.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [arr[i], arr[j]] = [arr[j], arr[i]];
+  }
+  return arr;
+}
 
 export async function GET(request: NextRequest) {
   const { searchParams } = request.nextUrl;
   const brand = searchParams.get('brand');
-  const search = searchParams.get('search');
-  const sortBy = searchParams.get('sortBy') || 'price_asc';
+  const search = (searchParams.get('search') || '').toLowerCase().trim();
+  const sortBy = searchParams.get('sortBy') || 'newest';
   const page = parseInt(searchParams.get('page') || '1');
   const limit = parseInt(searchParams.get('limit') || '40');
-  const show = searchParams.get('show') || 'active'; // active | new | delisted | all
-  const mix = searchParams.get('mix') === '1'; // when true, sample evenly per brand
+  const mix = searchParams.get('mix') === '1';
 
-  // ── Per-brand equal sampling (feed mode) ─────────────────────────────
-  // When mix=1 and no brand filter is set, fetch a fixed quota of
-  // products per brand in parallel so the feed gets fair representation
-  // across every brand instead of being dominated by whichever brand has
-  // the most products in the DB.
+  // ── Per-brand equal sampling mode for the "All" feed ────────────
   if (mix && (!brand || brand === 'All') && !search) {
-    // First grab the distinct brand list
-    const { data: brandRows } = await supabase
-      .from('products')
-      .select('brand')
-      .eq('is_active', true);
-    const allBrands = [...new Set((brandRows || []).map(r => r.brand))].filter(Boolean);
-
-    // Fetch up to `perBrand` products per brand in parallel.
-    // Alternate the sort direction per brand so we don't always return
-    // the same slice on reload.
-    const perBrand = Math.max(4, Math.ceil(limit / Math.max(allBrands.length, 1)));
-    const results = await Promise.all(
-      allBrands.map(async (b, i) => {
-        const q = supabase
-          .from('products')
-          .select('*')
-          .eq('is_active', true)
-          .eq('brand', b)
-          .gt('price', 0)
-          .order('first_seen_at', { ascending: i % 2 === 0 })
-          .limit(perBrand);
-        const { data } = await q;
-        return data || [];
-      })
-    );
-    const pool = results.flat();
-
-    // Brand list for filter chips
-    const brands = [...new Set(pool.map(p => p.brand))].filter(Boolean);
-
+    // Shuffle each brand's products and take the first N. Every brand
+    // in ALL_BRANDS contributes the same number of items so the feed
+    // is an even mix regardless of how many products each brand has.
+    const perBrand = Math.max(4, Math.ceil(limit / Math.max(ALL_BRANDS.length, 1)));
+    const pool: OutProduct[] = [];
+    for (const b of ALL_BRANDS) {
+      const items = BY_BRAND.get(b) || [];
+      if (items.length === 0) continue;
+      // Fisher-Yates shuffle a copy so the same slice isn't returned every request
+      const shuffled = fisherYates([...items]);
+      pool.push(...shuffled.slice(0, perBrand));
+    }
     return NextResponse.json({
-      products: pool.map(p => ({
-        ...p,
-        price: p.price ? `$${Number(p.price).toFixed(2)}` : '',
-        comparePrice: p.compare_price && Number(p.compare_price) > 0 ? `$${Number(p.compare_price).toFixed(2)}` : '',
-        image: p.image_url || p.blob_url || '',
-        type: p.product_type || 'Eyewear',
-        url: p.product_url,
-      })),
+      products: fisherYates(pool),
       total: pool.length,
-      brands: allBrands,
+      brands: ALL_BRANDS,
+      totalProducts: CLEAN.length,
+      totalBrands: ALL_BRANDS.length,
       mix: true,
     });
   }
 
-  // ── Normal catalog query (per-brand filter, search, paging) ──────────
-  // Build query
-  let query = supabase.from('products').select('*', { count: 'exact' });
-
-  // Filter by status
-  if (show === 'active') {
-    query = query.eq('is_active', true);
-  } else if (show === 'delisted') {
-    query = query.eq('is_active', false);
-  } else if (show === 'new') {
-    // Products first seen in the last 7 days
-    const weekAgo = new Date(Date.now() - 7 * 86400000).toISOString();
-    query = query.gte('first_seen_at', weekAgo).eq('is_active', true);
-  }
+  // ── Normal filtered query ───────────────────────────────────────
+  let filtered: OutProduct[] = CLEAN;
 
   if (brand && brand !== 'All') {
-    query = query.eq('brand', brand);
+    filtered = filtered.filter(p => p.brand === brand);
   }
+
   if (search) {
-    query = query.or(`name.ilike.%${search}%,brand.ilike.%${search}%,product_type.ilike.%${search}%`);
+    filtered = filtered.filter(p =>
+      p.name.toLowerCase().includes(search)
+      || p.brand.toLowerCase().includes(search)
+      || p.type.toLowerCase().includes(search)
+    );
   }
 
   // Sort
+  const parsePrice = (s: string) => Number(s.replace(/[^\d.]/g, '')) || 0;
+  const sorted = [...filtered];
   switch (sortBy) {
-    case 'price_asc': query = query.order('price', { ascending: true }); break;
-    case 'price_desc': query = query.order('price', { ascending: false }); break;
-    case 'brand': query = query.order('brand', { ascending: true }); break;
-    case 'name': query = query.order('name', { ascending: true }); break;
-    case 'newest': query = query.order('first_seen_at', { ascending: false }); break;
+    case 'price_asc':
+      sorted.sort((a, b) => parsePrice(a.price) - parsePrice(b.price));
+      break;
+    case 'price_desc':
+      sorted.sort((a, b) => parsePrice(b.price) - parsePrice(a.price));
+      break;
+    case 'brand':
+      sorted.sort((a, b) => a.brand.localeCompare(b.brand));
+      break;
+    case 'name':
+      sorted.sort((a, b) => a.name.localeCompare(b.name));
+      break;
+    case 'random':
+      fisherYates(sorted);
+      break;
+    case 'newest':
+    default:
+      // JSON has no timestamp — fall back to stable order
+      break;
   }
 
-  // Paginate
+  const total = sorted.length;
   const start = (page - 1) * limit;
-  query = query.range(start, start + limit - 1);
-
-  const { data: products, count, error } = await query;
-
-  if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
-  }
-
-  // Get brand list
-  const { data: brandRows } = await supabase
-    .from('products')
-    .select('brand')
-    .eq('is_active', true)
-    .order('brand');
-  const brands = [...new Set((brandRows || []).map(r => r.brand))];
-
-  // Get price analytics
-  // Price stats computed below from query results
-
-  // Fallback price stats from simple queries
-  const { data: avgByBrand } = await supabase
-    .from('products')
-    .select('brand')
-    .eq('is_active', true)
-    .order('brand');
-
-  // Compute stats from products
-  const brandStats = new Map<string, { count: number; total: number; min: number; max: number }>();
-  const priceRanges = { under25: 0, '25to50': 0, '50to100': 0, '100to200': 0, over200: 0 };
-
-  // Get all products for stats (we'll cache this later)
-  const { data: allProducts } = await supabase
-    .from('products')
-    .select('brand,price')
-    .eq('is_active', true)
-    .gt('price', 0);
-
-  (allProducts || []).forEach(p => {
-    const price = Number(p.price);
-    if (price < 25) priceRanges.under25++;
-    else if (price < 50) priceRanges['25to50']++;
-    else if (price < 100) priceRanges['50to100']++;
-    else if (price < 200) priceRanges['100to200']++;
-    else priceRanges.over200++;
-
-    const s = brandStats.get(p.brand) || { count: 0, total: 0, min: Infinity, max: 0 };
-    s.count++;
-    s.total += price;
-    if (price < s.min) s.min = price;
-    if (price > s.max) s.max = price;
-    brandStats.set(p.brand, s);
-  });
-
-  const avgByBrandResult = [...brandStats.entries()].map(([brand, s]) => ({
-    brand,
-    products: s.count,
-    avgPrice: Math.round(s.total / s.count),
-    minPrice: s.min === Infinity ? 0 : Math.round(s.min),
-    maxPrice: Math.round(s.max),
-  })).sort((a, b) => a.avgPrice - b.avgPrice);
-
-  // Count new (last 7 days) and delisted
-  const weekAgo = new Date(Date.now() - 7 * 86400000).toISOString();
-  const { count: newCount } = await supabase
-    .from('products')
-    .select('*', { count: 'exact', head: true })
-    .gte('first_seen_at', weekAgo)
-    .eq('is_active', true);
-
-  const { count: delistedCount } = await supabase
-    .from('products')
-    .select('*', { count: 'exact', head: true })
-    .eq('is_active', false);
-
-  const { count: totalActive } = await supabase
-    .from('products')
-    .select('*', { count: 'exact', head: true })
-    .eq('is_active', true);
+  const paged = sorted.slice(start, start + limit);
 
   return NextResponse.json({
-    products: (products || []).map(p => ({
-      ...p,
-      price: p.price ? `$${Number(p.price).toFixed(2)}` : '',
-      comparePrice: p.compare_price && Number(p.compare_price) > 0 ? `$${Number(p.compare_price).toFixed(2)}` : '',
-      image: p.image_url || p.blob_url || '',
-      type: p.product_type || 'Eyewear',
-      url: p.product_url,
-      isNew: p.first_seen_at && new Date(p.first_seen_at) > new Date(weekAgo),
-      isDelisted: !p.is_active,
-    })),
-    total: count || 0,
+    products: paged,
+    total,
     page,
-    totalPages: Math.ceil((count || 0) / limit),
-    brands,
-    priceRanges,
-    avgByBrand: avgByBrandResult,
-    stats: {
-      totalActive: totalActive || 0,
-      newThisWeek: newCount || 0,
-      delisted: delistedCount || 0,
-      totalBrands: brands.length,
-    },
+    totalPages: Math.ceil(total / limit),
+    brands: ALL_BRANDS,
+    totalProducts: CLEAN.length,
+    totalBrands: ALL_BRANDS.length,
   });
 }
