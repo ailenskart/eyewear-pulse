@@ -1771,7 +1771,7 @@ function AdLibrary() {
 
 /* ═══ Sources — Unified intelligence hub (Shopify + Trends + Reddit + Google Ads) ═══ */
 
-type SourceTab = 'shopify' | 'trends' | 'reddit' | 'google-ads';
+type SourceTab = 'shopify' | 'trends' | 'reddit' | 'google-ads' | 'youtube' | 'brave' | 'tiktok';
 
 interface ShopifyStore { handle: string; domain: string; name: string }
 interface ShopifyProd { id: number; title: string; image: string; price: string; comparePrice: string | null; available: boolean; createdAt: string; url: string; variantCount: number; soldOut: boolean }
@@ -1790,9 +1790,12 @@ function Sources() {
       {/* Sub-tabs */}
       <div className="flex gap-2 mb-4 overflow-x-auto" style={{ scrollbarWidth: 'none' }}>
         {[
-          { k: 'shopify', l: 'Shopify catalogs', icon: '🛍️' },
-          { k: 'trends', l: 'Google Trends', icon: '📈' },
-          { k: 'reddit', l: 'Reddit buzz', icon: '💬' },
+          { k: 'shopify', l: 'Shopify', icon: '🛍️' },
+          { k: 'trends', l: 'Trends', icon: '📈' },
+          { k: 'reddit', l: 'Reddit', icon: '💬' },
+          { k: 'youtube', l: 'YouTube', icon: '📺' },
+          { k: 'tiktok', l: 'TikTok', icon: '🎵' },
+          { k: 'brave', l: 'Web', icon: '🔍' },
           { k: 'google-ads', l: 'Google Ads', icon: '🎯' },
         ].map(t => (
           <button
@@ -1808,6 +1811,9 @@ function Sources() {
       {sub === 'shopify' && <ShopifySource />}
       {sub === 'trends' && <TrendsSource />}
       {sub === 'reddit' && <RedditSource />}
+      {sub === 'youtube' && <YouTubeSource />}
+      {sub === 'tiktok' && <TikTokSource />}
+      {sub === 'brave' && <BraveSource />}
       {sub === 'google-ads' && <GoogleAdsSource />}
     </div>
   );
@@ -2219,6 +2225,310 @@ function GoogleAdsSource() {
           </p>
         </div>
       )}
+    </div>
+  );
+}
+
+/* ── YouTube ── */
+interface YTVideo { id: string; title: string; channelTitle?: string; channelId?: string; thumbnail: string; publishedAt: string; views: number; likes: number; comments: number; url: string }
+interface YTChannel { id: string; title: string; thumbnail: string; subscribers: number; videoCount: number; viewCount: number; url: string; country?: string }
+
+function YouTubeSource() {
+  const [q, setQ] = useState('lenskart');
+  const [mode, setMode] = useState<'video' | 'channel'>('video');
+  const [videos, setVideos] = useState<YTVideo[]>([]);
+  const [channels, setChannels] = useState<YTChannel[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [err, setErr] = useState('');
+  const [needsSetup, setNeedsSetup] = useState(false);
+  const [setupSteps, setSetupSteps] = useState<string[]>([]);
+
+  const load = useCallback(async () => {
+    if (!q.trim()) return;
+    setLoading(true); setErr(''); setVideos([]); setChannels([]);
+    try {
+      const res = await fetch(`/api/youtube?q=${encodeURIComponent(q)}&type=${mode}&limit=20`);
+      const data = await res.json();
+      if (data.needsSetup) {
+        setNeedsSetup(true);
+        setSetupSteps(data.setupInstructions?.steps || []);
+      } else if (data.error) {
+        setErr(data.error);
+      } else {
+        setNeedsSetup(false);
+        if (mode === 'channel') setChannels(data.channels || []);
+        else setVideos(data.videos || []);
+      }
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : 'Fetch failed');
+    }
+    setLoading(false);
+  }, [q, mode]);
+
+  useEffect(() => { load(); }, [load]);
+
+  return (
+    <div>
+      <div className="bg-[var(--surface)] border border-[var(--line)] rounded-xl p-3 mb-4 flex gap-2">
+        <input type="text" value={q} onChange={e => setQ(e.target.value)} placeholder="Brand or topic…" className="flex-1 min-w-0 bg-[var(--bg-alt)] rounded-lg px-3 py-2 text-[12px] outline-none" onKeyDown={e => { if (e.key === 'Enter') load(); }} />
+        <select value={mode} onChange={e => setMode(e.target.value as 'video' | 'channel')} className="bg-[var(--bg-alt)] rounded-lg px-2 py-2 text-[11px] outline-none">
+          <option value="video">Videos</option>
+          <option value="channel">Channels</option>
+        </select>
+        <button onClick={load} disabled={loading} className="px-4 py-2 bg-[var(--brand)] text-white text-[12px] font-semibold rounded-lg disabled:opacity-50">{loading ? '…' : 'Search'}</button>
+      </div>
+
+      {needsSetup && (
+        <div className="bg-[var(--surface)] border border-[var(--brand)] rounded-xl p-4 mb-4">
+          <div className="text-[14px] font-semibold mb-2">Connect YouTube Data API</div>
+          <ol className="space-y-2 text-[12px] text-[var(--text-2)] list-decimal list-inside">
+            {setupSteps.map((s, i) => <li key={i}>{s}</li>)}
+          </ol>
+          <a href="https://console.cloud.google.com/" target="_blank" rel="noopener noreferrer" className="inline-block mt-3 px-3 py-2 bg-[var(--brand)] text-white text-[11px] font-semibold rounded-lg">Open Google Cloud Console →</a>
+        </div>
+      )}
+
+      {err && !needsSetup && <div className="bg-red-500/10 border border-red-500/30 text-red-400 rounded-xl p-3 text-[12px] mb-4">{err}</div>}
+
+      {mode === 'video' && videos.length > 0 && (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+          {videos.map(v => (
+            <a key={v.id} href={v.url} target="_blank" rel="noopener noreferrer" className="bg-[var(--surface)] border border-[var(--line)] rounded-xl overflow-hidden">
+              <div className="aspect-video bg-[var(--bg-alt)]"><img src={v.thumbnail} alt={v.title} className="w-full h-full object-cover" loading="lazy" onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }} /></div>
+              <div className="p-3">
+                <div className="text-[11px] text-[var(--text-3)] truncate mb-0.5">{v.channelTitle}</div>
+                <div className="text-[12px] font-semibold line-clamp-2 leading-snug">{v.title}</div>
+                <div className="flex gap-3 mt-2 text-[10px] text-[var(--text-3)]">
+                  <span>{n(v.views)} views</span>
+                  <span>{n(v.likes)} likes</span>
+                  <span>{n(v.comments)} 💬</span>
+                </div>
+              </div>
+            </a>
+          ))}
+        </div>
+      )}
+
+      {mode === 'channel' && channels.length > 0 && (
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          {channels.map(c => (
+            <a key={c.id} href={c.url} target="_blank" rel="noopener noreferrer" className="bg-[var(--surface)] border border-[var(--line)] rounded-xl p-4 flex gap-3">
+              {c.thumbnail && <img src={c.thumbnail} alt={c.title} className="w-16 h-16 rounded-full flex-shrink-0" />}
+              <div className="flex-1 min-w-0">
+                <div className="text-[14px] font-semibold truncate">{c.title}</div>
+                {c.country && <div className="text-[10px] text-[var(--text-3)]">{c.country}</div>}
+                <div className="flex gap-3 mt-2 text-[11px]">
+                  <div><span className="font-bold">{n(c.subscribers)}</span> <span className="text-[var(--text-3)]">subs</span></div>
+                  <div><span className="font-bold">{n(c.videoCount)}</span> <span className="text-[var(--text-3)]">videos</span></div>
+                  <div><span className="font-bold">{n(c.viewCount)}</span> <span className="text-[var(--text-3)]">views</span></div>
+                </div>
+              </div>
+            </a>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ── TikTok trending ── */
+interface TTAd { id: string; brand: string; caption: string; cover: string; videoUrl?: string; duration?: number; likes?: number; views?: number; ctr?: number; country?: string; sourceUrl: string }
+interface TTHashtag { name: string; views?: number; rank?: number; rankDiff?: number }
+
+function TikTokSource() {
+  const [mode, setMode] = useState<'ads' | 'hashtags'>('ads');
+  const [region, setRegion] = useState('IN');
+  const [period, setPeriod] = useState('7');
+  const [ads, setAds] = useState<TTAd[]>([]);
+  const [hashtags, setHashtags] = useState<TTHashtag[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [err, setErr] = useState('');
+
+  const load = useCallback(async () => {
+    setLoading(true); setErr(''); setAds([]); setHashtags([]);
+    try {
+      const res = await fetch(`/api/tiktok?mode=${mode}&region=${region}&period=${period}&limit=30`);
+      const data = await res.json();
+      if (data.error) {
+        setErr(`${data.error}${data.hint ? ` — ${data.hint}` : ''}`);
+      } else {
+        if (mode === 'ads') setAds(data.ads || []);
+        else setHashtags(data.hashtags || []);
+      }
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : 'Fetch failed');
+    }
+    setLoading(false);
+  }, [mode, region, period]);
+
+  useEffect(() => { load(); }, [load]);
+
+  return (
+    <div>
+      <div className="bg-[var(--surface)] border border-[var(--line)] rounded-xl p-3 mb-4 flex gap-2">
+        <select value={mode} onChange={e => setMode(e.target.value as 'ads' | 'hashtags')} className="bg-[var(--bg-alt)] rounded-lg px-2 py-2 text-[11px] outline-none">
+          <option value="ads">Top ads</option>
+          <option value="hashtags">Trending hashtags</option>
+        </select>
+        <select value={region} onChange={e => setRegion(e.target.value)} className="bg-[var(--bg-alt)] rounded-lg px-2 py-2 text-[11px] outline-none">
+          <option value="IN">🇮🇳 India</option>
+          <option value="US">🇺🇸 USA</option>
+          <option value="GB">🇬🇧 UK</option>
+          <option value="AE">🇦🇪 UAE</option>
+          <option value="SG">🇸🇬 SG</option>
+          <option value="ID">🇮🇩 ID</option>
+          <option value="JP">🇯🇵 JP</option>
+        </select>
+        <select value={period} onChange={e => setPeriod(e.target.value)} className="bg-[var(--bg-alt)] rounded-lg px-2 py-2 text-[11px] outline-none flex-1">
+          <option value="7">Past 7 days</option>
+          <option value="30">Past 30 days</option>
+          <option value="120">Past 120 days</option>
+        </select>
+        <button onClick={load} disabled={loading} className="px-4 py-2 bg-[var(--brand)] text-white text-[12px] font-semibold rounded-lg disabled:opacity-50">{loading ? '…' : 'Refresh'}</button>
+      </div>
+
+      {err && <div className="bg-red-500/10 border border-red-500/30 text-red-400 rounded-xl p-3 text-[12px] mb-4">{err}</div>}
+
+      {mode === 'ads' && ads.length > 0 && (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+          {ads.map(ad => (
+            <a key={ad.id} href={ad.sourceUrl} target="_blank" rel="noopener noreferrer" className="bg-[var(--surface)] border border-[var(--line)] rounded-xl overflow-hidden">
+              <div className="aspect-[9/16] bg-[var(--bg-alt)] relative">
+                {ad.cover && <img src={ad.cover} alt={ad.caption} className="w-full h-full object-cover" loading="lazy" onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }} />}
+                {ad.ctr && <div className="absolute top-2 right-2 bg-[var(--brand)] text-white text-[9px] uppercase tracking-wider font-bold px-1.5 py-0.5 rounded">CTR {(ad.ctr * 100).toFixed(1)}%</div>}
+              </div>
+              <div className="p-3">
+                <div className="text-[11px] font-semibold truncate mb-0.5">{ad.brand}</div>
+                <p className="text-[11px] text-[var(--text-2)] line-clamp-2 leading-snug">{ad.caption}</p>
+                <div className="flex gap-3 mt-2 text-[10px] text-[var(--text-3)]">
+                  {ad.likes !== undefined && <span>♥ {n(ad.likes)}</span>}
+                  {ad.views !== undefined && <span>👁 {n(ad.views)}</span>}
+                  {ad.duration && <span>{ad.duration}s</span>}
+                </div>
+              </div>
+            </a>
+          ))}
+        </div>
+      )}
+
+      {mode === 'hashtags' && hashtags.length > 0 && (
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2">
+          {hashtags.map(h => (
+            <div key={h.name} className="bg-[var(--surface)] border border-[var(--line)] rounded-xl p-3">
+              <div className="flex items-center justify-between mb-1">
+                <span className="text-[10px] text-[var(--text-3)]">#{h.rank}</span>
+                {h.rankDiff !== undefined && h.rankDiff !== 0 && (
+                  <span className={`text-[10px] font-bold ${h.rankDiff > 0 ? 'text-green-500' : 'text-red-500'}`}>
+                    {h.rankDiff > 0 ? '↑' : '↓'}{Math.abs(h.rankDiff)}
+                  </span>
+                )}
+              </div>
+              <div className="text-[13px] font-bold truncate">#{h.name}</div>
+              {h.views !== undefined && <div className="text-[10px] text-[var(--text-3)] mt-0.5">{n(h.views)} posts</div>}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ── Brave Search ── */
+interface BraveResult { title: string; url: string; description: string; age?: string; source?: string; thumbnail?: string }
+function BraveSource() {
+  const [q, setQ] = useState('lenskart');
+  const [mode, setMode] = useState<'web' | 'news'>('web');
+  const [country, setCountry] = useState('IN');
+  const [freshness, setFreshness] = useState('');
+  const [results, setResults] = useState<BraveResult[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [err, setErr] = useState('');
+  const [needsSetup, setNeedsSetup] = useState(false);
+  const [setupSteps, setSetupSteps] = useState<string[]>([]);
+
+  const load = useCallback(async () => {
+    if (!q.trim()) return;
+    setLoading(true); setErr(''); setResults([]);
+    try {
+      const p = new URLSearchParams({ q, mode, country });
+      if (freshness) p.set('freshness', freshness);
+      const res = await fetch(`/api/brave?${p}`);
+      const data = await res.json();
+      if (data.needsSetup) {
+        setNeedsSetup(true);
+        setSetupSteps(data.setupInstructions?.steps || []);
+      } else if (data.error) {
+        setErr(data.error);
+      } else {
+        setNeedsSetup(false);
+        setResults(data.results || []);
+      }
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : 'Fetch failed');
+    }
+    setLoading(false);
+  }, [q, mode, country, freshness]);
+
+  useEffect(() => { load(); }, [load]);
+
+  return (
+    <div>
+      <div className="bg-[var(--surface)] border border-[var(--line)] rounded-xl p-3 mb-4 space-y-2">
+        <div className="flex gap-2">
+          <input type="text" value={q} onChange={e => setQ(e.target.value)} placeholder="Search term…" className="flex-1 min-w-0 bg-[var(--bg-alt)] rounded-lg px-3 py-2 text-[12px] outline-none" onKeyDown={e => { if (e.key === 'Enter') load(); }} />
+          <button onClick={load} disabled={loading} className="px-4 py-2 bg-[var(--brand)] text-white text-[12px] font-semibold rounded-lg disabled:opacity-50">{loading ? '…' : 'Search'}</button>
+        </div>
+        <div className="flex gap-2">
+          <select value={mode} onChange={e => setMode(e.target.value as 'web' | 'news')} className="bg-[var(--bg-alt)] rounded-lg px-2 py-1.5 text-[11px] outline-none">
+            <option value="web">Web</option>
+            <option value="news">News</option>
+          </select>
+          <select value={country} onChange={e => setCountry(e.target.value)} className="bg-[var(--bg-alt)] rounded-lg px-2 py-1.5 text-[11px] outline-none">
+            <option value="IN">🇮🇳 IN</option>
+            <option value="US">🇺🇸 US</option>
+            <option value="GB">🇬🇧 UK</option>
+            <option value="AE">🇦🇪 AE</option>
+            <option value="ALL">🌐 All</option>
+          </select>
+          <select value={freshness} onChange={e => setFreshness(e.target.value)} className="flex-1 bg-[var(--bg-alt)] rounded-lg px-2 py-1.5 text-[11px] outline-none">
+            <option value="">Any time</option>
+            <option value="pd">Past day</option>
+            <option value="pw">Past week</option>
+            <option value="pm">Past month</option>
+            <option value="py">Past year</option>
+          </select>
+        </div>
+      </div>
+
+      {needsSetup && (
+        <div className="bg-[var(--surface)] border border-[var(--brand)] rounded-xl p-4 mb-4">
+          <div className="text-[14px] font-semibold mb-2">Connect Brave Search API</div>
+          <ol className="space-y-2 text-[12px] text-[var(--text-2)] list-decimal list-inside">
+            {setupSteps.map((s, i) => <li key={i}>{s}</li>)}
+          </ol>
+          <a href="https://api.search.brave.com/app/dashboard" target="_blank" rel="noopener noreferrer" className="inline-block mt-3 px-3 py-2 bg-[var(--brand)] text-white text-[11px] font-semibold rounded-lg">Open Brave API Dashboard →</a>
+        </div>
+      )}
+
+      {err && !needsSetup && <div className="bg-red-500/10 border border-red-500/30 text-red-400 rounded-xl p-3 text-[12px] mb-4">{err}</div>}
+
+      <div className="space-y-2">
+        {results.map((r, i) => (
+          <a key={i} href={r.url} target="_blank" rel="noopener noreferrer" className="block bg-[var(--surface)] border border-[var(--line)] rounded-xl p-3 hover:border-[var(--brand)]">
+            <div className="flex gap-3">
+              {r.thumbnail && <img src={r.thumbnail} alt="" className="w-16 h-16 rounded object-cover flex-shrink-0 bg-[var(--bg-alt)]" onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }} />}
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2 mb-1 text-[10px] text-[var(--text-3)]">
+                  {r.source && <span className="font-semibold truncate">{r.source}</span>}
+                  {r.age && <><span>·</span><span>{r.age}</span></>}
+                </div>
+                <div className="text-[13px] font-semibold line-clamp-2" dangerouslySetInnerHTML={{ __html: r.title }} />
+                <p className="text-[11px] text-[var(--text-2)] line-clamp-2 mt-1" dangerouslySetInnerHTML={{ __html: r.description }} />
+              </div>
+            </div>
+          </a>
+        ))}
+      </div>
     </div>
   );
 }
