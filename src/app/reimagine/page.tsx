@@ -37,6 +37,8 @@ export default function ReimagineStudio() {
   const [loading, setLoading] = useState(false);
   const [editPrompt, setEditPrompt] = useState('');
   const [frameUpload, setFrameUpload] = useState<{ base64: string; mime: string; preview: string } | null>(null);
+  const [customPrompt, setCustomPrompt] = useState('');
+  const [showCustomPrompt, setShowCustomPrompt] = useState(false);
   const [editingComment, setEditingComment] = useState<string | null>(null);
   const [commentText, setCommentText] = useState('');
   const [view, setView] = useState<'studio' | 'history'>('studio');
@@ -60,10 +62,13 @@ export default function ReimagineStudio() {
 
   const submitIteration = () => {
     if (!active) return;
-    if (!editPrompt.trim() && !frameUpload) return;
-    generateIteration(active, editPrompt, frameUpload);
+    // Allow empty input when a custom prompt override is filled
+    if (!editPrompt.trim() && !frameUpload && !customPrompt.trim()) return;
+    generateIteration(active, editPrompt, frameUpload, customPrompt.trim() || undefined);
     setEditPrompt('');
     setFrameUpload(null);
+    setCustomPrompt('');
+    setShowCustomPrompt(false);
     if (frameFileRef.current) frameFileRef.current.value = '';
   };
 
@@ -109,6 +114,7 @@ export default function ReimagineStudio() {
     project: Project,
     prompt: string,
     frame?: { base64: string; mime: string } | null,
+    customPrompt?: string,
   ) => {
     setLoading(true);
     try {
@@ -120,6 +126,7 @@ export default function ReimagineStudio() {
           prompt,
           frameImageBase64: frame?.base64,
           frameImageMime: frame?.mime,
+          customPrompt: customPrompt || undefined,
         }),
       });
       const data = await res.json();
@@ -427,10 +434,31 @@ export default function ReimagineStudio() {
                   </div>
                 )}
 
+                {/* Custom prompt override */}
+                {showCustomPrompt && (
+                  <div className="mb-2 p-2 bg-[var(--bg-alt)] rounded-lg border border-[var(--brand)]">
+                    <div className="flex items-center justify-between mb-1.5">
+                      <div className="text-[10px] uppercase tracking-wider font-bold text-[var(--brand)]">Custom prompt override</div>
+                      <button onClick={() => { setShowCustomPrompt(false); setCustomPrompt(''); }} className="text-[var(--text-3)] text-[14px] leading-none px-1" aria-label="Close">×</button>
+                    </div>
+                    <textarea
+                      value={customPrompt}
+                      onChange={e => setCustomPrompt(e.target.value)}
+                      placeholder="e.g. 'Change the background to a Mumbai street at sunset, keep everything else identical' — this replaces the default edit prompt. Identity lock is still applied."
+                      rows={3}
+                      className="w-full bg-[var(--surface)] rounded-md px-2 py-1.5 text-[11px] outline-none placeholder:text-[var(--text-3)] resize-none leading-snug"
+                      autoFocus
+                    />
+                    <p className="text-[9px] text-[var(--text-3)] mt-1 leading-snug">
+                      Leave empty for default behavior. When filled, this replaces the entire edit instruction — ethnicity is still locked automatically.
+                    </p>
+                  </div>
+                )}
+
                 <div className="flex gap-2">
                   <input
                     type="text" value={editPrompt} onChange={e => setEditPrompt(e.target.value)}
-                    placeholder={frameUpload ? 'Optional notes…' : 'Paste Lenskart URL, upload frame photo, or add notes…'}
+                    placeholder={frameUpload ? 'Optional notes…' : 'Paste product URL, upload frame photo, or add notes…'}
                     className="flex-1 min-w-0 bg-[var(--bg-alt)] rounded-lg px-3 py-2.5 text-[12px] outline-none placeholder:text-[var(--text-3)]"
                     onKeyDown={e => { if (e.key === 'Enter') submitIteration(); }}
                   />
@@ -448,13 +476,21 @@ export default function ReimagineStudio() {
                     <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
                   </button>
                   <button
+                    type="button"
+                    onClick={() => setShowCustomPrompt(s => !s)}
+                    title="Write a custom prompt"
+                    className={`px-3 py-2.5 rounded-lg flex-shrink-0 flex items-center justify-center ${showCustomPrompt ? 'bg-[var(--brand)] text-white' : 'bg-[var(--bg-alt)] text-[var(--text)] hover:bg-[var(--line)]'}`}
+                  >
+                    <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M17 3a2.85 2.85 0 114 4L7.5 20.5 2 22l1.5-5.5L17 3z"/></svg>
+                  </button>
+                  <button
                     onClick={submitIteration}
-                    disabled={!editPrompt.trim() && !frameUpload}
+                    disabled={!editPrompt.trim() && !frameUpload && !customPrompt.trim()}
                     className="px-4 py-2.5 bg-[var(--brand)] text-white text-[12px] font-semibold rounded-lg disabled:opacity-40 flex-shrink-0"
                   >Reimagine</button>
                 </div>
                 <p className="text-[10px] text-[var(--text-3)] mt-2 leading-snug">
-                  Tip: Lenskart.com PDPs can&apos;t be scraped — upload a clean photo of the frames for best results.
+                  Tip: Upload a clean photo of target frames for best results. Tap ✏️ for a full custom prompt.
                 </p>
               </div>
             )}

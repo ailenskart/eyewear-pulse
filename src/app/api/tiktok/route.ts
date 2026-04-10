@@ -29,7 +29,7 @@ const HEADERS = {
 export async function GET(request: NextRequest) {
   const { searchParams } = request.nextUrl;
   const mode = searchParams.get('mode') || 'ads'; // ads | hashtags | songs
-  const region = searchParams.get('region') || 'IN';
+  const region = searchParams.get('region') || 'US'; // TikTok requires a single region — default US for broadest catalog
   const period = searchParams.get('period') || '7'; // 7 | 30 | 120 days
   const limit = Math.min(parseInt(searchParams.get('limit') || '20'), 50);
   const industry = searchParams.get('industry') || ''; // optional industry filter

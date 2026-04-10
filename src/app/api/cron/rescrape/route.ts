@@ -18,37 +18,53 @@ const POSTS_PER_BRAND = 10;
 const BATCH_SIZE = 15;
 const MAX_VIDEO_MB = 20;
 
-// All brand handles to scrape
+// All brand handles to scrape. Sorted by category. Dedupe/verify periodically.
 const HANDLES: string[] = [
-  // Luxury
+  // Luxury houses
   'rayban','gucci','dior','prada','chanelofficial','tomford','versace','burberry','fendi','giorgioarmani',
   'celine','balenciaga','maisonvalentino','balmain','dolcegabbana','off____white','jacquemus','bottegaveneta','loewe','givenchyofficial',
-  // D2C
-  'warbyparker','zennioptical','eyebuydirect','lenskart','aceandtate','jimmyfairly','misterspex','quay','sunniesstudios','diffeyewear',
-  'bonlook','clearlyca','felixgrayglasses','izipizi','cubitts','paireyewear','lespecs','liingoeyewear','tens','topologyeyewear',
-  'vehla','mooeyewear','priverevaux','vooglam','zoff_eyewear','birdeyewear','eyewearlabs','fitzframes','sodashades','baileynelson',
-  'benandfrank','polette_eyewear','chillibeans','owndays_official','coolwinks','mellerband','stoggles','lohoeyewear','peppe.eyewear',
-  '9five','caddislife','cleardekho','saturdays','shwood','tomahawkshades','aojo_eyewear','hubblecontacts','zeelool','39dollarglasses',
-  'bloobloom','olliequinn','oscarwylee','glassesusa','mouqy','roka','yesglasses','johnjacobseyewear','vincentchase',
-  'barnerbrand','dimeoptics','eyebobs','eyemyeye','feelgoodcontacts','finlayandco','genusee','glassesdirect','goggles4u','iolla',
-  'jonaspauleyewear','karunworld','lapaireglasses','lensmart','lenstore','londonmole','lookoptic','mvmt','nectarsunglasses','noozoptics',
-  'northweek','ombraz','oohspectacles','oppaglasses','palaeyewear','peculiareyewear','proofeyewear','raen','revantoptics',
-  'sea2seeeyewear','sensee','specscart','wearesungod','tapole_eyewear','taylormorris','thinoptics','visiondirect','viueyewear',
-  'waterhaul','williampainter','woosheyewear','dresdenvision','lensabl','glassic.co','coastal',
-  // Sports
+  'louisvuitton','hermes','saintlaurent','chloe','miumiu','valentino','moncler','brioni','zegna','berluti',
+  // D2C — US
+  'warbyparker','zennioptical','eyebuydirect','paireyewear','felixgrayglasses','eyebuydirect','glassesusa','liingoeyewear',
+  'fitzframes','yesglasses','39dollarglasses','zeelool','payneglasses','revantoptics','wearesungod','vuoriclothing',
+  'thinoptics','hubblecontacts','stoggles','eyebobs','mouqy','coastalcom','lensabl','pairofthieves',
+  // D2C — UK / Europe
+  'aceandtate','jimmyfairly','misterspex','bonlook','cubitts','bloobloom','olliequinn','finlayandco','taylormorris',
+  'arlo.wolf','barnerbrand','iolla','lookoptic','lapaireglasses','polette_eyewear','sensee','visiondirect','lenstore',
+  'komono','lindbergeyewear','silhouette_eyewear','mykitaofficial','icberlin','etniabarcelona','ombraz','retrosuperfuture',
+  'londonmole','dresdenvision','cyxus','westwardleaning',
+  // D2C — APAC / AU
+  'vehla','lespecs','quay','sunniesstudios','baileynelson','oscarwylee','vooglam','zoff_eyewear','owndays_official',
+  'lohoeyewear','karenwalker','valleyeyewear','pared','sodashades','chillibeans','lemoneyewear',
+  // D2C — India
+  'lenskart','johnjacobseyewear','vincentchase','coolwinks','eyewearlabs','cleardekho','titaneyeplus','peppe.eyewear',
+  'specscart','eyemyeye','feelgoodcontacts','opium.eyewear','dailyaddict','intellilensindia','idee_eyewear','specscart',
+  // D2C — Latin America
+  'hawkersco','hawkersco_br','chillibeans_us','ben_frank','meller','mellerband',
+  // Sports / Performance
   'oakley','smithoptics','costasunglasses','mauijim','revosunglasses','spyoptic','rudyprojectna','pocsports','julbo_eyewear','bolleeyewear',
-  // Independent
-  'oliverpeoples','moscotnyc','gentlemonster','persol','mykitaofficial','icberlin','jacquesmarimage','cutlerandgross','bartonperreira',
-  'garrettleight','saltoptics','krewe','thierrylasry','ditaeyewear','lindafarrow','retrosuperfuture','ahlemeyewear','etniabarcelona','karenwalker',
-  // Streetwear
-  'goodr','pitviper','knockaround','blenderseyewear','shadyrays','sunski','hawkersco',
-  // Fast Fashion
+  'tifoseye','nativeeyewear','kaenon','bajio','rheos','peppers','under_armour_eyewear','adidaseyewear','nikevision','pumaeyewear',
+  'giroeyewear','goggles4u','salomonsportstyle','100percent','fox_racing','oneal_motocross','bellhelmets',
+  // Independent / Heritage
+  'oliverpeoples','moscotnyc','gentlemonster','persol','jacquesmarimage','cutlerandgross','bartonperreira',
+  'garrettleight','saltoptics','krewe','thierrylasry','ditaeyewear','lindafarrow','retrosuperfuture','ahlemeyewear',
+  'anneetvalentin','orgreen','fleye','neubau','wolfgangproksch','matsudaeyewear','masunaga','robertmarc','leisuresociety',
+  'theoeyewear','wolfgang_proksch','tavat','gold_wood','vavaeyewear','movitra_spectacles','moscot','rigards','kuboraum',
+  // Streetwear / Lifestyle
+  'goodr','pitviper','knockaround','blenderseyewear','shadyrays','sunski','hawkersco','9five','shwood','tomahawkshades',
+  'nectarsunglasses','aojo_eyewear','roshambobaby','babiators','vansstore','supreme','stussy','palaceskateboards','fearofgod',
+  'rhude','heronpreston','awakeny','ambush','sacai','undefeated','sneakerpolitics','apeukeu',
+  // Fast Fashion / Mass
   'calvinklein','ralphlauren','tommyhilfiger','boss','coach','michaelkors','lacoste','katespadeny','toryburch','marcjacobs',
-  'sunglasshut','lenscrafters','specsavers','polaroid_eyewear',
-  // Heritage
-  'lindbergeyewear','silhouette_eyewear','matsudaeyewear',
-  // Tech + Kids
-  'spectacles','bose','babiators','roshambobaby',
+  'hm','zara','uniqlo','asos','urbanoutfitters','fossil','swatch','polaroid_eyewear','carrera','sunglasshut','lenscrafters','specsavers',
+  'forever21','mango','allsaints','reserved','pullandbear','bershka','stradivarius','zaful',
+  // Tech / Smart
+  'spectacles','bose','meta','raybanmeta','tcl_raynero','rokid_tech','lucydfuture','vue_smart','innoair',
+  // Sustainable
+  'sea2seeeyewear','dickmoby','karunworld','palaeyewear','proofeyewear','birdeyewear','zealoptics','ecoeyewear',
+  'parafina','ochis_coffee','hempeyewear','waterhaul','solo_eyewear','4oceanbracelets','pelavision',
+  // Kids + niche
+  'jonaspauleyewear','babiators','rivetandsway','roshambobaby','kidsociety_eyewear','kidsfashion_eyewear',
 ];
 
 interface ApifyPost {

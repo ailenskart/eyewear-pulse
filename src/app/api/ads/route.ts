@@ -36,7 +36,7 @@ interface MetaAd {
 export async function GET(request: NextRequest) {
   const { searchParams } = request.nextUrl;
   const search = searchParams.get('q') || '';
-  const country = searchParams.get('country') || 'IN'; // default India for Lenskart use
+  const country = searchParams.get('country') || 'ALL'; // default global
   const limit = parseInt(searchParams.get('limit') || '40');
 
   if (!META_TOKEN) {
@@ -79,7 +79,12 @@ export async function GET(request: NextRequest) {
 
   const url = new URL('https://graph.facebook.com/v19.0/ads_archive');
   url.searchParams.set('search_terms', search);
-  url.searchParams.set('ad_reached_countries', `["${country}"]`);
+  // Meta accepts "ALL" for worldwide, or a JSON array of ISO country codes
+  if (country === 'ALL') {
+    url.searchParams.set('ad_reached_countries', '["ALL"]');
+  } else {
+    url.searchParams.set('ad_reached_countries', `["${country}"]`);
+  }
   url.searchParams.set('ad_active_status', 'ALL');
   url.searchParams.set('fields', fields);
   url.searchParams.set('limit', String(Math.min(limit, 100)));

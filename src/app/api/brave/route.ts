@@ -62,7 +62,7 @@ export async function GET(request: NextRequest) {
   const { searchParams } = request.nextUrl;
   const q = searchParams.get('q')?.trim() || '';
   const mode = searchParams.get('mode') || 'web'; // web | news
-  const country = searchParams.get('country') || 'IN';
+  const country = searchParams.get('country') || 'ALL';
   const freshness = searchParams.get('freshness') || ''; // pd=past day, pw=past week, pm=past month, py=past year
   const count = Math.min(parseInt(searchParams.get('count') || '20'), 20);
 

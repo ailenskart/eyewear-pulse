@@ -1610,7 +1610,7 @@ interface MetaAd {
 
 function AdLibrary() {
   const [query, setQuery] = useState('Lenskart');
-  const [country, setCountry] = useState('IN');
+  const [country, setCountry] = useState('ALL');
   const [ads, setAds] = useState<MetaAd[]>([]);
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState<string>('');
@@ -1665,6 +1665,7 @@ function AdLibrary() {
           onKeyDown={e => { if (e.key === 'Enter') load(); }}
         />
         <select value={country} onChange={e => setCountry(e.target.value)} className="bg-[var(--bg-alt)] rounded-lg px-2 text-[11px] outline-none">
+          <option value="ALL">🌐 Worldwide</option>
           <option value="IN">🇮🇳 India</option>
           <option value="US">🇺🇸 USA</option>
           <option value="GB">🇬🇧 UK</option>
@@ -1972,7 +1973,7 @@ function StatTile({ label, value, accent }: { label: string; value: string; acce
 /* ── Google Trends ── */
 function TrendsSource() {
   const [q, setQ] = useState('sunglasses,eyeglasses,ray-ban');
-  const [geo, setGeo] = useState('IN');
+  const [geo, setGeo] = useState(''); // empty = Worldwide
   const [timeframe, setTimeframe] = useState('today 3-m');
   const [data, setData] = useState<{ relatedQueries?: unknown; relatedTopics?: unknown; timeline?: unknown; error?: string; hint?: string } | null>(null);
   const [loading, setLoading] = useState(false);
@@ -2337,7 +2338,7 @@ interface TTHashtag { name: string; views?: number; rank?: number; rankDiff?: nu
 
 function TikTokSource() {
   const [mode, setMode] = useState<'ads' | 'hashtags'>('ads');
-  const [region, setRegion] = useState('IN');
+  const [region, setRegion] = useState('US'); // TikTok requires a single region — US has broadest catalog
   const [period, setPeriod] = useState('7');
   const [ads, setAds] = useState<TTAd[]>([]);
   const [hashtags, setHashtags] = useState<TTHashtag[]>([]);
@@ -2436,9 +2437,9 @@ function TikTokSource() {
 /* ── Brave Search ── */
 interface BraveResult { title: string; url: string; description: string; age?: string; source?: string; thumbnail?: string }
 function BraveSource() {
-  const [q, setQ] = useState('lenskart');
+  const [q, setQ] = useState('eyewear trends');
   const [mode, setMode] = useState<'web' | 'news'>('web');
-  const [country, setCountry] = useState('IN');
+  const [country, setCountry] = useState('ALL');
   const [freshness, setFreshness] = useState('');
   const [results, setResults] = useState<BraveResult[]>([]);
   const [loading, setLoading] = useState(false);
@@ -2484,11 +2485,11 @@ function BraveSource() {
             <option value="news">News</option>
           </select>
           <select value={country} onChange={e => setCountry(e.target.value)} className="bg-[var(--bg-alt)] rounded-lg px-2 py-1.5 text-[11px] outline-none">
+            <option value="ALL">🌐 All</option>
             <option value="IN">🇮🇳 IN</option>
             <option value="US">🇺🇸 US</option>
             <option value="GB">🇬🇧 UK</option>
             <option value="AE">🇦🇪 AE</option>
-            <option value="ALL">🌐 All</option>
           </select>
           <select value={freshness} onChange={e => setFreshness(e.target.value)} className="flex-1 bg-[var(--bg-alt)] rounded-lg px-2 py-1.5 text-[11px] outline-none">
             <option value="">Any time</option>

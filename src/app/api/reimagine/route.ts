@@ -250,7 +250,7 @@ async function extractProductImage(productUrl: string): Promise<string | null> {
 }
 
 export async function POST(request: NextRequest) {
-  const { imageUrl, prompt, brandName, frameImageBase64, frameImageMime } = await request.json();
+  const { imageUrl, prompt, brandName, frameImageBase64, frameImageMime, customPrompt } = await request.json();
   if (!imageUrl) return NextResponse.json({ error: 'imageUrl required' }, { status: 400 });
 
   const brand = brandName || 'Lenskart';
@@ -373,7 +373,11 @@ export async function POST(request: NextRequest) {
     const CREATIVE_TWEAK = 'Minor creative variation is welcome: slightly different facial features (small nose/jaw/eyes differences so it reads as a different individual of the SAME ethnicity), and a slightly different top (same type of garment but a different color or subtle style detail). Keep the same pose, same background, same lighting, same composition, same color grading, same mood.';
 
     let editDirection: string;
-    if (productFrameDescription) {
+    if (customPrompt && typeof customPrompt === 'string' && customPrompt.trim()) {
+      // User-supplied custom prompt overrides everything. We still append the
+      // identity lock automatically so ethnicity can't drift by accident.
+      editDirection = `${customPrompt.trim()}. ${IDENTITY_LOCK}`.trim();
+    } else if (productFrameDescription) {
       // Front-load the color so FLUX can't ignore it like Kontext Pro was doing.
       const colorEmphasis = slugColor
         ? `The frames MUST be ${slugColor.toUpperCase()} color. Repeat: ${slugColor} colored frames. `
