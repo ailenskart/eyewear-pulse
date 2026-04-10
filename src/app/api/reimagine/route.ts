@@ -232,7 +232,7 @@ export async function POST(request: NextRequest) {
       // Couldn't fetch product image — fall back to a safe no-op-ish instruction
       editDirection = `Replace the eyewear frames with stylish premium sunglasses. CRITICAL: Keep the exact same person — same face, same skin tone, same hair, same identity. Keep the same pose, lighting, background, clothing, composition. Only the frames change. ${userNote}`.trim();
     } else {
-      editDirection = `Very subtle identity refresh: give the model a slightly Indian touch — an affluent, upscale North Indian / metropolitan look with fair-to-medium warm skin, soft Indian features, and a premium, aspirational vibe. Keep the ethnicity close to the original; this is a small nudge, NOT a transformation. Do NOT darken the skin heavily and do NOT make the model look like a generic South Indian stereotype. Keep EVERYTHING else exactly the same — same pose, same eyewear frames, same background, same lighting, same clothing, same composition, same color grading, same mood, same hair. Only ~10% identity tweak. ${userNote}`.trim();
+      editDirection = `Tiny face-only variation: make this a slightly different person, but keep the SAME ethnicity, SAME skin tone, SAME hair color and length, SAME age, SAME gender, and SAME overall look as the original. Just nudge the facial features a little (slightly different nose, jawline, or eyes) so it's technically not the same individual. Do NOT make the person Indian. Do NOT change ethnicity. Do NOT change skin tone. Keep EVERYTHING else exactly the same — same pose, same eyewear frames, same background, same lighting, same clothing, same composition, same color grading, same expression, same mood. This is the smallest possible change, just enough that it's a different face. ${userNote}`.trim();
     }
 
     // Run all in parallel
@@ -259,7 +259,7 @@ export async function POST(request: NextRequest) {
         const ai = new GoogleGenAI({ apiKey: GEMINI_KEY });
         const briefContext = productUrl
           ? `Creative brief: swap the eyewear in this post to a ${brand} product${productFrameDescription ? ` (${productFrameDescription})` : ` (${productUrl})`}. Keep the original post's model, style and composition. Write ONE Instagram caption adapted for ${brand} India audience (max 30 words) + 5 hashtags.`
-          : `Creative brief for ${brand} India. We're making a very subtle identity refresh on this post — giving the model an affluent, premium Indian vibe while keeping the original composition, pose, and eyewear the same. Write ONE Instagram caption adapted for an upscale Indian audience (max 30 words) + 5 hashtags. ${userNote ? 'User note: ' + userNote : ''}`;
+          : `Creative brief for ${brand}. We're reusing this post's exact composition with a minimally different model. Write ONE Instagram caption in the same tone/style as the original, adapted for ${brand} (max 30 words) + 5 hashtags. ${userNote ? 'User note: ' + userNote : ''}`;
         for (const model of ['gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-1.5-flash']) {
           try {
             const r = await ai.models.generateContent({ model, contents: briefContext });
