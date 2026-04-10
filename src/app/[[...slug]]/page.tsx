@@ -1927,29 +1927,30 @@ interface Celebrity {
   country: string;
   knownFor: string;
 }
-interface EyewearPost {
+interface EyewearPhoto {
   id: string;
   imageUrl: string;
-  postUrl: string;
-  caption: string;
-  likes: number;
-  comments: number;
-  postedAt: string;
+  thumbnail?: string;
+  pageUrl?: string;
+  source: string;
+  caption?: string;
   eyewearType: string;
+  likes?: number;
+  comments?: number;
+  postedAt?: string;
 }
 interface CelebIgResult {
   name: string;
-  handle: string;
-  totalPostsScanned: number;
-  eyewearPostsCount: number;
-  eyewearPosts: EyewearPost[];
+  handle?: string;
+  totalScanned: number;
+  eyewearCount: number;
+  photos: EyewearPhoto[];
+  source: 'brave' | 'wikimedia' | 'apify' | 'none';
   fetchedAt: string;
   cached: boolean;
   needsSetup?: boolean;
-  needsHandle?: boolean;
   error?: string;
   hint?: string;
-  setupInstructions?: { title: string; steps: string[]; why?: string };
 }
 
 function Celebrities() {
@@ -1981,7 +1982,7 @@ function Celebrities() {
     setScanning(true);
     setResult(null);
     try {
-      const params = new URLSearchParams({ name: c.name, limit: '20' });
+      const params = new URLSearchParams({ name: c.name, limit: '16' });
       if (overrideHandle) params.set('handle', overrideHandle);
       const res = await fetch(`/api/celebrities/instagram?${params}`);
       const data = await res.json();
@@ -1989,10 +1990,10 @@ function Celebrities() {
     } catch (e) {
       setResult({
         name: c.name,
-        handle: '',
-        totalPostsScanned: 0,
-        eyewearPostsCount: 0,
-        eyewearPosts: [],
+        totalScanned: 0,
+        eyewearCount: 0,
+        photos: [],
+        source: 'none',
         fetchedAt: new Date().toISOString(),
         cached: false,
         error: e instanceof Error ? e.message : 'Scan failed',
@@ -2064,17 +2065,18 @@ function Celebrities() {
             {/* Header */}
             <div className="p-4 border-b border-[var(--line)] flex items-start justify-between">
               <div className="min-w-0 flex-1">
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 flex-wrap">
                   <div className="text-[18px] font-bold truncate">{selected.name}</div>
-                  {result?.handle && <span className="text-[11px] text-[var(--brand)] font-semibold">@{result.handle}</span>}
+                  {result?.handle && result.source === 'apify' && <span className="text-[11px] text-[var(--brand)] font-semibold">@{result.handle}</span>}
                 </div>
                 <div className="text-[11px] text-[var(--text-3)]">{selected.category} · {selected.country}</div>
                 <p className="text-[12px] text-[var(--text-2)] mt-2 leading-relaxed max-w-md">{selected.knownFor}</p>
-                {result && !result.error && !result.needsSetup && !result.needsHandle && (
-                  <div className="mt-2 flex items-center gap-2 text-[10px] text-[var(--text-3)]">
-                    <span className="font-semibold text-[var(--brand)]">{result.eyewearPostsCount} eyewear</span>
-                    <span>· scanned {result.totalPostsScanned} posts</span>
-                    {result.cached && <span className="px-1.5 py-0.5 bg-[var(--bg-alt)] rounded uppercase tracking-wider font-bold">Cached</span>}
+                {result && !result.error && (
+                  <div className="mt-2 flex items-center gap-2 text-[10px] text-[var(--text-3)] flex-wrap">
+                    <span className="font-semibold text-[var(--brand)]">{result.eyewearCount} eyewear photos</span>
+                    <span>· scanned {result.totalScanned}</span>
+                    {result.source !== 'none' && <span className="px-1.5 py-0.5 bg-[var(--bg-alt)] rounded uppercase tracking-wider font-bold text-[9px]">{result.source === 'brave' ? '🔍 web search' : result.source === 'wikimedia' ? '📚 wikimedia' : '📸 instagram'}</span>}
+                    {result.cached && <span className="px-1.5 py-0.5 bg-[var(--bg-alt)] rounded uppercase tracking-wider font-bold text-[9px]">Cached</span>}
                   </div>
                 )}
               </div>
@@ -2086,81 +2088,77 @@ function Celebrities() {
               {scanning && (
                 <div className="text-center py-12">
                   <div className="inline-block w-6 h-6 border-2 border-[var(--brand)] border-t-transparent rounded-full animate-spin" />
-                  <p className="text-[12px] text-[var(--text-3)] mt-3">Scraping @{result?.handle || selected.name}&apos;s Instagram…</p>
-                  <p className="text-[10px] text-[var(--text-3)] mt-1">Running Gemini Vision on each post to detect eyewear</p>
+                  <p className="text-[12px] text-[var(--text-3)] mt-3">Searching for {selected.name} eyewear photos…</p>
+                  <p className="text-[10px] text-[var(--text-3)] mt-1">Brave Image Search + Gemini Vision filter</p>
                 </div>
               )}
 
-              {/* Needs Apify setup */}
+              {/* Needs setup */}
               {!scanning && result?.needsSetup && (
                 <div className="bg-[var(--bg-alt)] border border-[var(--brand)] rounded-xl p-4">
-                  <div className="text-[14px] font-semibold mb-2">Connect Apify to scan Instagrams</div>
-                  <p className="text-[11px] text-[var(--text-2)] leading-relaxed mb-3">{result.setupInstructions?.why}</p>
-                  <ol className="space-y-1.5 text-[11px] text-[var(--text-2)] list-decimal list-inside">
-                    {(result.setupInstructions?.steps || []).map((s, i) => <li key={i}>{s}</li>)}
-                  </ol>
-                  <a href="https://console.apify.com/account/integrations" target="_blank" rel="noopener noreferrer" className="inline-block mt-3 px-3 py-2 bg-[var(--brand)] text-white text-[11px] font-semibold rounded-lg">Open Apify →</a>
-                </div>
-              )}
-
-              {/* Needs handle override */}
-              {!scanning && result?.needsHandle && (
-                <div className="bg-[var(--bg-alt)] border border-[var(--line)] rounded-xl p-4">
-                  <div className="text-[13px] font-semibold mb-2">No Instagram handle on file</div>
-                  <p className="text-[11px] text-[var(--text-2)] leading-relaxed mb-3">{result.error}</p>
-                  <div className="flex gap-2">
-                    <input
-                      type="text" value={handleOverride} onChange={e => setHandleOverride(e.target.value)}
-                      placeholder="e.g. badgalriri"
-                      className="flex-1 min-w-0 bg-[var(--surface)] rounded-lg px-3 py-2 text-[12px] outline-none"
-                      onKeyDown={e => { if (e.key === 'Enter' && handleOverride.trim() && selected) scanCeleb(selected, handleOverride.trim()); }}
-                    />
-                    <button
-                      onClick={() => { if (handleOverride.trim() && selected) scanCeleb(selected, handleOverride.trim()); }}
-                      disabled={!handleOverride.trim()}
-                      className="px-4 py-2 bg-[var(--brand)] text-white text-[11px] font-semibold rounded-lg disabled:opacity-40"
-                    >Scan</button>
-                  </div>
+                  <div className="text-[14px] font-semibold mb-2">Enable celebrity photo scanning</div>
+                  <p className="text-[11px] text-[var(--text-2)] leading-relaxed mb-3">
+                    Lenzy uses free public sources to find celeb photos. Set <strong>one</strong> of these in Vercel env vars:
+                  </p>
+                  <ul className="space-y-2 text-[11px] text-[var(--text-2)]">
+                    <li className="flex gap-2">
+                      <span className="text-[var(--brand)]">→</span>
+                      <div>
+                        <strong>BRAVE_SEARCH_KEY</strong> (recommended) — free 2,000 queries/month at <a href="https://api.search.brave.com" target="_blank" rel="noopener noreferrer" className="text-[var(--brand)] underline">api.search.brave.com</a>. No credit card required.
+                      </div>
+                    </li>
+                    <li className="flex gap-2">
+                      <span className="text-[var(--text-3)]">→</span>
+                      <div>
+                        <strong>APIFY_TOKEN</strong> (optional) — for live Instagram scraping of celebs with handles on file. Paid after $5 free credit.
+                      </div>
+                    </li>
+                  </ul>
+                  <p className="text-[10px] text-[var(--text-3)] mt-3 leading-snug">
+                    Wikimedia Commons always works as a last-resort fallback (no key), but photo variety is limited there.
+                  </p>
+                  <a href="https://api.search.brave.com/app/dashboard" target="_blank" rel="noopener noreferrer" className="inline-block mt-3 px-3 py-2 bg-[var(--brand)] text-white text-[11px] font-semibold rounded-lg">Get free Brave Search key →</a>
                 </div>
               )}
 
               {/* Error */}
-              {!scanning && result?.error && !result.needsSetup && !result.needsHandle && (
+              {!scanning && result?.error && !result.needsSetup && (
                 <div className="bg-red-500/10 border border-red-500/30 text-red-400 rounded-xl p-3 text-[12px]">
                   {result.error}
                   {result.hint && <div className="text-[11px] mt-1 opacity-80">{result.hint}</div>}
                 </div>
               )}
 
-              {/* No eyewear posts */}
-              {!scanning && result && !result.error && result.eyewearPosts.length === 0 && (
+              {/* No eyewear detected */}
+              {!scanning && result && !result.error && !result.needsSetup && result.photos.length === 0 && (
                 <div className="text-center py-12 text-[var(--text-3)] text-[12px]">
-                  <p>No eyewear posts found in the last {result.totalPostsScanned} posts.</p>
+                  <p>No eyewear found in {result.totalScanned} scanned photos.</p>
+                  <p className="text-[10px] mt-1">Gemini Vision didn&apos;t detect eyewear on the main subject in any results.</p>
                   <button onClick={() => selected && scanCeleb(selected, handleOverride || undefined)} className="mt-3 text-[11px] text-[var(--brand)] font-semibold">↻ Refresh scan</button>
                 </div>
               )}
 
-              {/* Eyewear posts grid */}
-              {!scanning && result && result.eyewearPosts.length > 0 && (
+              {/* Eyewear photos grid */}
+              {!scanning && result && result.photos.length > 0 && (
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-                  {result.eyewearPosts.map(post => (
-                    <a key={post.id} href={post.postUrl} target="_blank" rel="noopener noreferrer" className="bg-[var(--bg-alt)] border border-[var(--line)] rounded-xl overflow-hidden hover:border-[var(--brand)] transition-colors">
+                  {result.photos.map(photo => (
+                    <a key={photo.id} href={photo.pageUrl || photo.imageUrl} target="_blank" rel="noopener noreferrer" className="bg-[var(--bg-alt)] border border-[var(--line)] rounded-xl overflow-hidden hover:border-[var(--brand)] transition-colors">
                       <div className="aspect-square bg-black">
                         <img
-                          src={`/api/img?url=${encodeURIComponent(post.imageUrl)}`}
-                          alt={post.eyewearType}
+                          src={`/api/img?url=${encodeURIComponent(photo.thumbnail || photo.imageUrl)}`}
+                          alt={photo.eyewearType}
                           className="w-full h-full object-cover"
                           loading="lazy"
                           onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }}
                         />
                       </div>
                       <div className="p-2.5">
-                        <div className="text-[10px] font-semibold text-[var(--brand)] uppercase tracking-wide line-clamp-1">👓 {post.eyewearType}</div>
-                        {post.caption && <p className="text-[10px] text-[var(--text-2)] line-clamp-2 mt-1 leading-snug">{post.caption}</p>}
+                        <div className="text-[10px] font-semibold text-[var(--brand)] uppercase tracking-wide line-clamp-1">👓 {photo.eyewearType}</div>
+                        {photo.caption && <p className="text-[10px] text-[var(--text-2)] line-clamp-2 mt-1 leading-snug">{photo.caption}</p>}
                         <div className="flex gap-2 mt-1.5 text-[9px] text-[var(--text-3)]">
-                          <span>♥ {n(post.likes)}</span>
-                          <span>💬 {n(post.comments)}</span>
-                          {post.postedAt && <span>· {new Date(post.postedAt).toLocaleDateString()}</span>}
+                          <span className="truncate">{photo.source}</span>
+                          {photo.likes !== undefined && photo.likes > 0 && <span>· ♥ {n(photo.likes)}</span>}
+                          {photo.postedAt && <span>· {new Date(photo.postedAt).toLocaleDateString()}</span>}
                         </div>
                       </div>
                     </a>

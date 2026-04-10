@@ -56,25 +56,40 @@ interface BraveNewsResult {
   thumbnail?: { src?: string };
 }
 
+interface BraveImageResult {
+  title?: string;
+  url: string;
+  source?: string;
+  page_url?: string;
+  thumbnail?: { src?: string };
+  properties?: { url?: string; placeholder?: string };
+  meta_url?: { hostname?: string };
+}
+
 export async function GET(request: NextRequest) {
   if (!KEY) return NextResponse.json(needsSetup());
 
   const { searchParams } = request.nextUrl;
   const q = searchParams.get('q')?.trim() || '';
-  const mode = searchParams.get('mode') || 'web'; // web | news
+  const mode = searchParams.get('mode') || 'web'; // web | news | images
   const country = searchParams.get('country') || 'ALL';
-  const freshness = searchParams.get('freshness') || ''; // pd=past day, pw=past week, pm=past month, py=past year
+  const freshness = searchParams.get('freshness') || '';
   const count = Math.min(parseInt(searchParams.get('count') || '20'), 20);
 
   if (!q) return NextResponse.json({ error: 'q param required' }, { status: 400 });
 
   try {
-    const endpoint = mode === 'news' ? 'news/search' : 'web/search';
+    const endpoint = mode === 'news' ? 'news/search'
+      : mode === 'images' ? 'images/search'
+      : 'web/search';
     const url = new URL(`https://api.search.brave.com/res/v1/${endpoint}`);
     url.searchParams.set('q', q);
-    url.searchParams.set('country', country);
+    if (country && country !== 'ALL') url.searchParams.set('country', country);
     url.searchParams.set('count', String(count));
     if (freshness) url.searchParams.set('freshness', freshness);
+    if (mode === 'images') {
+      url.searchParams.set('safesearch', 'off'); // celebs in sunglasses = "off" so press photos aren't filtered
+    }
 
     const res = await fetch(url.toString(), {
       headers: {
@@ -107,6 +122,23 @@ export async function GET(request: NextRequest) {
           age: r.age || r.page_age,
           source: r.meta_url?.hostname,
           thumbnail: r.thumbnail?.src,
+        })),
+        total: items.length,
+      });
+    }
+
+    if (mode === 'images') {
+      const items: BraveImageResult[] = data?.results || [];
+      return NextResponse.json({
+        q,
+        mode,
+        country,
+        results: items.map(r => ({
+          title: r.title || '',
+          url: r.properties?.url || r.url,           // direct image URL
+          pageUrl: r.url,                            // source page
+          source: r.source || r.meta_url?.hostname || '',
+          thumbnail: r.thumbnail?.src || r.properties?.url,
         })),
         total: items.length,
       });
