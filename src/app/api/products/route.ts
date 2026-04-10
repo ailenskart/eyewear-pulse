@@ -9,7 +9,60 @@ export async function GET(request: NextRequest) {
   const page = parseInt(searchParams.get('page') || '1');
   const limit = parseInt(searchParams.get('limit') || '40');
   const show = searchParams.get('show') || 'active'; // active | new | delisted | all
+  const mix = searchParams.get('mix') === '1'; // when true, sample evenly per brand
 
+  // ── Per-brand equal sampling (feed mode) ─────────────────────────────
+  // When mix=1 and no brand filter is set, fetch a fixed quota of
+  // products per brand in parallel so the feed gets fair representation
+  // across every brand instead of being dominated by whichever brand has
+  // the most products in the DB.
+  if (mix && (!brand || brand === 'All') && !search) {
+    // First grab the distinct brand list
+    const { data: brandRows } = await supabase
+      .from('products')
+      .select('brand')
+      .eq('is_active', true);
+    const allBrands = [...new Set((brandRows || []).map(r => r.brand))].filter(Boolean);
+
+    // Fetch up to `perBrand` products per brand in parallel.
+    // Alternate the sort direction per brand so we don't always return
+    // the same slice on reload.
+    const perBrand = Math.max(4, Math.ceil(limit / Math.max(allBrands.length, 1)));
+    const results = await Promise.all(
+      allBrands.map(async (b, i) => {
+        const q = supabase
+          .from('products')
+          .select('*')
+          .eq('is_active', true)
+          .eq('brand', b)
+          .gt('price', 0)
+          .order('first_seen_at', { ascending: i % 2 === 0 })
+          .limit(perBrand);
+        const { data } = await q;
+        return data || [];
+      })
+    );
+    const pool = results.flat();
+
+    // Brand list for filter chips
+    const brands = [...new Set(pool.map(p => p.brand))].filter(Boolean);
+
+    return NextResponse.json({
+      products: pool.map(p => ({
+        ...p,
+        price: p.price ? `$${Number(p.price).toFixed(2)}` : '',
+        comparePrice: p.compare_price && Number(p.compare_price) > 0 ? `$${Number(p.compare_price).toFixed(2)}` : '',
+        image: p.image_url || p.blob_url || '',
+        type: p.product_type || 'Eyewear',
+        url: p.product_url,
+      })),
+      total: pool.length,
+      brands: allBrands,
+      mix: true,
+    });
+  }
+
+  // ── Normal catalog query (per-brand filter, search, paging) ──────────
   // Build query
   let query = supabase.from('products').select('*', { count: 'exact' });
 

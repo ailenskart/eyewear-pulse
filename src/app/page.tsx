@@ -490,9 +490,14 @@ function Products() {
   useEffect(() => {
     setLoading(true);
     setVisible(30);
-    // Fetch a large batch in one go so the whole pool can be shuffled +
-    // brand-spread client-side. Pagination then just slices out of this pool.
-    fetch(`/api/products?brand=${brand}&page=1&limit=200&sortBy=newest`).then(r=>r.json()).then(d => {
+    // When "All" is selected, use the mix=1 per-brand sampling endpoint
+    // so every brand gets equal representation regardless of how many
+    // products each has in the DB. Without this, one dominant brand
+    // (e.g. Knockaround with ~80% of all rows) would fill the feed.
+    const url = brand === 'All'
+      ? `/api/products?mix=1&limit=40`
+      : `/api/products?brand=${encodeURIComponent(brand)}&page=1&limit=200&sortBy=newest`;
+    fetch(url).then(r=>r.json()).then(d => {
       const products = (d.products || []) as ProductItem[];
       // Fisher–Yates shuffle, then spread by brand so no two adjacent
       // cards are from the same brand when possible.
