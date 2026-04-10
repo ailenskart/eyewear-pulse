@@ -201,7 +201,10 @@ export default function ReimagineStudio() {
           <a href="/" className="text-[var(--text-2)] hover:text-[var(--text)]">
             <svg width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
           </a>
-          <h1 className="text-[15px] font-semibold flex-1">Reimagine Studio</h1>
+          <h1 className="text-[15px] font-semibold flex-1 flex items-center gap-1.5">
+            <span>Reimagine</span>
+            <span className="text-[10px] uppercase tracking-wider text-[var(--text-3)] font-bold">· Lenzy</span>
+          </h1>
           <div className="flex bg-[var(--bg-alt)] rounded-lg p-[2px]">
             <button onClick={() => setView('studio')} className={`px-3 py-1 rounded-md text-[12px] font-medium ${view === 'studio' ? 'bg-[var(--surface)] shadow-sm' : 'text-[var(--text-3)]'}`}>Studio</button>
             <button onClick={() => setView('history')} className={`px-3 py-1 rounded-md text-[12px] font-medium ${view === 'history' ? 'bg-[var(--surface)] shadow-sm' : 'text-[var(--text-3)]'}`}>History ({projects.length})</button>
