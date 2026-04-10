@@ -20,6 +20,7 @@ export interface Post {
     priceRange: string;
   };
   imageUrl: string;
+  rawImageUrl: string; // absolute URL (Blob or IG CDN), for server-side use
   videoUrl: string | null;
   carouselSlides: CarouselSlide[];
   caption: string;
@@ -159,6 +160,7 @@ function transformPosts(): Post[] {
       id: p.id || p.shortCode || `${handle}_${posts.length}`,
       brand,
       imageUrl,
+      rawImageUrl: rawUrl, // absolute URL — no /api/img proxy
       videoUrl: proxyIgUrl(p.videoBlobUrl || p.videoUrl || null),
       carouselSlides: (p.carouselSlides || []).map(s => ({
         ...s,

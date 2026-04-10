@@ -65,6 +65,7 @@ async function callReplicate(modelVersion: string, input: Record<string, unknown
  */
 async function callReplicateSlug(modelSlug: string, input: Record<string, unknown>): Promise<{ url: string | null; error: string | null }> {
   try {
+    console.log(`[Replicate ${modelSlug}] Starting with input keys:`, Object.keys(input));
     const res = await fetch(`https://api.replicate.com/v1/models/${modelSlug}/predictions`, {
       method: 'POST',
       headers: {
@@ -74,7 +75,9 @@ async function callReplicateSlug(modelSlug: string, input: Record<string, unknow
       },
       body: JSON.stringify({ input }),
     });
+    console.log(`[Replicate ${modelSlug}] HTTP status:`, res.status);
     const data = await res.json();
+    console.log(`[Replicate ${modelSlug}] Response:`, JSON.stringify(data).substring(0, 500));
 
     // Check for API errors (402 credit, 401 auth, 422 validation)
     if (!res.ok || data.detail || data.error) {

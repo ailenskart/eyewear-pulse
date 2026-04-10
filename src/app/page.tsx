@@ -5,7 +5,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 interface Post {
   id: string;
   brand: { name: string; handle: string; category: string; region: string; priceRange: string };
-  imageUrl: string; videoUrl: string | null; carouselSlides: Array<{ url: string; type: string }>;
+  imageUrl: string; rawImageUrl: string; videoUrl: string | null; carouselSlides: Array<{ url: string; type: string }>;
   caption: string; likes: number; comments: number; engagement: number;
   hashtags: string[]; postedAt: string; postUrl: string; type: string; isVideo: boolean;
 }
@@ -395,7 +395,7 @@ function Sheet({ post, onClose }: { post: Post; onClose: () => void }) {
 
             {/* Actions */}
             <div className="p-3 border-t border-[var(--line)] space-y-2 flex-shrink-0">
-              <a href={`/reimagine?image=${encodeURIComponent(post.imageUrl)}&brand=${encodeURIComponent(post.brand.name)}&caption=${encodeURIComponent(post.caption.substring(0,200))}&postUrl=${encodeURIComponent(post.postUrl)}`}
+              <a href={`/reimagine?image=${encodeURIComponent(post.rawImageUrl || post.imageUrl)}&brand=${encodeURIComponent(post.brand.name)}&caption=${encodeURIComponent(post.caption.substring(0,200))}&postUrl=${encodeURIComponent(post.postUrl)}`}
                 className="w-full py-2.5 rounded-lg bg-gradient-to-r from-orange-500 to-pink-500 text-white text-[13px] font-semibold text-center flex items-center justify-center gap-2">
                 <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
                 Reimagine for Lenskart
