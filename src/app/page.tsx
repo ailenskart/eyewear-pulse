@@ -193,7 +193,7 @@ export default function App() {
       {/* ── Header ── */}
       <header className="sticky top-0 z-40 bg-[var(--bg)] border-b border-[var(--line)]" style={{ backdropFilter: 'blur(20px)', WebkitBackdropFilter: 'blur(20px)', background: 'color-mix(in srgb, var(--bg) 90%, transparent)' }}>
         <div className="max-w-6xl mx-auto flex items-center h-12 px-4 gap-3">
-          <h1 className="text-[15px] font-semibold whitespace-nowrap">EyeWear Pulse</h1>
+          <h1 className="text-[15px] font-semibold whitespace-nowrap">Lenzy</h1>
           <div className="flex-1 max-w-xs ml-auto">
             <input type="text" onChange={e => search(e.target.value)} placeholder="Search brands, tags..." className="w-full bg-[var(--bg-alt)] rounded-lg px-3 py-[6px] text-[13px] placeholder:text-[var(--text-3)] outline-none border border-transparent focus:border-[var(--brand)] transition-colors" />
           </div>

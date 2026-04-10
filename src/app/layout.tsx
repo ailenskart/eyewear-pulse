@@ -2,8 +2,16 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "EyeWear Pulse — Global Eyewear Instagram Intelligence",
-  description: "Live Instagram scraper & analytics dashboard tracking 500 global eyewear brands",
+  metadataBase: new URL("https://lenzy.studio"),
+  title: "Lenzy — Eyewear Creative Intelligence",
+  description: "Lenzy tracks global eyewear brands on Instagram and reimagines their posts for your catalog. Live feed, AI analysis, and one-tap creative reimagining.",
+  openGraph: {
+    title: "Lenzy — Eyewear Creative Intelligence",
+    description: "Track global eyewear brands on Instagram and reimagine their posts for your catalog.",
+    url: "https://lenzy.studio",
+    siteName: "Lenzy",
+    type: "website",
+  },
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

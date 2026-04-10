@@ -12,7 +12,7 @@ import { NextRequest, NextResponse } from 'next/server';
 // Tokens imported from env vars
 const APIFY_TOKEN = process.env.APIFY_TOKEN || '';
 const BLOB_TOKEN = process.env.BLOB_READ_WRITE_TOKEN || '';
-const CRON_SECRET = process.env.CRON_SECRET || 'eyewear-pulse-cron-2026';
+const CRON_SECRET = process.env.CRON_SECRET || 'lenzy-cron-2026';
 const ACTOR_ID = 'shu8hvrXbJbY3Eb9W';
 const POSTS_PER_BRAND = 10;
 const BATCH_SIZE = 15;
