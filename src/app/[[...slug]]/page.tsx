@@ -161,7 +161,7 @@ function MediaCard({ post, onOpen, delay }: { post: Post; onOpen: () => void; de
 }
 
 /* ═══ App ═══ */
-type Tab = 'feed' | 'products' | 'boards' | 'ads' | 'watchlist' | 'intel' | 'brand' | 'sources';
+type Tab = 'feed' | 'products' | 'boards' | 'ads' | 'watchlist' | 'intel' | 'brand' | 'sources' | 'news' | 'celebrities';
 
 export default function App() {
   const router = useRouter();
@@ -187,6 +187,8 @@ export default function App() {
     if (first === 'intel') return 'intel';
     if (first === 'brands') return 'brand';
     if (first === 'sources') return 'sources';
+    if (first === 'news') return 'news';
+    if (first === 'celebrities' || first === 'celebs') return 'celebrities';
     return 'feed';
   }, [slug]);
   const focusedProductId = slug[0]?.toLowerCase() === 'products' ? (slug[1] || null) : null;
@@ -319,6 +321,12 @@ export default function App() {
         {/* ── Meta Ad Library ── */}
         {tab === 'ads' && <AdLibrary />}
 
+        {/* ── News digest ── */}
+        {tab === 'news' && <News />}
+
+        {/* ── Celebrities ── */}
+        {tab === 'celebrities' && <Celebrities />}
+
         {/* ── Intelligence Sources ── */}
         {tab === 'sources' && <Sources />}
 
@@ -344,12 +352,13 @@ export default function App() {
       {/* ── Bottom Nav ── */}
       <nav className="fixed bottom-0 left-0 right-0 z-50 bg-[var(--bg)] border-t border-[var(--line)] flex justify-around" style={{ paddingTop: 8, paddingBottom: 'max(8px, env(safe-area-inset-bottom))' }}>
         {[
-          { k: 'feed', l: 'Feed', svg: <svg width="20" height="20" fill="none" stroke="currentColor" strokeWidth="1.8" viewBox="0 0 24 24"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><path d="M9 22V12h6v10"/></svg> },
-          { k: 'ads', l: 'Ads', svg: <svg width="20" height="20" fill="none" stroke="currentColor" strokeWidth="1.8" viewBox="0 0 24 24"><path d="M3 11l18-5v12L3 13v-2z"/><path d="M11.6 16.8a3 3 0 11-5.8-1.6"/></svg> },
-          { k: 'sources', l: 'Intel', svg: <svg width="20" height="20" fill="none" stroke="currentColor" strokeWidth="1.8" viewBox="0 0 24 24"><path d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg> },
-          { k: 'products', l: 'Shop', svg: <svg width="20" height="20" fill="none" stroke="currentColor" strokeWidth="1.8" viewBox="0 0 24 24"><path d="M6 2L3 6v14a2 2 0 002 2h14a2 2 0 002-2V6l-3-4z"/><path d="M3 6h18"/><path d="M16 10a4 4 0 01-8 0"/></svg> },
-          { k: 'watchlist', l: 'Watch', svg: <svg width="20" height="20" fill="none" stroke="currentColor" strokeWidth="1.8" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="3"/></svg> },
-          { k: 'boards', l: 'Boards', svg: <svg width="20" height="20" fill="none" stroke="currentColor" strokeWidth="1.8" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg> },
+          { k: 'feed', l: 'Feed', svg: <svg width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.8" viewBox="0 0 24 24"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><path d="M9 22V12h6v10"/></svg> },
+          { k: 'news', l: 'News', svg: <svg width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.8" viewBox="0 0 24 24"><path d="M4 22h16a2 2 0 002-2V4a2 2 0 00-2-2H8a2 2 0 00-2 2v16a2 2 0 01-2 2zm0 0a2 2 0 01-2-2v-9c0-1.1.9-2 2-2h2M18 14h-8M15 18h-5M10 6h8v4h-8V6z"/></svg> },
+          { k: 'celebrities', l: 'Celebs', svg: <svg width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.8" viewBox="0 0 24 24"><path d="M12 2l3 6 6 1-4.5 4.5 1 6-5.5-3-5.5 3 1-6L3 9l6-1 3-6z"/></svg> },
+          { k: 'sources', l: 'Intel', svg: <svg width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.8" viewBox="0 0 24 24"><path d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg> },
+          { k: 'products', l: 'Shop', svg: <svg width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.8" viewBox="0 0 24 24"><path d="M6 2L3 6v14a2 2 0 002 2h14a2 2 0 002-2V6l-3-4z"/><path d="M3 6h18"/><path d="M16 10a4 4 0 01-8 0"/></svg> },
+          { k: 'watchlist', l: 'Watch', svg: <svg width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.8" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="3"/></svg> },
+          { k: 'boards', l: 'Boards', svg: <svg width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.8" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg> },
         ].map(x => (
           <button key={x.k} onClick={() => setTab(x.k as typeof tab)} className={`flex flex-col items-center gap-[2px] py-1 px-3 ${tab===x.k ? 'text-[var(--brand)]' : 'text-[var(--text-3)]'}`}>
             {x.svg}
@@ -1764,6 +1773,290 @@ function AdLibrary() {
               </div>
             </article>
           ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ═══ News — Daily digest synthesized from internal Lenzy data ═══ */
+
+interface NewsItem {
+  headline: string;
+  summary: string;
+  source?: string;
+  url?: string;
+  metric?: string;
+  thumbnail?: string;
+}
+interface NewsSection {
+  title: string;
+  emoji: string;
+  items: NewsItem[];
+}
+interface NewsDigest {
+  date: string;
+  region: string;
+  intro: string;
+  sections: NewsSection[];
+  dataSources: { name: string; count: number }[];
+  generatedAt: string;
+  cached: boolean;
+}
+
+function News() {
+  const [digest, setDigest] = useState<NewsDigest | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [err, setErr] = useState('');
+  const [region, setRegion] = useState('ALL');
+
+  const load = useCallback(async (refresh = false) => {
+    setLoading(true); setErr('');
+    try {
+      const res = await fetch(`/api/news?region=${region}${refresh ? '&refresh=1' : ''}`);
+      const data = await res.json();
+      if (data.error) setErr(data.error);
+      else setDigest(data);
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : 'Fetch failed');
+    }
+    setLoading(false);
+  }, [region]);
+
+  useEffect(() => { load(false); }, [load]);
+
+  return (
+    <div className="py-4 max-w-3xl mx-auto">
+      {/* Header */}
+      <div className="flex items-start justify-between mb-4">
+        <div>
+          <div className="text-[10px] uppercase tracking-[0.15em] font-bold text-[var(--brand)] mb-1">Daily Digest</div>
+          <h2 className="text-[26px] font-bold tracking-tight leading-tight">
+            {digest ? new Date(digest.date).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' }) : "Today's eyewear brief"}
+          </h2>
+        </div>
+        <div className="flex items-center gap-2 flex-shrink-0">
+          <select value={region} onChange={e => setRegion(e.target.value)} className="bg-[var(--bg-alt)] rounded-lg px-2 py-1.5 text-[11px] outline-none">
+            <option value="ALL">🌐 Global</option>
+            <option value="North America">🇺🇸 NA</option>
+            <option value="Europe">🇪🇺 EU</option>
+            <option value="South Asia">🇮🇳 SA</option>
+            <option value="Asia">🌏 Asia</option>
+          </select>
+          <button onClick={() => load(true)} disabled={loading} className="p-2 bg-[var(--bg-alt)] rounded-lg disabled:opacity-50" title="Refresh digest">
+            <svg width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24" className={loading ? 'animate-spin' : ''}><path d="M23 4v6h-6M1 20v-6h6"/><path d="M20.49 9A9 9 0 0 0 5.64 5.64L1 10m22 4l-4.64 4.36A9 9 0 0 1 3.51 15"/></svg>
+          </button>
+        </div>
+      </div>
+
+      {loading && !digest && (
+        <div className="bg-[var(--surface)] border border-[var(--line)] rounded-2xl p-8 text-center">
+          <div className="inline-block w-6 h-6 border-2 border-[var(--brand)] border-t-transparent rounded-full animate-spin" />
+          <p className="text-[12px] text-[var(--text-3)] mt-3">Writing your morning brief from {FEED_STATS_PLACEHOLDER}k posts + 21k products…</p>
+        </div>
+      )}
+
+      {err && <div className="bg-red-500/10 border border-red-500/30 text-red-400 rounded-xl p-3 text-[12px] mb-4">{err}</div>}
+
+      {digest && (
+        <>
+          {/* Intro */}
+          <div className="bg-[var(--surface)] border border-[var(--line)] rounded-2xl p-5 mb-4">
+            <p className="text-[14px] leading-relaxed text-[var(--text)]">{digest.intro}</p>
+            <div className="flex items-center gap-2 mt-3 text-[10px] text-[var(--text-3)]">
+              {digest.cached && <span className="inline-block px-1.5 py-0.5 bg-[var(--bg-alt)] rounded uppercase tracking-wider font-bold">Cached</span>}
+              <span>Built from {digest.dataSources.map(s => `${s.count} ${s.name.toLowerCase()}`).join(' · ')}</span>
+            </div>
+          </div>
+
+          {/* Sections */}
+          <div className="space-y-5">
+            {digest.sections.map((section, si) => (
+              <section key={si}>
+                <div className="flex items-baseline gap-2 mb-3 px-1">
+                  <span className="text-[22px]">{section.emoji}</span>
+                  <h3 className="text-[16px] font-bold tracking-tight">{section.title}</h3>
+                </div>
+                <div className="space-y-3">
+                  {section.items.map((item, ii) => (
+                    <a
+                      key={ii}
+                      href={item.url || '#'}
+                      target={item.url ? '_blank' : undefined}
+                      rel="noopener noreferrer"
+                      className={`block bg-[var(--surface)] border border-[var(--line)] rounded-xl p-4 ${item.url ? 'hover:border-[var(--brand)] transition-colors' : 'cursor-default'}`}
+                    >
+                      <div className="flex gap-3">
+                        {item.thumbnail && (
+                          <img src={item.thumbnail} alt="" className="w-20 h-20 rounded-lg object-cover flex-shrink-0 bg-[var(--bg-alt)]" loading="lazy" onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }} />
+                        )}
+                        <div className="flex-1 min-w-0">
+                          <div className="text-[13px] font-semibold leading-snug">{item.headline}</div>
+                          <p className="text-[12px] text-[var(--text-2)] leading-relaxed mt-1">{item.summary}</p>
+                          <div className="flex items-center gap-2 mt-2 text-[10px] text-[var(--text-3)]">
+                            {item.source && <span className="font-semibold">{item.source}</span>}
+                            {item.metric && <><span>·</span><span className="text-[var(--brand)] font-semibold">{item.metric}</span></>}
+                          </div>
+                        </div>
+                      </div>
+                    </a>
+                  ))}
+                </div>
+              </section>
+            ))}
+          </div>
+
+          <div className="text-center mt-8 text-[10px] text-[var(--text-3)]">
+            Generated {new Date(digest.generatedAt).toLocaleTimeString()} · Auto-refreshes every 4 hours
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+// Small placeholder — we don't have a precise count here, so the string is
+// just used for the loading state copy.
+const FEED_STATS_PLACEHOLDER = 1;
+
+/* ═══ Celebrities — who's wearing what ═══ */
+
+interface Celebrity {
+  name: string;
+  category: string;
+  country: string;
+  knownFor: string;
+}
+interface CelebImage { url: string; thumb?: string; title?: string; source?: string }
+
+function Celebrities() {
+  const [list, setList] = useState<Celebrity[]>([]);
+  const [categories, setCategories] = useState<string[]>([]);
+  const [category, setCategory] = useState('All');
+  const [q, setQ] = useState('');
+  const [total, setTotal] = useState(0);
+  const [loading, setLoading] = useState(true);
+  const [selected, setSelected] = useState<Celebrity | null>(null);
+  const [images, setImages] = useState<CelebImage[]>([]);
+  const [imagesLoading, setImagesLoading] = useState(false);
+  const [imageSource, setImageSource] = useState('');
+
+  useEffect(() => {
+    setLoading(true);
+    const p = new URLSearchParams({ limit: '500' });
+    if (category !== 'All') p.set('category', category);
+    if (q.trim()) p.set('q', q.trim());
+    fetch(`/api/celebrities?${p}`).then(r => r.json()).then(d => {
+      setList(d.celebrities || []);
+      setCategories(['All', ...(d.categories || [])]);
+      setTotal(d.total || 0);
+      setLoading(false);
+    }).catch(() => setLoading(false));
+  }, [category, q]);
+
+  const openCeleb = async (c: Celebrity) => {
+    setSelected(c);
+    setImages([]);
+    setImageSource('');
+    setImagesLoading(true);
+    try {
+      const res = await fetch(`/api/celebrities?name=${encodeURIComponent(c.name)}&images=1`);
+      const data = await res.json();
+      setImages(data.images || []);
+      setImageSource(data.source || '');
+    } catch { /* ignore */ }
+    setImagesLoading(false);
+  };
+
+  return (
+    <div className="py-4">
+      <div className="flex items-start justify-between mb-4">
+        <div>
+          <h2 className="text-[20px] font-bold tracking-tight">Celebrities</h2>
+          <p className="text-[11px] text-[var(--text-3)] mt-0.5">{total} curated celebrities — tap any to see their eyewear moments</p>
+        </div>
+      </div>
+
+      {/* Search + category chips */}
+      <div className="bg-[var(--surface)] border border-[var(--line)] rounded-xl p-3 mb-4 space-y-2">
+        <input
+          type="text" value={q} onChange={e => setQ(e.target.value)}
+          placeholder="Search celebrities or known frames…"
+          className="w-full bg-[var(--bg-alt)] rounded-lg px-3 py-2 text-[12px] outline-none"
+        />
+        <div className="flex gap-1.5 overflow-x-auto" style={{ scrollbarWidth: 'none' }}>
+          {categories.map(c => (
+            <button
+              key={c}
+              onClick={() => setCategory(c)}
+              className={`px-2.5 py-1 rounded-full text-[11px] font-medium whitespace-nowrap flex-shrink-0 ${category === c ? 'bg-[var(--text)] text-[var(--bg)]' : 'bg-[var(--bg-alt)] text-[var(--text-2)]'}`}
+            >
+              {c}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {loading && <div className="flex items-center justify-center py-16 text-[var(--text-3)] text-[12px]"><div className="w-4 h-4 border-2 border-[var(--brand)] border-t-transparent rounded-full animate-spin mr-2" />Loading celebs…</div>}
+
+      {!loading && list.length > 0 && (
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+          {list.map(c => (
+            <button
+              key={c.name}
+              onClick={() => openCeleb(c)}
+              className="bg-[var(--surface)] border border-[var(--line)] rounded-xl p-4 text-left hover:border-[var(--brand)] transition-colors"
+            >
+              <div className="w-12 h-12 rounded-full bg-gradient-to-br from-[var(--brand)] to-purple-500 flex items-center justify-center text-white text-[16px] font-bold mb-2">
+                {c.name.charAt(0)}
+              </div>
+              <div className="text-[13px] font-semibold line-clamp-1">{c.name}</div>
+              <div className="text-[10px] text-[var(--text-3)] mt-0.5">{c.category} · {c.country}</div>
+              <p className="text-[11px] text-[var(--text-2)] line-clamp-2 mt-1.5 leading-snug">{c.knownFor}</p>
+            </button>
+          ))}
+        </div>
+      )}
+
+      {/* Lightbox modal with images */}
+      {selected && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4" onClick={() => setSelected(null)}>
+          <div className="bg-[var(--surface)] max-w-4xl w-full max-h-[85vh] rounded-2xl overflow-hidden flex flex-col" onClick={e => e.stopPropagation()}>
+            <div className="p-4 border-b border-[var(--line)] flex items-start justify-between">
+              <div>
+                <div className="text-[18px] font-bold">{selected.name}</div>
+                <div className="text-[11px] text-[var(--text-3)]">{selected.category} · {selected.country}</div>
+                <p className="text-[12px] text-[var(--text-2)] mt-2 leading-relaxed max-w-md">{selected.knownFor}</p>
+              </div>
+              <button onClick={() => setSelected(null)} className="text-[var(--text-3)] text-[22px] leading-none px-2">×</button>
+            </div>
+            <div className="flex-1 overflow-y-auto p-4">
+              {imagesLoading && (
+                <div className="flex items-center justify-center py-12 text-[var(--text-3)] text-[12px]">
+                  <div className="w-4 h-4 border-2 border-[var(--brand)] border-t-transparent rounded-full animate-spin mr-2" />
+                  Searching eyewear photos…
+                </div>
+              )}
+              {!imagesLoading && images.length === 0 && (
+                <div className="text-center py-12 text-[var(--text-3)] text-[12px]">
+                  <p>No images found for {selected.name}.</p>
+                  <p className="mt-2 text-[10px]">Set BRAVE_SEARCH_KEY or APIFY_TOKEN to enable image search. Wikipedia is tried as a fallback.</p>
+                </div>
+              )}
+              {images.length > 0 && (
+                <>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                    {images.map((img, i) => (
+                      <a key={i} href={img.url} target="_blank" rel="noopener noreferrer" className="block aspect-square bg-[var(--bg-alt)] rounded-lg overflow-hidden">
+                        <img src={img.thumb || img.url} alt={img.title || selected.name} className="w-full h-full object-cover" loading="lazy" onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }} />
+                      </a>
+                    ))}
+                  </div>
+                  <div className="text-[9px] text-[var(--text-3)] mt-3 text-right uppercase tracking-wider">Source: {imageSource}</div>
+                </>
+              )}
+            </div>
+          </div>
         </div>
       )}
     </div>
