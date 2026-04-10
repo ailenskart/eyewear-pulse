@@ -116,8 +116,44 @@ async function callReplicateSlug(modelSlug: string, input: Record<string, unknow
 }
 
 /**
+ * Parse an eyewear product URL slug into a synthetic textual description.
+ * Lenskart / John Jacobs PDPs are client-rendered behind Cloudflare, so we
+ * cannot scrape their product images. But the URL slug itself contains the
+ * brand, collection, model code, color, and frame type — which is enough to
+ * feed into an image-editing prompt.
+ *
+ * Examples:
+ *   lenskart-hustlr-la-e19034-navy+blue-eyeglasses.html
+ *     → "Lenskart Hustlr LA E19034 Navy Blue Eyeglasses"
+ *   john-jacobs-bauhaus-jj-e13488-black-eyeglasses.html
+ *     → "John Jacobs Bauhaus JJ E13488 Black Eyeglasses"
+ */
+function parseProductSlug(productUrl: string): string {
+  try {
+    const u = new URL(productUrl);
+    // Pull the last path segment, strip extensions and query params
+    const last = u.pathname.split('/').filter(Boolean).pop() || '';
+    let slug = last.replace(/\.(html?|php|aspx?)$/i, '');
+    // Replace dashes and + with spaces, decode URL-encoded chars
+    slug = decodeURIComponent(slug).replace(/[-+_]+/g, ' ').trim();
+    // Title-case each word
+    const words = slug.split(/\s+/).map(w => {
+      // Preserve model codes like "LA E19034" uppercase
+      if (/^[a-z]{1,3}\d+[a-z0-9]*$/i.test(w) || /^[a-z]{2,4}$/i.test(w) && w.length <= 3) {
+        return w.toUpperCase();
+      }
+      return w.charAt(0).toUpperCase() + w.slice(1).toLowerCase();
+    });
+    return words.join(' ');
+  } catch {
+    return '';
+  }
+}
+
+/**
  * Fetch a product page and extract the primary product image URL.
- * Works with Lenskart, John Jacobs, and most e-commerce sites (og:image, JSON-LD, etc.)
+ * Works on most e-commerce sites (og:image, twitter:image, JSON-LD).
+ * Fails silently on JS-rendered SPAs behind Cloudflare (Lenskart, etc.)
  */
 async function extractProductImage(productUrl: string): Promise<string | null> {
   try {
@@ -133,14 +169,25 @@ async function extractProductImage(productUrl: string): Promise<string | null> {
     }
     const html = await res.text();
 
+    // Reject generic/logo images that aren't the actual product
+    const isRealProductImage = (url: string): boolean => {
+      const lower = url.toLowerCase();
+      if (lower.includes('logo')) return false;
+      if (lower.includes('icon')) return false;
+      if (lower.includes('placeholder')) return false;
+      if (lower.includes('lenskart-logo')) return false;
+      if (lower.match(/\d+x\d+/) && !lower.includes('catalog/product')) return false;
+      return true;
+    };
+
     // Try og:image first (most reliable)
     const ogMatch = html.match(/<meta[^>]+property=["']og:image["'][^>]+content=["']([^"']+)["']/i)
       || html.match(/<meta[^>]+content=["']([^"']+)["'][^>]+property=["']og:image["']/i);
-    if (ogMatch && ogMatch[1]) return ogMatch[1];
+    if (ogMatch && ogMatch[1] && isRealProductImage(ogMatch[1])) return ogMatch[1];
 
     // Try twitter:image
     const twMatch = html.match(/<meta[^>]+name=["']twitter:image["'][^>]+content=["']([^"']+)["']/i);
-    if (twMatch && twMatch[1]) return twMatch[1];
+    if (twMatch && twMatch[1] && isRealProductImage(twMatch[1])) return twMatch[1];
 
     // Try JSON-LD product image
     const jsonLdMatches = html.matchAll(/<script[^>]+type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi);
@@ -150,16 +197,18 @@ async function extractProductImage(productUrl: string): Promise<string | null> {
         const items = Array.isArray(data) ? data : [data];
         for (const item of items) {
           const img = item.image || item.mainEntity?.image;
-          if (typeof img === 'string') return img;
-          if (Array.isArray(img) && img.length > 0) return typeof img[0] === 'string' ? img[0] : img[0]?.url;
-          if (img?.url) return img.url;
+          let candidate: string | undefined;
+          if (typeof img === 'string') candidate = img;
+          else if (Array.isArray(img) && img.length > 0) candidate = typeof img[0] === 'string' ? img[0] : img[0]?.url;
+          else if (img?.url) candidate = img.url;
+          if (candidate && isRealProductImage(candidate)) return candidate;
         }
       } catch { continue; }
     }
 
-    // Lenskart-specific: look for their CDN image pattern in the HTML
-    const lenskartMatch = html.match(/https?:\/\/[^"'\s]*static\.lenskart\.com[^"'\s]*\.(?:jpg|jpeg|png|webp)/i);
-    if (lenskartMatch) return lenskartMatch[0];
+    // Lenskart-specific: look for their catalog product CDN image pattern in the HTML
+    const lenskartCatalogMatch = html.match(/https?:\/\/static\d*\.lenskart\.com\/media\/catalog\/product\/[^"'\s]+\.(?:jpg|jpeg|png|webp)/i);
+    if (lenskartCatalogMatch) return lenskartCatalogMatch[0];
 
     return null;
   } catch (e) {
@@ -169,7 +218,7 @@ async function extractProductImage(productUrl: string): Promise<string | null> {
 }
 
 export async function POST(request: NextRequest) {
-  const { imageUrl, prompt, brandName } = await request.json();
+  const { imageUrl, prompt, brandName, frameImageBase64, frameImageMime } = await request.json();
   if (!imageUrl) return NextResponse.json({ error: 'imageUrl required' }, { status: 400 });
 
   const brand = brandName || 'Lenskart';
@@ -187,13 +236,50 @@ export async function POST(request: NextRequest) {
     const base64 = Buffer.from(imgBuffer).toString('base64');
     const mimeType = imgRes.headers.get('content-type') || 'image/jpeg';
 
-    // If product URL provided, fetch the product image and describe it with Gemini vision
-    // so FLUX Kontext gets a CONCRETE visual description (not just a dead URL string).
+    // Resolve the frame description from one of three sources:
+    //   A) User uploaded a frame photo directly → describe with Gemini vision (most reliable)
+    //   B) Product URL → scrape image OR fall back to slug parsing
+    //   C) Nothing → default face-nudge edit
     let productFrameDescription = '';
     let productImageUrl: string | null = null;
-    if (productUrl) {
+    let productSlug = '';
+
+    // ── Path A: uploaded frame image (highest priority, most reliable) ──
+    if (frameImageBase64) {
+      try {
+        const ai = new GoogleGenAI({ apiKey: GEMINI_KEY });
+        const mime = frameImageMime || 'image/jpeg';
+        for (const model of ['gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-1.5-flash']) {
+          try {
+            const r = await ai.models.generateContent({
+              model,
+              contents: [{
+                role: 'user',
+                parts: [
+                  { inlineData: { mimeType: mime, data: frameImageBase64 } },
+                  { text: 'Describe ONLY these eyewear frames for an image-editing AI. Cover: frame shape (aviator/round/square/cat-eye/rectangular/wayfarer/oversized), frame color and finish (gloss/matte), temple color, bridge type, lens color/tint, material (acetate/metal/titanium/plastic), and any distinctive details (rivets, logo placement, etc). Be concrete and visual. Maximum 60 words, no preamble.' },
+                ],
+              }],
+            });
+            if (r.text) { productFrameDescription = r.text.trim(); break; }
+          } catch { continue; }
+        }
+        // Surface the uploaded image back to the client as a data URL so the thread
+        // card can show the reference frames thumbnail.
+        productImageUrl = `data:${mime};base64,${frameImageBase64}`;
+      } catch (e) {
+        console.warn('[reimagine] uploaded frame describe failed:', e);
+      }
+    }
+
+    // ── Path B: product URL (only if no uploaded frame) ──
+    if (productUrl && !productFrameDescription) {
+      productSlug = parseProductSlug(productUrl);
       productImageUrl = await extractProductImage(productUrl);
-      console.log('[reimagine] product URL:', productUrl, '→ image:', productImageUrl);
+      console.log('[reimagine] product URL:', productUrl, '→ slug:', productSlug, '→ image:', productImageUrl);
+      const ai = new GoogleGenAI({ apiKey: GEMINI_KEY });
+
+      // Path 1: we got a real product image → use vision
       if (productImageUrl) {
         try {
           const prodRes = await fetch(productImageUrl, { headers: { 'User-Agent': 'Mozilla/5.0' } });
@@ -201,7 +287,6 @@ export async function POST(request: NextRequest) {
             const prodBuf = await prodRes.arrayBuffer();
             const prodBase64 = Buffer.from(prodBuf).toString('base64');
             const prodMime = prodRes.headers.get('content-type') || 'image/jpeg';
-            const ai = new GoogleGenAI({ apiKey: GEMINI_KEY });
             for (const model of ['gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-1.5-flash']) {
               try {
                 const r = await ai.models.generateContent({
@@ -222,15 +307,34 @@ export async function POST(request: NextRequest) {
           console.warn('[reimagine] product image describe failed:', e);
         }
       }
+
+      // Path 2: no image OR vision failed → expand the URL slug with Gemini text
+      if (!productFrameDescription && productSlug) {
+        for (const model of ['gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-1.5-flash']) {
+          try {
+            const r = await ai.models.generateContent({
+              model,
+              contents: `This is an eyewear product name scraped from an e-commerce URL: "${productSlug}". Infer and describe the frames as they would visually appear in an image-editing prompt. Cover: frame shape (aviator / round / square / cat-eye / rectangular / wayfarer / oversized / geometric / browline), frame color (use the exact color in the name), finish (gloss/matte), material (acetate/metal/titanium), lens type (clear prescription lenses for eyeglasses OR tinted lenses for sunglasses based on the name), and style vibe. Be concrete and visual. Maximum 50 words. No preamble, just the description.`,
+            });
+            if (r.text) { productFrameDescription = r.text.trim(); break; }
+          } catch { continue; }
+        }
+      }
+
+      // Path 3: absolute last resort — use the slug verbatim
+      if (!productFrameDescription && productSlug) {
+        productFrameDescription = productSlug;
+      }
     }
 
     // Build CONSERVATIVE edit prompt
+    const hasFrameSource = Boolean(frameImageBase64 || productUrl);
     let editDirection: string;
-    if (productUrl && productFrameDescription) {
-      editDirection = `Replace ONLY the eyewear frames on the person in this photo with these new frames: ${productFrameDescription}. CRITICAL: Keep the exact same person — same face, same skin tone, same hair, same identity. Keep the same pose, lighting, background, clothing, composition, and color grading. Only the frames change; nothing else. ${userNote}`.trim();
-    } else if (productUrl && !productFrameDescription) {
-      // Couldn't fetch product image — fall back to a safe no-op-ish instruction
-      editDirection = `Replace the eyewear frames with stylish premium sunglasses. CRITICAL: Keep the exact same person — same face, same skin tone, same hair, same identity. Keep the same pose, lighting, background, clothing, composition. Only the frames change. ${userNote}`.trim();
+    if (productFrameDescription) {
+      editDirection = `Replace ONLY the eyewear frames on the person in this photo with these new frames: ${productFrameDescription}. CRITICAL: Keep the exact same person — same face, same skin tone, same hair, same identity, same ethnicity. Keep the same pose, lighting, background, clothing, composition, and color grading. Only the frames change; nothing else. ${userNote}`.trim();
+    } else if (hasFrameSource) {
+      // Couldn't even parse the slug — fall back to a safe no-op-ish instruction
+      editDirection = `Replace the eyewear frames with stylish premium sunglasses. CRITICAL: Keep the exact same person — same face, same skin tone, same hair, same identity, same ethnicity. Keep the same pose, lighting, background, clothing, composition. Only the frames change. ${userNote}`.trim();
     } else {
       editDirection = `Tiny face-only variation: make this a slightly different person, but keep the SAME ethnicity, SAME skin tone, SAME hair color and length, SAME age, SAME gender, and SAME overall look as the original. Just nudge the facial features a little (slightly different nose, jawline, or eyes) so it's technically not the same individual. Do NOT make the person Indian. Do NOT change ethnicity. Do NOT change skin tone. Keep EVERYTHING else exactly the same — same pose, same eyewear frames, same background, same lighting, same clothing, same composition, same color grading, same expression, same mood. This is the smallest possible change, just enough that it's a different face. ${userNote}`.trim();
     }

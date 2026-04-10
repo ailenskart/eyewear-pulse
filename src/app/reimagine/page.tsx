@@ -36,10 +36,36 @@ export default function ReimagineStudio() {
   const [active, setActive] = useState<Project | null>(null);
   const [loading, setLoading] = useState(false);
   const [editPrompt, setEditPrompt] = useState('');
+  const [frameUpload, setFrameUpload] = useState<{ base64: string; mime: string; preview: string } | null>(null);
   const [editingComment, setEditingComment] = useState<string | null>(null);
   const [commentText, setCommentText] = useState('');
   const [view, setView] = useState<'studio' | 'history'>('studio');
   const bottomRef = useRef<HTMLDivElement>(null);
+  const frameFileRef = useRef<HTMLInputElement>(null);
+
+  const handleFramePick = (file: File) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const dataUrl = String(reader.result || '');
+      const [header, data] = dataUrl.split(',');
+      const mimeMatch = header.match(/data:([^;]+)/);
+      setFrameUpload({
+        base64: data || '',
+        mime: mimeMatch?.[1] || 'image/jpeg',
+        preview: dataUrl,
+      });
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const submitIteration = () => {
+    if (!active) return;
+    if (!editPrompt.trim() && !frameUpload) return;
+    generateIteration(active, editPrompt, frameUpload);
+    setEditPrompt('');
+    setFrameUpload(null);
+    if (frameFileRef.current) frameFileRef.current.value = '';
+  };
 
   // Load projects from localStorage
   useEffect(() => {
@@ -78,13 +104,22 @@ export default function ReimagineStudio() {
     localStorage.setItem('reimagine-projects', JSON.stringify(updated));
   };
 
-  const generateIteration = async (project: Project, prompt: string) => {
+  const generateIteration = async (
+    project: Project,
+    prompt: string,
+    frame?: { base64: string; mime: string } | null,
+  ) => {
     setLoading(true);
     try {
       const res = await fetch('/api/reimagine', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ imageUrl: project.sourceImage, prompt }),
+        body: JSON.stringify({
+          imageUrl: project.sourceImage,
+          prompt,
+          frameImageBase64: frame?.base64,
+          frameImageMime: frame?.mime,
+        }),
       });
       const data = await res.json();
 
@@ -338,19 +373,48 @@ export default function ReimagineStudio() {
             {!loading && active.iterations.length > 0 && (
               <div className="bg-[var(--surface)] border border-[var(--line)] rounded-xl p-3">
                 <div className="text-[12px] font-semibold mb-2">Edit & iterate</div>
+
+                {/* Uploaded frame preview */}
+                {frameUpload && (
+                  <div className="flex items-center gap-2 mb-2 p-2 bg-[var(--bg-alt)] rounded-lg">
+                    <img src={frameUpload.preview} alt="Target frames" className="w-12 h-12 rounded-md object-cover bg-white" />
+                    <div className="flex-1 min-w-0">
+                      <div className="text-[11px] font-semibold text-[var(--brand)]">Target frames attached</div>
+                      <div className="text-[10px] text-[var(--text-3)]">These frames will be applied to the source photo</div>
+                    </div>
+                    <button onClick={() => { setFrameUpload(null); if (frameFileRef.current) frameFileRef.current.value = ''; }} className="text-[var(--text-3)] text-[16px] leading-none px-2" aria-label="Remove">×</button>
+                  </div>
+                )}
+
                 <div className="flex gap-2">
                   <input
                     type="text" value={editPrompt} onChange={e => setEditPrompt(e.target.value)}
-                    placeholder="Paste Lenskart product URL to swap frames, or add edit notes..."
-                    className="flex-1 bg-[var(--bg-alt)] rounded-lg px-3 py-2.5 text-[12px] outline-none placeholder:text-[var(--text-3)]"
-                    onKeyDown={e => { if (e.key === 'Enter' && editPrompt.trim()) { generateIteration(active, editPrompt); setEditPrompt(''); }}}
+                    placeholder={frameUpload ? 'Optional notes…' : 'Paste Lenskart URL, upload frame photo, or add notes…'}
+                    className="flex-1 min-w-0 bg-[var(--bg-alt)] rounded-lg px-3 py-2.5 text-[12px] outline-none placeholder:text-[var(--text-3)]"
+                    onKeyDown={e => { if (e.key === 'Enter') submitIteration(); }}
+                  />
+                  <input
+                    ref={frameFileRef}
+                    type="file" accept="image/*" className="hidden"
+                    onChange={e => { const f = e.target.files?.[0]; if (f) handleFramePick(f); }}
                   />
                   <button
-                    onClick={() => { if (editPrompt.trim()) { generateIteration(active, editPrompt); setEditPrompt(''); }}}
-                    disabled={!editPrompt.trim()}
+                    type="button"
+                    onClick={() => frameFileRef.current?.click()}
+                    title="Upload eyeglasses photo"
+                    className="px-3 py-2.5 bg-[var(--bg-alt)] text-[var(--text)] rounded-lg flex-shrink-0 hover:bg-[var(--line)] flex items-center justify-center"
+                  >
+                    <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                  </button>
+                  <button
+                    onClick={submitIteration}
+                    disabled={!editPrompt.trim() && !frameUpload}
                     className="px-4 py-2.5 bg-[var(--brand)] text-white text-[12px] font-semibold rounded-lg disabled:opacity-40 flex-shrink-0"
                   >Reimagine</button>
                 </div>
+                <p className="text-[10px] text-[var(--text-3)] mt-2 leading-snug">
+                  Tip: Lenskart.com PDPs can&apos;t be scraped — upload a clean photo of the frames for best results.
+                </p>
               </div>
             )}
 
