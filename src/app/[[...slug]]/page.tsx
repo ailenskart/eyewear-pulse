@@ -1927,7 +1927,30 @@ interface Celebrity {
   country: string;
   knownFor: string;
 }
-interface CelebImage { url: string; thumb?: string; title?: string; source?: string }
+interface EyewearPost {
+  id: string;
+  imageUrl: string;
+  postUrl: string;
+  caption: string;
+  likes: number;
+  comments: number;
+  postedAt: string;
+  eyewearType: string;
+}
+interface CelebIgResult {
+  name: string;
+  handle: string;
+  totalPostsScanned: number;
+  eyewearPostsCount: number;
+  eyewearPosts: EyewearPost[];
+  fetchedAt: string;
+  cached: boolean;
+  needsSetup?: boolean;
+  needsHandle?: boolean;
+  error?: string;
+  hint?: string;
+  setupInstructions?: { title: string; steps: string[]; why?: string };
+}
 
 function Celebrities() {
   const [list, setList] = useState<Celebrity[]>([]);
@@ -1937,9 +1960,9 @@ function Celebrities() {
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState<Celebrity | null>(null);
-  const [images, setImages] = useState<CelebImage[]>([]);
-  const [imagesLoading, setImagesLoading] = useState(false);
-  const [imageSource, setImageSource] = useState('');
+  const [result, setResult] = useState<CelebIgResult | null>(null);
+  const [scanning, setScanning] = useState(false);
+  const [handleOverride, setHandleOverride] = useState('');
 
   useEffect(() => {
     setLoading(true);
@@ -1954,18 +1977,34 @@ function Celebrities() {
     }).catch(() => setLoading(false));
   }, [category, q]);
 
-  const openCeleb = async (c: Celebrity) => {
-    setSelected(c);
-    setImages([]);
-    setImageSource('');
-    setImagesLoading(true);
+  const scanCeleb = async (c: Celebrity, overrideHandle?: string) => {
+    setScanning(true);
+    setResult(null);
     try {
-      const res = await fetch(`/api/celebrities?name=${encodeURIComponent(c.name)}&images=1`);
+      const params = new URLSearchParams({ name: c.name, limit: '20' });
+      if (overrideHandle) params.set('handle', overrideHandle);
+      const res = await fetch(`/api/celebrities/instagram?${params}`);
       const data = await res.json();
-      setImages(data.images || []);
-      setImageSource(data.source || '');
-    } catch { /* ignore */ }
-    setImagesLoading(false);
+      setResult(data);
+    } catch (e) {
+      setResult({
+        name: c.name,
+        handle: '',
+        totalPostsScanned: 0,
+        eyewearPostsCount: 0,
+        eyewearPosts: [],
+        fetchedAt: new Date().toISOString(),
+        cached: false,
+        error: e instanceof Error ? e.message : 'Scan failed',
+      });
+    }
+    setScanning(false);
+  };
+
+  const openCeleb = (c: Celebrity) => {
+    setSelected(c);
+    setHandleOverride('');
+    scanCeleb(c);
   };
 
   return (
@@ -2018,42 +2057,115 @@ function Celebrities() {
         </div>
       )}
 
-      {/* Lightbox modal with images */}
+      {/* Celebrity Instagram eyewear scanner modal */}
       {selected && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4" onClick={() => setSelected(null)}>
           <div className="bg-[var(--surface)] max-w-4xl w-full max-h-[85vh] rounded-2xl overflow-hidden flex flex-col" onClick={e => e.stopPropagation()}>
+            {/* Header */}
             <div className="p-4 border-b border-[var(--line)] flex items-start justify-between">
-              <div>
-                <div className="text-[18px] font-bold">{selected.name}</div>
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-2">
+                  <div className="text-[18px] font-bold truncate">{selected.name}</div>
+                  {result?.handle && <span className="text-[11px] text-[var(--brand)] font-semibold">@{result.handle}</span>}
+                </div>
                 <div className="text-[11px] text-[var(--text-3)]">{selected.category} · {selected.country}</div>
                 <p className="text-[12px] text-[var(--text-2)] mt-2 leading-relaxed max-w-md">{selected.knownFor}</p>
-              </div>
-              <button onClick={() => setSelected(null)} className="text-[var(--text-3)] text-[22px] leading-none px-2">×</button>
-            </div>
-            <div className="flex-1 overflow-y-auto p-4">
-              {imagesLoading && (
-                <div className="flex items-center justify-center py-12 text-[var(--text-3)] text-[12px]">
-                  <div className="w-4 h-4 border-2 border-[var(--brand)] border-t-transparent rounded-full animate-spin mr-2" />
-                  Searching eyewear photos…
-                </div>
-              )}
-              {!imagesLoading && images.length === 0 && (
-                <div className="text-center py-12 text-[var(--text-3)] text-[12px]">
-                  <p>No images found for {selected.name}.</p>
-                  <p className="mt-2 text-[10px]">Set BRAVE_SEARCH_KEY or APIFY_TOKEN to enable image search. Wikipedia is tried as a fallback.</p>
-                </div>
-              )}
-              {images.length > 0 && (
-                <>
-                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                    {images.map((img, i) => (
-                      <a key={i} href={img.url} target="_blank" rel="noopener noreferrer" className="block aspect-square bg-[var(--bg-alt)] rounded-lg overflow-hidden">
-                        <img src={img.thumb || img.url} alt={img.title || selected.name} className="w-full h-full object-cover" loading="lazy" onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }} />
-                      </a>
-                    ))}
+                {result && !result.error && !result.needsSetup && !result.needsHandle && (
+                  <div className="mt-2 flex items-center gap-2 text-[10px] text-[var(--text-3)]">
+                    <span className="font-semibold text-[var(--brand)]">{result.eyewearPostsCount} eyewear</span>
+                    <span>· scanned {result.totalPostsScanned} posts</span>
+                    {result.cached && <span className="px-1.5 py-0.5 bg-[var(--bg-alt)] rounded uppercase tracking-wider font-bold">Cached</span>}
                   </div>
-                  <div className="text-[9px] text-[var(--text-3)] mt-3 text-right uppercase tracking-wider">Source: {imageSource}</div>
-                </>
+                )}
+              </div>
+              <button onClick={() => setSelected(null)} className="text-[var(--text-3)] text-[22px] leading-none px-2 flex-shrink-0">×</button>
+            </div>
+
+            {/* Body */}
+            <div className="flex-1 overflow-y-auto p-4">
+              {scanning && (
+                <div className="text-center py-12">
+                  <div className="inline-block w-6 h-6 border-2 border-[var(--brand)] border-t-transparent rounded-full animate-spin" />
+                  <p className="text-[12px] text-[var(--text-3)] mt-3">Scraping @{result?.handle || selected.name}&apos;s Instagram…</p>
+                  <p className="text-[10px] text-[var(--text-3)] mt-1">Running Gemini Vision on each post to detect eyewear</p>
+                </div>
+              )}
+
+              {/* Needs Apify setup */}
+              {!scanning && result?.needsSetup && (
+                <div className="bg-[var(--bg-alt)] border border-[var(--brand)] rounded-xl p-4">
+                  <div className="text-[14px] font-semibold mb-2">Connect Apify to scan Instagrams</div>
+                  <p className="text-[11px] text-[var(--text-2)] leading-relaxed mb-3">{result.setupInstructions?.why}</p>
+                  <ol className="space-y-1.5 text-[11px] text-[var(--text-2)] list-decimal list-inside">
+                    {(result.setupInstructions?.steps || []).map((s, i) => <li key={i}>{s}</li>)}
+                  </ol>
+                  <a href="https://console.apify.com/account/integrations" target="_blank" rel="noopener noreferrer" className="inline-block mt-3 px-3 py-2 bg-[var(--brand)] text-white text-[11px] font-semibold rounded-lg">Open Apify →</a>
+                </div>
+              )}
+
+              {/* Needs handle override */}
+              {!scanning && result?.needsHandle && (
+                <div className="bg-[var(--bg-alt)] border border-[var(--line)] rounded-xl p-4">
+                  <div className="text-[13px] font-semibold mb-2">No Instagram handle on file</div>
+                  <p className="text-[11px] text-[var(--text-2)] leading-relaxed mb-3">{result.error}</p>
+                  <div className="flex gap-2">
+                    <input
+                      type="text" value={handleOverride} onChange={e => setHandleOverride(e.target.value)}
+                      placeholder="e.g. badgalriri"
+                      className="flex-1 min-w-0 bg-[var(--surface)] rounded-lg px-3 py-2 text-[12px] outline-none"
+                      onKeyDown={e => { if (e.key === 'Enter' && handleOverride.trim() && selected) scanCeleb(selected, handleOverride.trim()); }}
+                    />
+                    <button
+                      onClick={() => { if (handleOverride.trim() && selected) scanCeleb(selected, handleOverride.trim()); }}
+                      disabled={!handleOverride.trim()}
+                      className="px-4 py-2 bg-[var(--brand)] text-white text-[11px] font-semibold rounded-lg disabled:opacity-40"
+                    >Scan</button>
+                  </div>
+                </div>
+              )}
+
+              {/* Error */}
+              {!scanning && result?.error && !result.needsSetup && !result.needsHandle && (
+                <div className="bg-red-500/10 border border-red-500/30 text-red-400 rounded-xl p-3 text-[12px]">
+                  {result.error}
+                  {result.hint && <div className="text-[11px] mt-1 opacity-80">{result.hint}</div>}
+                </div>
+              )}
+
+              {/* No eyewear posts */}
+              {!scanning && result && !result.error && result.eyewearPosts.length === 0 && (
+                <div className="text-center py-12 text-[var(--text-3)] text-[12px]">
+                  <p>No eyewear posts found in the last {result.totalPostsScanned} posts.</p>
+                  <button onClick={() => selected && scanCeleb(selected, handleOverride || undefined)} className="mt-3 text-[11px] text-[var(--brand)] font-semibold">↻ Refresh scan</button>
+                </div>
+              )}
+
+              {/* Eyewear posts grid */}
+              {!scanning && result && result.eyewearPosts.length > 0 && (
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                  {result.eyewearPosts.map(post => (
+                    <a key={post.id} href={post.postUrl} target="_blank" rel="noopener noreferrer" className="bg-[var(--bg-alt)] border border-[var(--line)] rounded-xl overflow-hidden hover:border-[var(--brand)] transition-colors">
+                      <div className="aspect-square bg-black">
+                        <img
+                          src={`/api/img?url=${encodeURIComponent(post.imageUrl)}`}
+                          alt={post.eyewearType}
+                          className="w-full h-full object-cover"
+                          loading="lazy"
+                          onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }}
+                        />
+                      </div>
+                      <div className="p-2.5">
+                        <div className="text-[10px] font-semibold text-[var(--brand)] uppercase tracking-wide line-clamp-1">👓 {post.eyewearType}</div>
+                        {post.caption && <p className="text-[10px] text-[var(--text-2)] line-clamp-2 mt-1 leading-snug">{post.caption}</p>}
+                        <div className="flex gap-2 mt-1.5 text-[9px] text-[var(--text-3)]">
+                          <span>♥ {n(post.likes)}</span>
+                          <span>💬 {n(post.comments)}</span>
+                          {post.postedAt && <span>· {new Date(post.postedAt).toLocaleDateString()}</span>}
+                        </div>
+                      </div>
+                    </a>
+                  ))}
+                </div>
               )}
             </div>
           </div>
