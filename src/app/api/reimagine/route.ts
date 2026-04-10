@@ -63,7 +63,7 @@ async function callReplicate(modelVersion: string, input: Record<string, unknown
 /**
  * Call Replicate using model slug (let Replicate pick latest version)
  */
-async function callReplicateSlug(modelSlug: string, input: Record<string, unknown>): Promise<string | null> {
+async function callReplicateSlug(modelSlug: string, input: Record<string, unknown>): Promise<{ url: string | null; error: string | null }> {
   try {
     const res = await fetch(`https://api.replicate.com/v1/models/${modelSlug}/predictions`, {
       method: 'POST',
@@ -76,15 +76,19 @@ async function callReplicateSlug(modelSlug: string, input: Record<string, unknow
     });
     const data = await res.json();
 
+    // Check for API errors (402 credit, 401 auth, 422 validation)
+    if (!res.ok || data.detail || data.error) {
+      return { url: null, error: data.title || data.detail || data.error || `HTTP ${res.status}` };
+    }
+
     if (data.status === 'succeeded' && data.output) {
-      if (Array.isArray(data.output)) return String(data.output[0]);
-      if (typeof data.output === 'string') return data.output;
+      if (Array.isArray(data.output)) return { url: String(data.output[0]), error: null };
+      if (typeof data.output === 'string') return { url: data.output, error: null };
     }
 
     const pollUrl = data.urls?.get;
     if (!pollUrl) {
-      console.warn(`${modelSlug} no poll URL:`, JSON.stringify(data).substring(0, 300));
-      return null;
+      return { url: null, error: `No poll URL in response: ${JSON.stringify(data).substring(0, 200)}` };
     }
 
     for (let i = 0; i < 30; i++) {
@@ -95,18 +99,16 @@ async function callReplicateSlug(modelSlug: string, input: Record<string, unknow
       const pollData = await pollRes.json();
 
       if (pollData.status === 'succeeded' && pollData.output) {
-        if (Array.isArray(pollData.output)) return String(pollData.output[0]);
-        if (typeof pollData.output === 'string') return pollData.output;
+        if (Array.isArray(pollData.output)) return { url: String(pollData.output[0]), error: null };
+        if (typeof pollData.output === 'string') return { url: pollData.output, error: null };
       }
       if (pollData.status === 'failed' || pollData.status === 'canceled') {
-        console.warn(`${modelSlug} failed:`, pollData.error);
-        return null;
+        return { url: null, error: pollData.error || 'Prediction failed' };
       }
     }
-    return null;
+    return { url: null, error: 'Timeout after 60s' };
   } catch (e) {
-    console.warn(`${modelSlug} error:`, e instanceof Error ? e.message : e);
-    return null;
+    return { url: null, error: e instanceof Error ? e.message : 'Unknown error' };
   }
 }
 
@@ -177,24 +179,32 @@ export async function POST(request: NextRequest) {
 
     const imageAnalysis = analysisResult.status === 'fulfilled' ? (analysisResult.value || '') : '';
     const briefText = briefResult.status === 'fulfilled' ? (briefResult.value || '') : '';
-    const kontextUrl = kontextResult.status === 'fulfilled' ? kontextResult.value : null;
-    const schnellUrl = schnellResult.status === 'fulfilled' ? schnellResult.value : null;
+    const kontext = kontextResult.status === 'fulfilled' ? kontextResult.value : { url: null, error: String(kontextResult.reason) };
+    const schnell = schnellResult.status === 'fulfilled' ? schnellResult.value : { url: null, error: String(schnellResult.reason) };
 
     const editedImages: Array<{ url: string; model: string; type: 'edited' | 'generated' }> = [];
 
-    if (kontextUrl) editedImages.push({ url: kontextUrl, model: 'FLUX Kontext (edited)', type: 'edited' });
-    if (schnellUrl) editedImages.push({ url: schnellUrl, model: 'FLUX Schnell (new)', type: 'generated' });
+    if (kontext.url) editedImages.push({ url: kontext.url, model: 'FLUX Kontext (edited)', type: 'edited' });
+    if (schnell.url) editedImages.push({ url: schnell.url, model: 'FLUX Schnell (new)', type: 'generated' });
 
-    // Debug info if nothing worked
+    // If both Replicate calls failed, fall back to Pollinations (free)
     if (editedImages.length === 0) {
-      const debug: string[] = [];
-      if (kontextResult.status === 'rejected') debug.push(`Kontext: ${kontextResult.reason}`);
-      if (schnellResult.status === 'rejected') debug.push(`Schnell: ${schnellResult.reason}`);
+      const pollinationsPrompt = `Professional eyewear Instagram photo, Indian model wearing stylish sunglasses, vibrant background, ${brand} brand, fashion photography`;
+      editedImages.push({
+        url: `https://image.pollinations.ai/prompt/${encodeURIComponent(pollinationsPrompt)}?width=1024&height=1024&model=flux&nologo=true&seed=${Date.now()}`,
+        model: 'FLUX (Pollinations fallback)',
+        type: 'generated',
+      });
+
+      // Return with warning about Replicate failure
+      const errorDetail = [kontext.error, schnell.error].filter(Boolean).join(' | ');
       return NextResponse.json({
-        error: `Image generation failed. ${debug.join('. ') || 'Both Replicate models returned null. Check model slugs.'}`,
         originalAnalysis: imageAnalysis,
         creativeBrief: briefText,
-      }, { status: 502 });
+        generatedImages: editedImages,
+        imagePrompt: editDirection,
+        warning: `Replicate failed: ${errorDetail}. Using free fallback.`,
+      });
     }
 
     return NextResponse.json({
