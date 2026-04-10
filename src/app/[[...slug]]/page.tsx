@@ -1772,7 +1772,7 @@ function AdLibrary() {
 
 /* ═══ Sources — Unified intelligence hub (Shopify + Trends + Reddit + Google Ads) ═══ */
 
-type SourceTab = 'shopify' | 'trends' | 'reddit' | 'google-ads' | 'youtube' | 'brave' | 'tiktok';
+type SourceTab = 'shopify' | 'trends' | 'reddit' | 'google-ads' | 'youtube' | 'brave' | 'tiktok' | 'amazon' | 'linkedin';
 
 interface ShopifyStore { handle: string; domain: string; name: string }
 interface ShopifyProd { id: number; title: string; image: string; price: string; comparePrice: string | null; available: boolean; createdAt: string; url: string; variantCount: number; soldOut: boolean }
@@ -1792,10 +1792,12 @@ function Sources() {
       <div className="flex gap-2 mb-4 overflow-x-auto" style={{ scrollbarWidth: 'none' }}>
         {[
           { k: 'shopify', l: 'Shopify', icon: '🛍️' },
+          { k: 'amazon', l: 'Amazon', icon: '📦' },
           { k: 'trends', l: 'Trends', icon: '📈' },
           { k: 'reddit', l: 'Reddit', icon: '💬' },
           { k: 'youtube', l: 'YouTube', icon: '📺' },
           { k: 'tiktok', l: 'TikTok', icon: '🎵' },
+          { k: 'linkedin', l: 'LinkedIn', icon: '💼' },
           { k: 'brave', l: 'Web', icon: '🔍' },
           { k: 'google-ads', l: 'Google Ads', icon: '🎯' },
         ].map(t => (
@@ -1810,10 +1812,12 @@ function Sources() {
       </div>
 
       {sub === 'shopify' && <ShopifySource />}
+      {sub === 'amazon' && <AmazonSource />}
       {sub === 'trends' && <TrendsSource />}
       {sub === 'reddit' && <RedditSource />}
       {sub === 'youtube' && <YouTubeSource />}
       {sub === 'tiktok' && <TikTokSource />}
+      {sub === 'linkedin' && <LinkedInSource />}
       {sub === 'brave' && <BraveSource />}
       {sub === 'google-ads' && <GoogleAdsSource />}
     </div>
@@ -2178,6 +2182,229 @@ function RedditSource() {
 }
 
 /* ── Google Ads Transparency ── */
+/* ── Amazon (via Apify) ── */
+interface AmazonProduct { asin?: string; title?: string; url?: string; image?: string; price?: number | string; currency?: string; rating?: number; reviews?: number; prime?: boolean; sponsored?: boolean; brand?: string }
+
+function AmazonSource() {
+  const [q, setQ] = useState('sunglasses');
+  const [country, setCountry] = useState('com');
+  const [products, setProducts] = useState<AmazonProduct[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [err, setErr] = useState('');
+  const [needsSetup, setNeedsSetup] = useState(false);
+  const [setupSteps, setSetupSteps] = useState<string[]>([]);
+
+  const load = useCallback(async () => {
+    if (!q.trim()) return;
+    setLoading(true); setErr(''); setProducts([]);
+    try {
+      const res = await fetch(`/api/amazon?q=${encodeURIComponent(q)}&country=${country}&limit=30`);
+      const data = await res.json();
+      if (data.needsSetup) {
+        setNeedsSetup(true);
+        setSetupSteps(data.setupInstructions?.steps || []);
+      } else if (data.error) {
+        setErr(data.error);
+      } else {
+        setNeedsSetup(false);
+        setProducts(data.products || []);
+      }
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : 'Fetch failed');
+    }
+    setLoading(false);
+  }, [q, country]);
+
+  useEffect(() => { load(); }, [load]);
+
+  return (
+    <div>
+      <div className="bg-[var(--surface)] border border-[var(--line)] rounded-xl p-3 mb-4 flex gap-2">
+        <input type="text" value={q} onChange={e => setQ(e.target.value)} placeholder="Product or keyword…" className="flex-1 min-w-0 bg-[var(--bg-alt)] rounded-lg px-3 py-2 text-[12px] outline-none" onKeyDown={e => { if (e.key === 'Enter') load(); }} />
+        <select value={country} onChange={e => setCountry(e.target.value)} className="bg-[var(--bg-alt)] rounded-lg px-2 py-2 text-[11px] outline-none">
+          <option value="com">🇺🇸 .com</option>
+          <option value="in">🇮🇳 .in</option>
+          <option value="co.uk">🇬🇧 .co.uk</option>
+          <option value="ca">🇨🇦 .ca</option>
+          <option value="com.au">🇦🇺 .com.au</option>
+          <option value="de">🇩🇪 .de</option>
+          <option value="fr">🇫🇷 .fr</option>
+        </select>
+        <button onClick={load} disabled={loading} className="px-4 py-2 bg-[var(--brand)] text-white text-[12px] font-semibold rounded-lg disabled:opacity-50">{loading ? '…' : 'Search'}</button>
+      </div>
+
+      {needsSetup && (
+        <div className="bg-[var(--surface)] border border-[var(--brand)] rounded-xl p-4 mb-4">
+          <div className="text-[14px] font-semibold mb-2">Apify required for Amazon intelligence</div>
+          <p className="text-[11px] text-[var(--text-2)] leading-relaxed mb-2">Amazon blocks direct scraping — we use the Apify junglee/Amazon-crawler actor which costs ~$0.75 / 1000 products.</p>
+          <ol className="space-y-2 text-[12px] text-[var(--text-2)] list-decimal list-inside">
+            {setupSteps.map((s, i) => <li key={i}>{s}</li>)}
+          </ol>
+          <a href="https://console.apify.com/account/integrations" target="_blank" rel="noopener noreferrer" className="inline-block mt-3 px-3 py-2 bg-[var(--brand)] text-white text-[11px] font-semibold rounded-lg">Open Apify Console →</a>
+        </div>
+      )}
+
+      {err && !needsSetup && <div className="bg-red-500/10 border border-red-500/30 text-red-400 rounded-xl p-3 text-[12px] mb-4">{err}</div>}
+
+      {products.length > 0 && (
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+          {products.map((p, i) => (
+            <a key={p.asin || i} href={p.url || '#'} target="_blank" rel="noopener noreferrer" className="bg-[var(--surface)] border border-[var(--line)] rounded-xl overflow-hidden">
+              <div className="aspect-square bg-white relative">
+                {p.image && <img src={p.image} alt={p.title} className="w-full h-full object-contain p-3" loading="lazy" onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }} />}
+                {p.prime && <div className="absolute top-2 right-2 bg-blue-500 text-white text-[9px] uppercase font-bold px-1.5 py-0.5 rounded">Prime</div>}
+                {p.sponsored && <div className="absolute top-2 left-2 bg-yellow-500/90 text-black text-[9px] uppercase font-bold px-1.5 py-0.5 rounded">Sponsored</div>}
+              </div>
+              <div className="p-3">
+                {p.brand && <div className="text-[10px] text-[var(--text-3)] font-semibold truncate">{p.brand}</div>}
+                <div className="text-[11px] font-semibold line-clamp-2 leading-snug">{p.title}</div>
+                <div className="flex items-center gap-2 mt-1">
+                  <span className="text-[13px] font-bold">{p.currency || '$'}{typeof p.price === 'number' ? p.price.toFixed(2) : p.price || '—'}</span>
+                </div>
+                {p.rating !== undefined && (
+                  <div className="flex items-center gap-1 mt-1 text-[10px] text-[var(--text-3)]">
+                    <span className="text-yellow-500">★</span>
+                    <span>{p.rating.toFixed(1)}</span>
+                    {p.reviews !== undefined && <span>({n(p.reviews)})</span>}
+                  </div>
+                )}
+              </div>
+            </a>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ── LinkedIn (via Apify) ── */
+interface LIJob { id?: string; title?: string; company?: string; location?: string; url?: string; postedAt?: string; salary?: string; employmentType?: string; seniorityLevel?: string; description?: string; applicants?: number }
+interface LICompany { name?: string; tagline?: string; description?: string; website?: string; industry?: string; size?: number | string; headquarters?: string; founded?: number; specialties?: string[]; logo?: string; followers?: number; url?: string }
+
+function LinkedInSource() {
+  const [mode, setMode] = useState<'jobs' | 'company'>('jobs');
+  const [q, setQ] = useState('eyewear designer');
+  const [location, setLocation] = useState('Worldwide');
+  const [companySlug, setCompanySlug] = useState('lenskart');
+  const [jobs, setJobs] = useState<LIJob[]>([]);
+  const [company, setCompany] = useState<LICompany | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [err, setErr] = useState('');
+  const [needsSetup, setNeedsSetup] = useState(false);
+  const [setupSteps, setSetupSteps] = useState<string[]>([]);
+
+  const load = useCallback(async () => {
+    setLoading(true); setErr(''); setJobs([]); setCompany(null);
+    try {
+      const url = mode === 'jobs'
+        ? `/api/linkedin?mode=jobs&q=${encodeURIComponent(q)}&location=${encodeURIComponent(location)}&limit=25`
+        : `/api/linkedin?mode=company&company=${encodeURIComponent(companySlug)}`;
+      const res = await fetch(url);
+      const data = await res.json();
+      if (data.needsSetup) {
+        setNeedsSetup(true);
+        setSetupSteps(data.setupInstructions?.steps || []);
+      } else if (data.error) {
+        setErr(data.error);
+      } else {
+        setNeedsSetup(false);
+        if (mode === 'jobs') setJobs(data.jobs || []);
+        else setCompany(data.company);
+      }
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : 'Fetch failed');
+    }
+    setLoading(false);
+  }, [mode, q, location, companySlug]);
+
+  useEffect(() => { load(); }, [load]);
+
+  return (
+    <div>
+      <div className="bg-[var(--surface)] border border-[var(--line)] rounded-xl p-3 mb-4 space-y-2">
+        <div className="flex gap-2">
+          <select value={mode} onChange={e => setMode(e.target.value as 'jobs' | 'company')} className="bg-[var(--bg-alt)] rounded-lg px-2 py-2 text-[11px] outline-none">
+            <option value="jobs">Jobs</option>
+            <option value="company">Company</option>
+          </select>
+          {mode === 'jobs' ? (
+            <>
+              <input type="text" value={q} onChange={e => setQ(e.target.value)} placeholder="Job title…" className="flex-1 min-w-0 bg-[var(--bg-alt)] rounded-lg px-3 py-2 text-[12px] outline-none" onKeyDown={e => { if (e.key === 'Enter') load(); }} />
+              <input type="text" value={location} onChange={e => setLocation(e.target.value)} placeholder="Location" className="w-28 bg-[var(--bg-alt)] rounded-lg px-3 py-2 text-[12px] outline-none" onKeyDown={e => { if (e.key === 'Enter') load(); }} />
+            </>
+          ) : (
+            <input type="text" value={companySlug} onChange={e => setCompanySlug(e.target.value)} placeholder="company slug (e.g. lenskart)" className="flex-1 min-w-0 bg-[var(--bg-alt)] rounded-lg px-3 py-2 text-[12px] outline-none" onKeyDown={e => { if (e.key === 'Enter') load(); }} />
+          )}
+          <button onClick={load} disabled={loading} className="px-4 py-2 bg-[var(--brand)] text-white text-[12px] font-semibold rounded-lg disabled:opacity-50">{loading ? '…' : 'Search'}</button>
+        </div>
+      </div>
+
+      {needsSetup && (
+        <div className="bg-[var(--surface)] border border-[var(--brand)] rounded-xl p-4 mb-4">
+          <div className="text-[14px] font-semibold mb-2">Apify required for LinkedIn intelligence</div>
+          <p className="text-[11px] text-[var(--text-2)] leading-relaxed mb-2">LinkedIn actively blocks scrapers — Apify runs distributed browser sessions that work reliably. Costs ~$1 / 1000 results.</p>
+          <ol className="space-y-2 text-[12px] text-[var(--text-2)] list-decimal list-inside">
+            {setupSteps.map((s, i) => <li key={i}>{s}</li>)}
+          </ol>
+          <a href="https://console.apify.com/account/integrations" target="_blank" rel="noopener noreferrer" className="inline-block mt-3 px-3 py-2 bg-[var(--brand)] text-white text-[11px] font-semibold rounded-lg">Open Apify Console →</a>
+        </div>
+      )}
+
+      {err && !needsSetup && <div className="bg-red-500/10 border border-red-500/30 text-red-400 rounded-xl p-3 text-[12px] mb-4">{err}</div>}
+
+      {mode === 'jobs' && jobs.length > 0 && (
+        <div className="space-y-2">
+          {jobs.map((j, i) => (
+            <a key={j.id || i} href={j.url || '#'} target="_blank" rel="noopener noreferrer" className="block bg-[var(--surface)] border border-[var(--line)] rounded-xl p-3 hover:border-[var(--brand)]">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0 flex-1">
+                  <div className="text-[13px] font-semibold line-clamp-1">{j.title}</div>
+                  <div className="text-[11px] text-[var(--text-2)] mt-0.5">{j.company} · {j.location}</div>
+                  {j.description && <p className="text-[11px] text-[var(--text-3)] line-clamp-2 mt-1.5 leading-snug">{j.description}</p>}
+                  <div className="flex flex-wrap gap-1.5 mt-2">
+                    {j.employmentType && <span className="text-[9px] px-1.5 py-0.5 bg-[var(--bg-alt)] rounded">{j.employmentType}</span>}
+                    {j.seniorityLevel && <span className="text-[9px] px-1.5 py-0.5 bg-[var(--bg-alt)] rounded">{j.seniorityLevel}</span>}
+                    {j.salary && <span className="text-[9px] px-1.5 py-0.5 bg-[var(--brand)]/10 text-[var(--brand)] rounded font-semibold">{j.salary}</span>}
+                  </div>
+                </div>
+                {j.postedAt && <span className="text-[9px] text-[var(--text-3)] flex-shrink-0">{j.postedAt}</span>}
+              </div>
+            </a>
+          ))}
+        </div>
+      )}
+
+      {mode === 'company' && company && (
+        <div className="bg-[var(--surface)] border border-[var(--line)] rounded-xl p-5">
+          <div className="flex items-start gap-4">
+            {company.logo && <img src={company.logo} alt={company.name} className="w-16 h-16 rounded object-contain bg-white flex-shrink-0" />}
+            <div className="flex-1 min-w-0">
+              <h3 className="text-[18px] font-bold">{company.name}</h3>
+              {company.tagline && <p className="text-[12px] text-[var(--text-2)] mt-0.5">{company.tagline}</p>}
+              <div className="flex flex-wrap gap-3 mt-2 text-[11px] text-[var(--text-3)]">
+                {company.industry && <span>{company.industry}</span>}
+                {company.headquarters && <span>· {company.headquarters}</span>}
+                {company.founded && <span>· Founded {company.founded}</span>}
+              </div>
+            </div>
+          </div>
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 mt-4">
+            {company.size !== undefined && <StatTile label="Employees" value={typeof company.size === 'number' ? n(company.size) : String(company.size)} />}
+            {company.followers !== undefined && <StatTile label="Followers" value={n(company.followers)} accent />}
+            {company.website && <div className="bg-[var(--surface)] border border-[var(--line)] rounded-xl p-3"><div className="text-[9px] uppercase tracking-wider text-[var(--text-3)] font-bold">Website</div><a href={company.website} target="_blank" rel="noopener noreferrer" className="text-[11px] font-semibold text-[var(--brand)] truncate block">{company.website.replace(/^https?:\/\//, '')}</a></div>}
+          </div>
+          {company.description && <p className="text-[11px] text-[var(--text-2)] leading-relaxed mt-4">{company.description}</p>}
+          {company.specialties && company.specialties.length > 0 && (
+            <div className="flex flex-wrap gap-1.5 mt-3">
+              {company.specialties.map(s => <span key={s} className="text-[10px] px-2 py-0.5 bg-[var(--bg-alt)] rounded-full">{s}</span>)}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function GoogleAdsSource() {
   const [advertiser, setAdvertiser] = useState('Lenskart');
   const [region, setRegion] = useState('IN');
