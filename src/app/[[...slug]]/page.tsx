@@ -161,29 +161,36 @@ function MediaCard({ post, onOpen, delay }: { post: Post; onOpen: () => void; de
 }
 
 /* ═══ App ═══ */
-type Tab = 'feed' | 'products' | 'boards' | 'intel';
+type Tab = 'feed' | 'products' | 'boards' | 'ads' | 'watchlist' | 'intel' | 'brand';
 
 export default function App() {
   const router = useRouter();
   const params = useParams<{ slug?: string[] }>();
 
   // Derive the current tab + any deep-link ID from the URL.
-  //   /               → feed
-  //   /products       → products
-  //   /products/<id>  → products + focused product
-  //   /boards         → board list
-  //   /boards/<id>    → specific board view
-  //   /intel          → intel
+  //   /                    → feed
+  //   /products            → products
+  //   /products/<id>       → products + focused product
+  //   /boards              → board list
+  //   /boards/<id>         → specific board view
+  //   /ads                 → Meta Ad Library
+  //   /watchlist           → tracked-brand feed
+  //   /brands/<handle>     → per-brand detail page
+  //   /intel               → intel
   const slug = (params?.slug || []) as string[];
   const tab: Tab = useMemo(() => {
     const first = slug[0]?.toLowerCase();
     if (first === 'products') return 'products';
     if (first === 'boards') return 'boards';
+    if (first === 'ads') return 'ads';
+    if (first === 'watchlist') return 'watchlist';
     if (first === 'intel') return 'intel';
+    if (first === 'brands') return 'brand';
     return 'feed';
   }, [slug]);
   const focusedProductId = slug[0]?.toLowerCase() === 'products' ? (slug[1] || null) : null;
   const focusedBoardId = slug[0]?.toLowerCase() === 'boards' ? (slug[1] || null) : null;
+  const focusedBrandHandle = slug[0]?.toLowerCase() === 'brands' ? (slug[1] || null) : null;
 
   const setTab = (next: Tab) => {
     if (next === 'feed') router.push('/');
@@ -308,6 +315,15 @@ export default function App() {
         {/* ── Boards ── */}
         {tab === 'boards' && <Boards focusedBoardId={focusedBoardId} />}
 
+        {/* ── Meta Ad Library ── */}
+        {tab === 'ads' && <AdLibrary />}
+
+        {/* ── Watchlist ── */}
+        {tab === 'watchlist' && <Watchlist onOpen={setOpen} />}
+
+        {/* ── Per-brand detail ── */}
+        {tab === 'brand' && focusedBrandHandle && <BrandDetail handle={focusedBrandHandle} onOpen={setOpen} />}
+
         {/* ── Intel ── */}
         {tab === 'intel' && data?.stats && <Intel stats={data.stats} />}
 
@@ -324,10 +340,12 @@ export default function App() {
       {/* ── Bottom Nav ── */}
       <nav className="fixed bottom-0 left-0 right-0 z-50 bg-[var(--bg)] border-t border-[var(--line)] flex justify-around" style={{ paddingTop: 8, paddingBottom: 'max(8px, env(safe-area-inset-bottom))' }}>
         {[
-          { k: 'feed', l: 'Feed', svg: <svg width="22" height="22" fill="none" stroke="currentColor" strokeWidth="1.8" viewBox="0 0 24 24"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><path d="M9 22V12h6v10"/></svg> },
-          { k: 'products', l: 'Products', svg: <svg width="22" height="22" fill="none" stroke="currentColor" strokeWidth="1.8" viewBox="0 0 24 24"><path d="M6 2L3 6v14a2 2 0 002 2h14a2 2 0 002-2V6l-3-4z"/><path d="M3 6h18"/><path d="M16 10a4 4 0 01-8 0"/></svg> },
-          { k: 'boards', l: 'Boards', svg: <svg width="22" height="22" fill="none" stroke="currentColor" strokeWidth="1.8" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg> },
-          { k: 'intel', l: 'Intel', svg: <svg width="22" height="22" fill="none" stroke="currentColor" strokeWidth="1.8" viewBox="0 0 24 24"><path d="M18 20V10M12 20V4M6 20v-6"/></svg> },
+          { k: 'feed', l: 'Feed', svg: <svg width="20" height="20" fill="none" stroke="currentColor" strokeWidth="1.8" viewBox="0 0 24 24"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><path d="M9 22V12h6v10"/></svg> },
+          { k: 'ads', l: 'Ads', svg: <svg width="20" height="20" fill="none" stroke="currentColor" strokeWidth="1.8" viewBox="0 0 24 24"><path d="M3 11l18-5v12L3 13v-2z"/><path d="M11.6 16.8a3 3 0 11-5.8-1.6"/></svg> },
+          { k: 'products', l: 'Products', svg: <svg width="20" height="20" fill="none" stroke="currentColor" strokeWidth="1.8" viewBox="0 0 24 24"><path d="M6 2L3 6v14a2 2 0 002 2h14a2 2 0 002-2V6l-3-4z"/><path d="M3 6h18"/><path d="M16 10a4 4 0 01-8 0"/></svg> },
+          { k: 'watchlist', l: 'Watch', svg: <svg width="20" height="20" fill="none" stroke="currentColor" strokeWidth="1.8" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="3"/></svg> },
+          { k: 'boards', l: 'Boards', svg: <svg width="20" height="20" fill="none" stroke="currentColor" strokeWidth="1.8" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg> },
+          { k: 'intel', l: 'Intel', svg: <svg width="20" height="20" fill="none" stroke="currentColor" strokeWidth="1.8" viewBox="0 0 24 24"><path d="M18 20V10M12 20V4M6 20v-6"/></svg> },
         ].map(x => (
           <button key={x.k} onClick={() => setTab(x.k as typeof tab)} className={`flex flex-col items-center gap-[2px] py-1 px-3 ${tab===x.k ? 'text-[var(--brand)]' : 'text-[var(--text-3)]'}`}>
             {x.svg}
@@ -1288,6 +1306,458 @@ function Boards({ focusedBoardId }: { focusedBoardId: string | null }) {
                 <div className="text-[11px] text-[var(--text-3)] mt-0.5">{b.items.length} item{b.items.length !== 1 ? 's' : ''}</div>
               </div>
             </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ═══ Watchlist helpers ═══ */
+function loadWatchlist(): string[] {
+  if (typeof window === 'undefined') return [];
+  try { return JSON.parse(localStorage.getItem('lenzy-watchlist') || '[]'); } catch { return []; }
+}
+function saveWatchlist(handles: string[]) {
+  localStorage.setItem('lenzy-watchlist', JSON.stringify(handles));
+}
+
+/* ═══ Watchlist — 24/7 brand tracking (Foreplay Spyder equivalent) ═══ */
+function Watchlist({ onOpen }: { onOpen: (p: Post) => void }) {
+  const router = useRouter();
+  const [watched, setWatched] = useState<string[]>([]);
+  const [posts, setPosts] = useState<Post[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [availableBrands, setAvailableBrands] = useState<Array<{ name: string; handle: string }>>([]);
+  const [editing, setEditing] = useState(false);
+  const [search, setSearch] = useState('');
+
+  useEffect(() => { setWatched(loadWatchlist()); }, []);
+
+  // Load the brand list for the picker
+  useEffect(() => {
+    fetch('/api/brands').then(r => r.json()).then(d => {
+      setAvailableBrands(d.brands || []);
+    }).catch(() => {});
+  }, []);
+
+  // Load latest posts from watched brands
+  useEffect(() => {
+    if (watched.length === 0) { setPosts([]); return; }
+    setLoading(true);
+    // Use the existing feed API and filter client-side
+    fetch(`/api/feed?limit=500`).then(r => r.json()).then(d => {
+      const set = new Set(watched.map(h => h.toLowerCase()));
+      const filtered = ((d.posts || []) as Post[])
+        .filter(p => set.has(p.brand.handle.toLowerCase()))
+        .sort((a, b) => new Date(b.postedAt).getTime() - new Date(a.postedAt).getTime());
+      setPosts(filtered);
+      setLoading(false);
+    }).catch(() => setLoading(false));
+  }, [watched]);
+
+  const toggle = (handle: string) => {
+    const next = watched.includes(handle)
+      ? watched.filter(h => h !== handle)
+      : [...watched, handle];
+    setWatched(next);
+    saveWatchlist(next);
+  };
+
+  const sinceLastSeen = (p: Post): string => {
+    const diff = Date.now() - new Date(p.postedAt).getTime();
+    const hours = Math.floor(diff / 3600000);
+    if (hours < 1) return 'Just now';
+    if (hours < 24) return `${hours}h ago`;
+    const days = Math.floor(hours / 24);
+    return `${days}d ago`;
+  };
+
+  const filteredBrands = availableBrands.filter(b =>
+    !search.trim() || b.name.toLowerCase().includes(search.toLowerCase()) || b.handle.toLowerCase().includes(search.toLowerCase())
+  );
+
+  return (
+    <div className="py-4">
+      <div className="flex items-center justify-between mb-4">
+        <div>
+          <h2 className="text-[20px] font-bold tracking-tight">Watchlist</h2>
+          <p className="text-[11px] text-[var(--text-3)] mt-0.5">Tracking {watched.length} brand{watched.length !== 1 ? 's' : ''} · {posts.length} post{posts.length !== 1 ? 's' : ''}</p>
+        </div>
+        <button onClick={() => setEditing(e => !e)} className="px-3 py-2 bg-[var(--bg-alt)] text-[var(--text)] text-[12px] font-semibold rounded-lg flex items-center gap-1.5">
+          <svg width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M12 20h9M16.5 3.5a2.12 2.12 0 113 3L7 19l-4 1 1-4 12.5-12.5z"/></svg>
+          {editing ? 'Done' : 'Edit'}
+        </button>
+      </div>
+
+      {/* Brand picker */}
+      {editing && (
+        <div className="bg-[var(--surface)] border border-[var(--line)] rounded-xl p-3 mb-4">
+          <input
+            type="text" value={search} onChange={e => setSearch(e.target.value)}
+            placeholder="Search brands to track…"
+            className="w-full bg-[var(--bg-alt)] rounded-lg px-3 py-2 text-[12px] outline-none mb-2"
+          />
+          <div className="max-h-64 overflow-y-auto space-y-1">
+            {filteredBrands.slice(0, 50).map(b => {
+              const on = watched.includes(b.handle);
+              return (
+                <button
+                  key={b.handle}
+                  onClick={() => toggle(b.handle)}
+                  className="w-full flex items-center justify-between px-2 py-2 rounded-lg hover:bg-[var(--bg-alt)] text-left"
+                >
+                  <div className="min-w-0">
+                    <div className="text-[12px] font-semibold truncate">{b.name}</div>
+                    <div className="text-[10px] text-[var(--text-3)]">@{b.handle}</div>
+                  </div>
+                  <div className={`w-6 h-6 rounded-full flex items-center justify-center ${on ? 'bg-[var(--brand)] text-white' : 'bg-[var(--bg-alt)] border border-[var(--line)]'}`}>
+                    {on && <svg width="12" height="12" fill="none" stroke="currentColor" strokeWidth="3" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>}
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {watched.length === 0 && !editing && (
+        <div className="text-center py-16 text-[var(--text-3)]">
+          <svg width="42" height="42" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24" className="mx-auto mb-2 opacity-30"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="3"/></svg>
+          <p className="text-[13px]">Not tracking any brands yet</p>
+          <p className="text-[11px] mt-1">Tap Edit to pick competitors to watch 24/7.</p>
+        </div>
+      )}
+
+      {loading && watched.length > 0 && (
+        <div className="flex items-center justify-center py-8 text-[var(--text-3)] text-[12px]">
+          <div className="w-4 h-4 border-2 border-[var(--brand)] border-t-transparent rounded-full animate-spin mr-2" />
+          Loading posts…
+        </div>
+      )}
+
+      {/* Grouped by brand */}
+      {posts.length > 0 && (
+        <div className="space-y-4">
+          {Object.entries(
+            posts.reduce((acc: Record<string, Post[]>, p) => {
+              const key = p.brand.handle;
+              if (!acc[key]) acc[key] = [];
+              acc[key].push(p);
+              return acc;
+            }, {})
+          ).map(([handle, brandPosts]) => (
+            <div key={handle} className="bg-[var(--surface)] border border-[var(--line)] rounded-xl overflow-hidden">
+              <div className="flex items-center justify-between px-4 py-3 border-b border-[var(--line)]">
+                <button onClick={() => router.push(`/brands/${handle}`)} className="text-left min-w-0 flex-1">
+                  <div className="text-[13px] font-semibold truncate">{brandPosts[0].brand.name}</div>
+                  <div className="text-[10px] text-[var(--text-3)]">@{handle} · {brandPosts.length} post{brandPosts.length !== 1 ? 's' : ''}</div>
+                </button>
+                <div className="text-[10px] text-[var(--brand)] font-semibold uppercase tracking-wide">Latest {sinceLastSeen(brandPosts[0])}</div>
+              </div>
+              <div className="grid grid-cols-3 gap-[1px] bg-[var(--line)]">
+                {brandPosts.slice(0, 6).map(p => (
+                  <button key={p.id} onClick={() => onOpen(p)} className="relative aspect-square bg-[var(--bg)] overflow-hidden">
+                    <img src={p.imageUrl} alt="" className="w-full h-full object-cover" loading="lazy" onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }} />
+                    <div className="absolute bottom-0 inset-x-0 bg-gradient-to-t from-black/70 to-transparent px-1.5 py-1 text-[9px] text-white font-semibold">{n(p.likes)} ♥</div>
+                  </button>
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ═══ Brand Detail — per-brand deep dive page ═══ */
+function BrandDetail({ handle, onOpen }: { handle: string; onOpen: (p: Post) => void }) {
+  const router = useRouter();
+  const [posts, setPosts] = useState<Post[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [watched, setWatched] = useState<string[]>([]);
+
+  useEffect(() => { setWatched(loadWatchlist()); }, []);
+
+  useEffect(() => {
+    setLoading(true);
+    fetch(`/api/feed?limit=500`).then(r => r.json()).then(d => {
+      const filtered = ((d.posts || []) as Post[]).filter(p => p.brand.handle.toLowerCase() === handle.toLowerCase());
+      filtered.sort((a, b) => new Date(b.postedAt).getTime() - new Date(a.postedAt).getTime());
+      setPosts(filtered);
+      setLoading(false);
+    }).catch(() => setLoading(false));
+  }, [handle]);
+
+  const stats = useMemo(() => {
+    if (posts.length === 0) return null;
+    const totalLikes = posts.reduce((s, p) => s + p.likes, 0);
+    const totalComments = posts.reduce((s, p) => s + p.comments, 0);
+    const avgEng = posts.reduce((s, p) => s + p.engagement, 0) / posts.length;
+    const videoCount = posts.filter(p => p.isVideo).length;
+    const topPost = [...posts].sort((a, b) => b.likes - a.likes)[0];
+    return { totalLikes, totalComments, avgEng, videoCount, postCount: posts.length, topPost };
+  }, [posts]);
+
+  const isWatched = watched.includes(handle);
+  const toggleWatch = () => {
+    const next = isWatched ? watched.filter(h => h !== handle) : [...watched, handle];
+    setWatched(next);
+    saveWatchlist(next);
+  };
+
+  const brandInfo = posts[0]?.brand;
+
+  if (loading) {
+    return <div className="flex items-center justify-center py-20 text-[var(--text-3)] text-[12px]"><div className="w-5 h-5 border-2 border-[var(--brand)] border-t-transparent rounded-full animate-spin mr-2" />Loading brand…</div>;
+  }
+
+  if (posts.length === 0) {
+    return (
+      <div className="py-4">
+        <button onClick={() => router.back()} className="text-[var(--text-2)] text-[12px] font-semibold mb-4">← Back</button>
+        <div className="text-center py-16 text-[var(--text-3)]">
+          <p className="text-[13px]">No posts found for @{handle}</p>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="py-4">
+      {/* Header */}
+      <div className="flex items-start gap-3 mb-4">
+        <button onClick={() => router.back()} className="text-[var(--text-2)] p-1 flex-shrink-0">
+          <svg width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
+        </button>
+        <div className="flex-1 min-w-0">
+          <h2 className="text-[22px] font-bold tracking-tight">{brandInfo?.name || handle}</h2>
+          <div className="text-[11px] text-[var(--text-3)] mt-0.5">@{handle} · {brandInfo?.category} · {brandInfo?.region}</div>
+        </div>
+        <div className="flex gap-2 flex-shrink-0">
+          <a href={`https://instagram.com/${handle}`} target="_blank" rel="noopener noreferrer" className="px-3 py-1.5 bg-[var(--bg-alt)] rounded-lg text-[11px] font-semibold">IG</a>
+          <button onClick={toggleWatch} className={`px-3 py-1.5 rounded-lg text-[11px] font-semibold flex items-center gap-1.5 ${isWatched ? 'bg-[var(--brand)] text-white' : 'bg-[var(--bg-alt)] text-[var(--text)]'}`}>
+            <svg width="12" height="12" fill={isWatched ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="3"/></svg>
+            {isWatched ? 'Watching' : 'Watch'}
+          </button>
+        </div>
+      </div>
+
+      {/* Stats */}
+      {stats && (
+        <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 mb-4">
+          <div className="bg-[var(--surface)] border border-[var(--line)] rounded-xl p-3">
+            <div className="text-[10px] text-[var(--text-3)] uppercase tracking-wider">Posts</div>
+            <div className="text-[18px] font-bold">{stats.postCount}</div>
+          </div>
+          <div className="bg-[var(--surface)] border border-[var(--line)] rounded-xl p-3">
+            <div className="text-[10px] text-[var(--text-3)] uppercase tracking-wider">Total likes</div>
+            <div className="text-[18px] font-bold">{n(stats.totalLikes)}</div>
+          </div>
+          <div className="bg-[var(--surface)] border border-[var(--line)] rounded-xl p-3">
+            <div className="text-[10px] text-[var(--text-3)] uppercase tracking-wider">Comments</div>
+            <div className="text-[18px] font-bold">{n(stats.totalComments)}</div>
+          </div>
+          <div className="bg-[var(--surface)] border border-[var(--line)] rounded-xl p-3">
+            <div className="text-[10px] text-[var(--text-3)] uppercase tracking-wider">Avg engagement</div>
+            <div className="text-[18px] font-bold text-[var(--brand)]">{stats.avgEng.toFixed(1)}%</div>
+          </div>
+          <div className="bg-[var(--surface)] border border-[var(--line)] rounded-xl p-3">
+            <div className="text-[10px] text-[var(--text-3)] uppercase tracking-wider">Videos</div>
+            <div className="text-[18px] font-bold">{stats.videoCount}<span className="text-[11px] text-[var(--text-3)] font-normal"> / {stats.postCount}</span></div>
+          </div>
+        </div>
+      )}
+
+      {/* Post grid */}
+      <div className="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-5 gap-[2px]">
+        {posts.map(p => (
+          <button key={p.id} onClick={() => onOpen(p)} className="relative aspect-square bg-[var(--bg-alt)] overflow-hidden">
+            <img src={p.imageUrl} alt="" className="w-full h-full object-cover" loading="lazy" onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }} />
+            <div className="absolute bottom-0 inset-x-0 bg-gradient-to-t from-black/70 to-transparent px-2 py-1 flex justify-between text-[9px] text-white font-semibold">
+              <span>{n(p.likes)} ♥</span>
+              <span>{p.engagement}%</span>
+            </div>
+            {p.isVideo && <div className="absolute top-1 right-1"><svg width="12" height="12" fill="white" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg></div>}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/* ═══ Ad Library — Meta Graph API ads_archive (Spyder equivalent) ═══ */
+interface MetaAd {
+  id: string;
+  page_name?: string;
+  page_id?: string;
+  ad_creative_body?: string;
+  ad_creative_link_title?: string;
+  ad_creative_link_description?: string;
+  ad_delivery_start_time?: string;
+  ad_delivery_stop_time?: string;
+  ad_snapshot_url?: string;
+  currency?: string;
+  impressions?: { lower_bound: string; upper_bound: string };
+  spend?: { lower_bound: string; upper_bound: string };
+  publisher_platforms?: string[];
+}
+
+function AdLibrary() {
+  const [query, setQuery] = useState('Lenskart');
+  const [country, setCountry] = useState('IN');
+  const [ads, setAds] = useState<MetaAd[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [err, setErr] = useState<string>('');
+  const [needsSetup, setNeedsSetup] = useState(false);
+  const [setupSteps, setSetupSteps] = useState<string[]>([]);
+
+  const load = useCallback(async () => {
+    if (!query.trim()) return;
+    setLoading(true);
+    setErr('');
+    try {
+      const res = await fetch(`/api/ads?q=${encodeURIComponent(query)}&country=${country}&limit=40`);
+      const data = await res.json();
+      if (data.needsSetup) {
+        setNeedsSetup(true);
+        setSetupSteps(data.setupInstructions?.steps || []);
+      } else if (data.error) {
+        setErr(data.error);
+      } else {
+        setAds(data.ads || []);
+        setNeedsSetup(false);
+      }
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : 'Fetch failed');
+    }
+    setLoading(false);
+  }, [query, country]);
+
+  useEffect(() => { load(); }, [load]);
+
+  const formatRange = (r?: { lower_bound: string; upper_bound: string }) => {
+    if (!r) return '—';
+    const lo = Number(r.lower_bound || 0);
+    const hi = Number(r.upper_bound || 0);
+    if (hi === 0 && lo === 0) return '—';
+    return `${n(lo)}–${n(hi)}`;
+  };
+
+  return (
+    <div className="py-4">
+      <div className="mb-4">
+        <h2 className="text-[20px] font-bold tracking-tight">Ad Library</h2>
+        <p className="text-[11px] text-[var(--text-3)] mt-0.5">Live Meta ads from eyewear competitors</p>
+      </div>
+
+      {/* Search */}
+      <div className="bg-[var(--surface)] border border-[var(--line)] rounded-xl p-3 mb-4 flex gap-2">
+        <input
+          type="text" value={query} onChange={e => setQuery(e.target.value)}
+          placeholder="Search brand or keyword…"
+          className="flex-1 min-w-0 bg-[var(--bg-alt)] rounded-lg px-3 py-2 text-[12px] outline-none"
+          onKeyDown={e => { if (e.key === 'Enter') load(); }}
+        />
+        <select value={country} onChange={e => setCountry(e.target.value)} className="bg-[var(--bg-alt)] rounded-lg px-2 text-[11px] outline-none">
+          <option value="IN">🇮🇳 India</option>
+          <option value="US">🇺🇸 USA</option>
+          <option value="GB">🇬🇧 UK</option>
+          <option value="AE">🇦🇪 UAE</option>
+          <option value="SG">🇸🇬 SG</option>
+          <option value="AU">🇦🇺 AU</option>
+          <option value="CA">🇨🇦 CA</option>
+        </select>
+        <button onClick={load} disabled={loading} className="px-4 py-2 bg-[var(--brand)] text-white text-[12px] font-semibold rounded-lg disabled:opacity-50">
+          {loading ? '…' : 'Search'}
+        </button>
+      </div>
+
+      {/* Setup screen */}
+      {needsSetup && (
+        <div className="bg-[var(--surface)] border border-[var(--brand)] rounded-xl p-4">
+          <div className="flex items-center gap-2 mb-3">
+            <svg width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24" className="text-[var(--brand)]"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+            <div className="text-[14px] font-semibold">Connect Meta Ad Library</div>
+          </div>
+          <p className="text-[12px] text-[var(--text-2)] leading-relaxed mb-3">
+            Meta&apos;s Ad Library API is free but requires a one-time setup. Once connected, you&apos;ll see live paid ads from any eyewear brand in any country, with spend and impression ranges.
+          </p>
+          <ol className="space-y-2 text-[12px] text-[var(--text-2)] list-decimal list-inside">
+            {setupSteps.map((s, i) => <li key={i}>{s}</li>)}
+          </ol>
+          <a href="https://developers.facebook.com/tools/explorer/" target="_blank" rel="noopener noreferrer" className="inline-block mt-3 px-3 py-2 bg-[var(--brand)] text-white text-[11px] font-semibold rounded-lg">
+            Open Meta Graph Explorer →
+          </a>
+        </div>
+      )}
+
+      {err && !needsSetup && (
+        <div className="bg-red-500/10 border border-red-500/30 text-red-400 rounded-xl p-3 text-[12px]">{err}</div>
+      )}
+
+      {!needsSetup && !err && ads.length === 0 && !loading && (
+        <div className="text-center py-16 text-[var(--text-3)]">
+          <p className="text-[13px]">No ads found for &quot;{query}&quot;</p>
+          <p className="text-[11px] mt-1">Try a different brand or country.</p>
+        </div>
+      )}
+
+      {/* Ad grid */}
+      {ads.length > 0 && (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          {ads.map(ad => (
+            <article key={ad.id} className="bg-[var(--surface)] border border-[var(--line)] rounded-2xl overflow-hidden">
+              <div className="flex items-center justify-between px-4 py-3 border-b border-[var(--line)]">
+                <div className="min-w-0 flex-1">
+                  <div className="text-[12px] font-semibold truncate">{ad.page_name || '—'}</div>
+                  <div className="text-[10px] text-[var(--text-3)]">Started {ad.ad_delivery_start_time ? new Date(ad.ad_delivery_start_time).toLocaleDateString() : '—'}</div>
+                </div>
+                {ad.ad_delivery_stop_time ? (
+                  <span className="text-[9px] uppercase tracking-wider font-bold text-[var(--text-3)] bg-[var(--bg-alt)] px-1.5 py-0.5 rounded">Ended</span>
+                ) : (
+                  <span className="text-[9px] uppercase tracking-wider font-bold text-green-500 bg-green-500/10 px-1.5 py-0.5 rounded">Live</span>
+                )}
+              </div>
+
+              {/* Creative iframe snapshot from Meta */}
+              {ad.ad_snapshot_url && (
+                <div className="aspect-[4/5] bg-[var(--bg-alt)] overflow-hidden">
+                  <iframe src={ad.ad_snapshot_url} className="w-full h-full border-0" sandbox="allow-scripts allow-same-origin" loading="lazy" />
+                </div>
+              )}
+
+              <div className="p-4 space-y-2">
+                {ad.ad_creative_link_title && <div className="text-[12px] font-semibold line-clamp-2">{ad.ad_creative_link_title}</div>}
+                {ad.ad_creative_body && <p className="text-[11px] text-[var(--text-2)] line-clamp-3 leading-snug">{ad.ad_creative_body}</p>}
+
+                <div className="grid grid-cols-2 gap-2 pt-2 border-t border-[var(--line)]">
+                  <div>
+                    <div className="text-[9px] uppercase tracking-wider text-[var(--text-3)] font-bold">Impressions</div>
+                    <div className="text-[11px] font-semibold">{formatRange(ad.impressions)}</div>
+                  </div>
+                  <div>
+                    <div className="text-[9px] uppercase tracking-wider text-[var(--text-3)] font-bold">Spend</div>
+                    <div className="text-[11px] font-semibold">{ad.currency} {formatRange(ad.spend)}</div>
+                  </div>
+                </div>
+
+                {ad.publisher_platforms && ad.publisher_platforms.length > 0 && (
+                  <div className="flex flex-wrap gap-1 pt-1">
+                    {ad.publisher_platforms.map(p => (
+                      <span key={p} className="text-[9px] uppercase tracking-wider font-bold text-[var(--text-3)] bg-[var(--bg-alt)] px-1.5 py-0.5 rounded">{p}</span>
+                    ))}
+                  </div>
+                )}
+
+                {ad.ad_snapshot_url && (
+                  <a href={ad.ad_snapshot_url} target="_blank" rel="noopener noreferrer" className="block text-center py-1.5 bg-[var(--bg-alt)] rounded text-[10px] font-semibold text-[var(--text-2)] mt-1">
+                    Open on Meta →
+                  </a>
+                )}
+              </div>
+            </article>
           ))}
         </div>
       )}
