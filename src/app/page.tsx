@@ -412,42 +412,241 @@ function Sheet({ post, onClose }: { post: Post; onClose: () => void }) {
   );
 }
 
-/* ═══ Products ═══ */
+/* ═══ Products — Instagram-style feed with download / star / reimagine ═══ */
+interface ProductItem {
+  id?: string | number;
+  brand: string;
+  name: string;
+  price: string;
+  image: string;
+  url: string;
+  type?: string;
+  isNew?: boolean;
+}
+
 function Products() {
-  const [items, setItems] = useState<Array<Record<string,unknown>>>([]);
+  const [items, setItems] = useState<ProductItem[]>([]);
   const [brands, setBrands] = useState<string[]>([]);
   const [brand, setBrand] = useState('All');
   const [pg, setPg] = useState(1);
   const [total, setTotal] = useState(0);
+  const [loading, setLoading] = useState(false);
+  const [savedIds, setSavedIds] = useState<Set<string>>(() => {
+    if (typeof window === 'undefined') return new Set();
+    try {
+      return new Set(JSON.parse(localStorage.getItem('lenzy-saved-products') || '[]'));
+    } catch { return new Set(); }
+  });
+  const [onlySaved, setOnlySaved] = useState(false);
+  const [downloading, setDownloading] = useState<string | null>(null);
 
   useEffect(() => {
-    fetch(`/api/products?brand=${brand}&page=${pg}&limit=24&sortBy=price_asc`).then(r=>r.json()).then(d => {
-      setItems(d.products||[]); setBrands(d.brands||[]); setTotal(d.total||0);
-    });
+    setLoading(true);
+    fetch(`/api/products?brand=${brand}&page=${pg}&limit=30&sortBy=newest`).then(r=>r.json()).then(d => {
+      // Shuffle client-side so the feed mixes brands naturally (Insta-style)
+      // instead of being clumped by sort order.
+      const products = (d.products || []) as ProductItem[];
+      const shuffled = brand === 'All' && pg === 1 ? [...products].sort(() => Math.random() - 0.5) : products;
+      setItems(pg === 1 ? shuffled : [...items, ...shuffled]);
+      setBrands(d.brands || []);
+      setTotal(d.total || 0);
+      setLoading(false);
+    }).catch(() => setLoading(false));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [brand, pg]);
+
+  const toggleSave = (id: string) => {
+    const next = new Set(savedIds);
+    if (next.has(id)) next.delete(id); else next.add(id);
+    setSavedIds(next);
+    localStorage.setItem('lenzy-saved-products', JSON.stringify([...next]));
+  };
+
+  const downloadImage = async (p: ProductItem) => {
+    const id = String(p.id || p.url);
+    setDownloading(id);
+    try {
+      // Proxy through /api/img to dodge CORS on product CDNs
+      const proxied = `/api/img?url=${encodeURIComponent(p.image)}`;
+      const res = await fetch(proxied);
+      if (!res.ok) throw new Error('fetch failed');
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      const ext = (blob.type.split('/')[1] || 'jpg').split('+')[0];
+      const slug = `${p.brand || 'product'}-${p.name || 'eyewear'}`.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').substring(0, 60);
+      a.download = `${slug}.${ext}`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch {
+      // Fallback: open in new tab so user can save manually
+      window.open(p.image, '_blank');
+    }
+    setDownloading(null);
+  };
+
+  const reimagineProduct = (p: ProductItem) => {
+    const params = new URLSearchParams({
+      image: p.image,
+      brand: p.brand,
+      caption: `${p.name} — ${p.price}`,
+      postUrl: p.url,
+    });
+    window.location.href = `/reimagine?${params.toString()}`;
+  };
+
+  const displayed = onlySaved
+    ? items.filter(p => savedIds.has(String(p.id || p.url)))
+    : items;
 
   return (
     <div className="py-4">
-      <div className="flex gap-2 pb-3 overflow-x-auto" style={{ scrollbarWidth:'none' }}>
-        <button onClick={()=>{setBrand('All');setPg(1);}} className={`px-3 py-[5px] rounded-full text-[12px] font-medium whitespace-nowrap flex-shrink-0 ${brand==='All'?'bg-[var(--text)] text-[var(--bg)]':'bg-[var(--bg-alt)] text-[var(--text-2)]'}`}>All ({total})</button>
-        {brands.slice(0,25).map(b => (
-          <button key={b} onClick={()=>{setBrand(b);setPg(1);}} className={`px-3 py-[5px] rounded-full text-[12px] font-medium whitespace-nowrap flex-shrink-0 ${brand===b?'bg-[var(--text)] text-[var(--bg)]':'bg-[var(--bg-alt)] text-[var(--text-2)]'}`}>{b}</button>
+      {/* Brand chips + Saved toggle */}
+      <div className="flex gap-2 pb-3 overflow-x-auto" style={{ scrollbarWidth: 'none' }}>
+        <button
+          onClick={() => setOnlySaved(s => !s)}
+          className={`px-3 py-[5px] rounded-full text-[12px] font-medium whitespace-nowrap flex-shrink-0 flex items-center gap-1 ${onlySaved ? 'bg-[var(--brand)] text-white' : 'bg-[var(--bg-alt)] text-[var(--text-2)]'}`}
+        >
+          <svg width="11" height="11" fill={onlySaved ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+          Saved ({savedIds.size})
+        </button>
+        <button
+          onClick={() => { setBrand('All'); setPg(1); }}
+          className={`px-3 py-[5px] rounded-full text-[12px] font-medium whitespace-nowrap flex-shrink-0 ${brand === 'All' && !onlySaved ? 'bg-[var(--text)] text-[var(--bg)]' : 'bg-[var(--bg-alt)] text-[var(--text-2)]'}`}
+        >
+          All ({total})
+        </button>
+        {brands.slice(0, 25).map(b => (
+          <button
+            key={b}
+            onClick={() => { setBrand(b); setPg(1); setOnlySaved(false); }}
+            className={`px-3 py-[5px] rounded-full text-[12px] font-medium whitespace-nowrap flex-shrink-0 ${brand === b ? 'bg-[var(--text)] text-[var(--bg)]' : 'bg-[var(--bg-alt)] text-[var(--text-2)]'}`}
+          >
+            {b}
+          </button>
         ))}
       </div>
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2 sm:gap-3">
-        {items.map((p, i) => (
-          <a key={i} href={String(p.url||'#')} target="_blank" rel="noopener noreferrer" className="bg-[var(--surface)] rounded-xl overflow-hidden border border-[var(--line)] hover:shadow-md transition-shadow" style={{animation:`up 0.3s ease ${i*15}ms both`}}>
-            <div className="aspect-square bg-white p-2">
-              <img src={String(p.image||'')} alt="" className="w-full h-full object-contain" loading="lazy" onError={e=>{(e.target as HTMLImageElement).style.display='none';}} />
-            </div>
-            <div className="p-2.5">
-              <div className="text-[10px] text-[var(--brand)] font-semibold uppercase tracking-wide">{String(p.brand)}</div>
-              <div className="text-[12px] font-medium mt-0.5 line-clamp-2 leading-snug">{String(p.name)}</div>
-              <div className="text-[14px] font-bold mt-1">{String(p.price)}</div>
-            </div>
-          </a>
-        ))}
+
+      {/* Empty state for Saved */}
+      {onlySaved && displayed.length === 0 && (
+        <div className="text-center py-16 text-[var(--text-3)]">
+          <svg width="42" height="42" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24" className="mx-auto mb-2 opacity-30"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+          <p className="text-[13px]">No saved products yet</p>
+          <p className="text-[11px] mt-1">Tap the star icon on any product to save it here.</p>
+        </div>
+      )}
+
+      {/* Insta-style feed: 1 col mobile, 2 tablet, 3 desktop */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+        {displayed.map((p, i) => {
+          const id = String(p.id || p.url);
+          const saved = savedIds.has(id);
+          return (
+            <article
+              key={id + i}
+              className="bg-[var(--surface)] rounded-2xl overflow-hidden border border-[var(--line)] shadow-sm"
+              style={{ animation: `up 0.35s ease ${Math.min(i, 10) * 20}ms both` }}
+            >
+              {/* Header: brand + price */}
+              <div className="flex items-center justify-between px-4 py-3">
+                <div className="flex items-center gap-2.5 min-w-0">
+                  <div className="w-8 h-8 rounded-full bg-gradient-to-br from-[var(--brand)] to-purple-500 flex items-center justify-center text-white text-[11px] font-bold flex-shrink-0">
+                    {(p.brand || '?').charAt(0).toUpperCase()}
+                  </div>
+                  <div className="min-w-0">
+                    <div className="text-[13px] font-semibold truncate">{p.brand}</div>
+                    {p.type && <div className="text-[10px] text-[var(--text-3)] truncate">{p.type}</div>}
+                  </div>
+                </div>
+                <div className="flex items-center gap-2 flex-shrink-0">
+                  {p.isNew && <span className="text-[9px] uppercase tracking-wider font-bold text-[var(--brand)] bg-[var(--brand)]/10 px-1.5 py-0.5 rounded">New</span>}
+                  <span className="text-[13px] font-bold">{p.price}</span>
+                </div>
+              </div>
+
+              {/* Product image (square, full-bleed) */}
+              <a
+                href={p.url || '#'} target="_blank" rel="noopener noreferrer"
+                className="block aspect-square bg-white relative group"
+              >
+                {p.image ? (
+                  <img
+                    src={p.image}
+                    alt={p.name}
+                    className="w-full h-full object-contain p-6 group-hover:scale-[1.02] transition-transform duration-300"
+                    loading="lazy"
+                    onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }}
+                  />
+                ) : (
+                  <div className="flex items-center justify-center h-full text-[var(--text-3)] text-[11px]">No image</div>
+                )}
+              </a>
+
+              {/* Action bar */}
+              <div className="flex items-center gap-1 px-2 py-2 border-t border-[var(--line)]">
+                <button
+                  onClick={() => reimagineProduct(p)}
+                  title="Reimagine with this product"
+                  className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg text-[12px] font-semibold text-[var(--brand)] hover:bg-[var(--bg-alt)] transition-colors"
+                >
+                  <svg width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
+                  Reimagine
+                </button>
+                <button
+                  onClick={() => toggleSave(id)}
+                  title={saved ? 'Remove from saved' : 'Save'}
+                  className={`p-2 rounded-lg hover:bg-[var(--bg-alt)] transition-colors ${saved ? 'text-[var(--brand)]' : 'text-[var(--text-3)]'}`}
+                >
+                  <svg width="16" height="16" fill={saved ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+                </button>
+                <button
+                  onClick={() => downloadImage(p)}
+                  disabled={downloading === id}
+                  title="Download image"
+                  className="p-2 rounded-lg hover:bg-[var(--bg-alt)] transition-colors text-[var(--text-3)] disabled:opacity-40"
+                >
+                  {downloading === id ? (
+                    <div className="w-4 h-4 border-2 border-[var(--text-3)] border-t-transparent rounded-full animate-spin" />
+                  ) : (
+                    <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                  )}
+                </button>
+              </div>
+
+              {/* Caption */}
+              <div className="px-4 pb-3 pt-1">
+                <p className="text-[12px] leading-snug line-clamp-2">
+                  <span className="font-semibold">{p.brand}</span>{' '}
+                  <span className="text-[var(--text-2)]">{p.name}</span>
+                </p>
+              </div>
+            </article>
+          );
+        })}
       </div>
+
+      {/* Load more */}
+      {!onlySaved && items.length > 0 && items.length < total && (
+        <div className="flex justify-center pt-6 pb-2">
+          <button
+            onClick={() => setPg(p => p + 1)}
+            disabled={loading}
+            className="px-5 py-2.5 bg-[var(--bg-alt)] rounded-full text-[12px] font-semibold hover:bg-[var(--line)] disabled:opacity-40"
+          >
+            {loading ? 'Loading…' : `Load more (${items.length} of ${total})`}
+          </button>
+        </div>
+      )}
+
+      {loading && items.length === 0 && (
+        <div className="flex items-center justify-center py-20 text-[var(--text-3)] text-[12px]">
+          <div className="w-5 h-5 border-2 border-[var(--brand)] border-t-transparent rounded-full animate-spin mr-2" />
+          Loading products…
+        </div>
+      )}
     </div>
   );
 }
