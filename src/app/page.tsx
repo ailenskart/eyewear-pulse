@@ -424,12 +424,59 @@ interface ProductItem {
   isNew?: boolean;
 }
 
+/** Unbiased Fisher–Yates shuffle (in place, returns the array). */
+function fisherYates<T>(arr: T[]): T[] {
+  for (let i = arr.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [arr[i], arr[j]] = [arr[j], arr[i]];
+  }
+  return arr;
+}
+
+/**
+ * Spread items so no two consecutive items share the same brand when
+ * possible. Works by repeatedly popping from the largest remaining
+ * brand bucket, skipping the last-placed brand until it's unavoidable.
+ * This is what Instagram / TikTok do to mix creators in a feed.
+ */
+function spreadByBrand<T extends { brand: string }>(items: T[]): T[] {
+  const buckets = new Map<string, T[]>();
+  for (const it of items) {
+    const key = it.brand || '__unknown__';
+    if (!buckets.has(key)) buckets.set(key, []);
+    buckets.get(key)!.push(it);
+  }
+  // Shuffle within each bucket so the same brand's items aren't in catalog order
+  for (const list of buckets.values()) fisherYates(list);
+
+  const out: T[] = [];
+  let lastBrand = '';
+  while (buckets.size > 0) {
+    // Find the largest bucket whose brand != lastBrand, else the largest overall
+    let pickKey = '';
+    let pickSize = -1;
+    for (const [key, list] of buckets) {
+      if (key === lastBrand) continue;
+      if (list.length > pickSize) { pickKey = key; pickSize = list.length; }
+    }
+    if (!pickKey) {
+      // Only the lastBrand bucket remains — drain it
+      pickKey = lastBrand;
+    }
+    const list = buckets.get(pickKey)!;
+    out.push(list.shift()!);
+    if (list.length === 0) buckets.delete(pickKey);
+    lastBrand = pickKey;
+  }
+  return out;
+}
+
 function Products() {
-  const [items, setItems] = useState<ProductItem[]>([]);
+  const [allItems, setAllItems] = useState<ProductItem[]>([]);
   const [brands, setBrands] = useState<string[]>([]);
   const [brand, setBrand] = useState('All');
-  const [pg, setPg] = useState(1);
   const [total, setTotal] = useState(0);
+  const [visible, setVisible] = useState(30);
   const [loading, setLoading] = useState(false);
   const [savedIds, setSavedIds] = useState<Set<string>>(() => {
     if (typeof window === 'undefined') return new Set();
@@ -442,18 +489,20 @@ function Products() {
 
   useEffect(() => {
     setLoading(true);
-    fetch(`/api/products?brand=${brand}&page=${pg}&limit=30&sortBy=newest`).then(r=>r.json()).then(d => {
-      // Shuffle client-side so the feed mixes brands naturally (Insta-style)
-      // instead of being clumped by sort order.
+    setVisible(30);
+    // Fetch a large batch in one go so the whole pool can be shuffled +
+    // brand-spread client-side. Pagination then just slices out of this pool.
+    fetch(`/api/products?brand=${brand}&page=1&limit=200&sortBy=newest`).then(r=>r.json()).then(d => {
       const products = (d.products || []) as ProductItem[];
-      const shuffled = brand === 'All' && pg === 1 ? [...products].sort(() => Math.random() - 0.5) : products;
-      setItems(pg === 1 ? shuffled : [...items, ...shuffled]);
+      // Fisher–Yates shuffle, then spread by brand so no two adjacent
+      // cards are from the same brand when possible.
+      const mixed = spreadByBrand(fisherYates([...products]));
+      setAllItems(mixed);
       setBrands(d.brands || []);
       setTotal(d.total || 0);
       setLoading(false);
     }).catch(() => setLoading(false));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [brand, pg]);
+  }, [brand]);
 
   const toggleSave = (id: string) => {
     const next = new Set(savedIds);
@@ -466,7 +515,6 @@ function Products() {
     const id = String(p.id || p.url);
     setDownloading(id);
     try {
-      // Proxy through /api/img to dodge CORS on product CDNs
       const proxied = `/api/img?url=${encodeURIComponent(p.image)}`;
       const res = await fetch(proxied);
       if (!res.ok) throw new Error('fetch failed');
@@ -482,7 +530,6 @@ function Products() {
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
     } catch {
-      // Fallback: open in new tab so user can save manually
       window.open(p.image, '_blank');
     }
     setDownloading(null);
@@ -498,9 +545,11 @@ function Products() {
     window.location.href = `/reimagine?${params.toString()}`;
   };
 
-  const displayed = onlySaved
-    ? items.filter(p => savedIds.has(String(p.id || p.url)))
-    : items;
+  const pool = onlySaved
+    ? allItems.filter(p => savedIds.has(String(p.id || p.url)))
+    : allItems;
+  const displayed = pool.slice(0, visible);
+  const canLoadMore = !onlySaved && visible < pool.length;
 
   return (
     <div className="py-4">
@@ -514,7 +563,7 @@ function Products() {
           Saved ({savedIds.size})
         </button>
         <button
-          onClick={() => { setBrand('All'); setPg(1); }}
+          onClick={() => { setBrand('All'); setOnlySaved(false); }}
           className={`px-3 py-[5px] rounded-full text-[12px] font-medium whitespace-nowrap flex-shrink-0 ${brand === 'All' && !onlySaved ? 'bg-[var(--text)] text-[var(--bg)]' : 'bg-[var(--bg-alt)] text-[var(--text-2)]'}`}
         >
           All ({total})
@@ -522,7 +571,7 @@ function Products() {
         {brands.slice(0, 25).map(b => (
           <button
             key={b}
-            onClick={() => { setBrand(b); setPg(1); setOnlySaved(false); }}
+            onClick={() => { setBrand(b); setOnlySaved(false); }}
             className={`px-3 py-[5px] rounded-full text-[12px] font-medium whitespace-nowrap flex-shrink-0 ${brand === b ? 'bg-[var(--text)] text-[var(--bg)]' : 'bg-[var(--bg-alt)] text-[var(--text-2)]'}`}
           >
             {b}
@@ -629,19 +678,18 @@ function Products() {
       </div>
 
       {/* Load more */}
-      {!onlySaved && items.length > 0 && items.length < total && (
+      {canLoadMore && (
         <div className="flex justify-center pt-6 pb-2">
           <button
-            onClick={() => setPg(p => p + 1)}
-            disabled={loading}
-            className="px-5 py-2.5 bg-[var(--bg-alt)] rounded-full text-[12px] font-semibold hover:bg-[var(--line)] disabled:opacity-40"
+            onClick={() => setVisible(v => v + 30)}
+            className="px-5 py-2.5 bg-[var(--bg-alt)] rounded-full text-[12px] font-semibold hover:bg-[var(--line)]"
           >
-            {loading ? 'Loading…' : `Load more (${items.length} of ${total})`}
+            Load more ({displayed.length} of {pool.length})
           </button>
         </div>
       )}
 
-      {loading && items.length === 0 && (
+      {loading && allItems.length === 0 && (
         <div className="flex items-center justify-center py-20 text-[var(--text-3)] text-[12px]">
           <div className="w-5 h-5 border-2 border-[var(--brand)] border-t-transparent rounded-full animate-spin mr-2" />
           Loading products…
