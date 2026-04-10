@@ -176,6 +176,22 @@ export default function ReimagineStudio() {
     if (active?.id === id) setActive(null);
   };
 
+  const clearIterations = () => {
+    if (!active) return;
+    const cleared = { ...active, iterations: [] };
+    setActive(cleared);
+    const updatedProjects = projects.map(p => p.id === active.id ? cleared : p);
+    saveProjects(updatedProjects);
+  };
+
+  const regenerateIteration = (it: Iteration) => {
+    if (!active || loading) return;
+    // Strip any URL from the stored prompt so we only pass the user note;
+    // the default "no prompt" case triggers the latest face-nudge edit direction.
+    const originalPrompt = it.prompt === 'Default: Reimagine for Lenskart' ? '' : it.prompt;
+    generateIteration(active, originalPrompt);
+  };
+
   return (
     <div className="min-h-screen bg-[var(--bg)]" style={{ paddingBottom: 'calc(56px + env(safe-area-inset-bottom, 0px))' }}>
       {/* Header */}
@@ -270,6 +286,11 @@ export default function ReimagineStudio() {
               <div className="flex items-center gap-2 pl-4">
                 <div className="w-px h-6 bg-[var(--line)]" />
                 <span className="text-[10px] text-[var(--text-3)] uppercase tracking-wider font-medium">Reimagined thread</span>
+                {active.iterations.length > 0 && !loading && (
+                  <button onClick={clearIterations} className="ml-auto text-[10px] text-[var(--text-3)] hover:text-[var(--brand)] uppercase tracking-wider font-medium mr-1">
+                    Clear
+                  </button>
+                )}
               </div>
             )}
 
@@ -277,12 +298,21 @@ export default function ReimagineStudio() {
             {active.iterations.map((it, idx) => (
               <div key={it.id} className="bg-[var(--surface)] border border-[var(--line)] rounded-xl overflow-hidden" style={{ animation: 'up 0.3s ease' }}>
                 {/* Header */}
-                <div className="p-3 border-b border-[var(--line)] flex items-center justify-between">
-                  <div>
+                <div className="p-3 border-b border-[var(--line)] flex items-center justify-between gap-2">
+                  <div className="min-w-0 flex-1">
                     <span className="text-[12px] font-semibold">Iteration {idx + 1}</span>
                     <span className="text-[10px] text-[var(--text-3)] ml-2">{it.prompt}</span>
                   </div>
-                  <span className="text-[10px] text-[var(--text-3)]">{new Date(it.createdAt).toLocaleTimeString()}</span>
+                  <button
+                    onClick={() => regenerateIteration(it)}
+                    disabled={loading}
+                    title="Regenerate with latest prompt"
+                    className="text-[10px] text-[var(--brand)] font-semibold px-2 py-1 rounded hover:bg-[var(--bg-alt)] disabled:opacity-40 flex items-center gap-1"
+                  >
+                    <svg width="11" height="11" fill="none" stroke="currentColor" strokeWidth="2.2" viewBox="0 0 24 24"><path d="M23 4v6h-6M1 20v-6h6"/><path d="M20.49 9A9 9 0 0 0 5.64 5.64L1 10m22 4l-4.64 4.36A9 9 0 0 1 3.51 15"/></svg>
+                    Regenerate
+                  </button>
+                  <span className="text-[10px] text-[var(--text-3)] flex-shrink-0">{new Date(it.createdAt).toLocaleTimeString()}</span>
                 </div>
 
                 {/* Product reference (when Lenskart URL was provided) */}

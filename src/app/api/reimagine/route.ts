@@ -400,9 +400,14 @@ export async function POST(request: NextRequest) {
     if (kontext.url) editedImages.push({ url: kontext.url, model: 'FLUX Kontext Max', type: 'edited' });
     if (schnell.url) editedImages.push({ url: schnell.url, model: 'FLUX Kontext Pro', type: 'edited' });
 
-    // If both Replicate calls failed, fall back to Pollinations (free)
+    // If both Replicate calls failed, fall back to Pollinations (free).
+    // Use the analysis of the ORIGINAL image so we don't invent ethnicity/style.
     if (editedImages.length === 0) {
-      const pollinationsPrompt = `Professional eyewear Instagram photo, Indian model wearing stylish sunglasses, vibrant background, ${brand} brand, fashion photography`;
+      const fallbackSubject = productFrameDescription
+        ? `model wearing ${productFrameDescription}`
+        : `model wearing stylish eyewear frames`;
+      const fallbackScene = imageAnalysis ? `, scene: ${imageAnalysis.substring(0, 200)}` : '';
+      const pollinationsPrompt = `Professional ${brand} eyewear editorial photo, ${fallbackSubject}${fallbackScene}`;
       editedImages.push({
         url: `https://image.pollinations.ai/prompt/${encodeURIComponent(pollinationsPrompt)}?width=1024&height=1024&model=flux&nologo=true&seed=${Date.now()}`,
         model: 'FLUX (Pollinations fallback)',
