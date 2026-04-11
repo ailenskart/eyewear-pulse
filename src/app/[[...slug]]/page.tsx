@@ -1804,9 +1804,238 @@ interface NewsDigest {
   cached: boolean;
 }
 
+/* ─── Visual Trends (Gemini Vision) types + component ─── */
+
+interface RankedAttr {
+  value: string;
+  count: number;
+  weightedCount: number;
+  priorCount: number;
+  delta: number;
+  deltaPct: number;
+  topExample?: {
+    brand: string;
+    handle: string;
+    imageUrl: string;
+    postUrl: string;
+    likes: number;
+  };
+}
+interface RegionBreakdown {
+  region: string;
+  totalPosts: number;
+  topShapes: RankedAttr[];
+  topColors: RankedAttr[];
+}
+interface MustDoItem {
+  headline: string;
+  rationale: string;
+  category: 'shape' | 'color' | 'material' | 'style' | 'region' | 'format';
+  urgency: 'now' | 'this-week' | 'watch';
+}
+interface VisualTrendsResult {
+  region: string;
+  window: number;
+  totalAnalyzed: number;
+  topShapes: RankedAttr[];
+  topColors: RankedAttr[];
+  topMaterials: RankedAttr[];
+  topStyles: RankedAttr[];
+  byRegion: RegionBreakdown[];
+  mustDo: MustDoItem[];
+  summary: string;
+  generatedAt: string;
+  cached: boolean;
+}
+
+// Tailwind-style helpers for swatches and urgency chips.
+const COLOR_SWATCH: Record<string, string> = {
+  black: '#1a1a1a', tortoise: '#8b4513', gold: '#d4af37', silver: '#c0c0c0',
+  clear: 'rgba(255,255,255,0.15)', brown: '#6b3410', red: '#d0342c',
+  blue: '#2564cf', white: '#f5f5f5', pastel: '#f8c8dc', pink: '#ec4899',
+  green: '#16a34a', yellow: '#eab308', multicolor: 'conic-gradient(from 0deg, #ef4444, #f59e0b, #10b981, #3b82f6, #8b5cf6, #ef4444)',
+};
+
+const URGENCY_STYLE: Record<MustDoItem['urgency'], string> = {
+  'now': 'bg-red-500/15 text-red-400 border-red-500/40',
+  'this-week': 'bg-amber-500/15 text-amber-400 border-amber-500/40',
+  'watch': 'bg-blue-500/15 text-blue-400 border-blue-500/40',
+};
+
+function DeltaBadge({ delta, deltaPct }: { delta: number; deltaPct: number }) {
+  if (deltaPct > 900) return <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-400">NEW</span>;
+  if (delta === 0) return <span className="text-[9px] text-[var(--text-3)]">flat</span>;
+  const up = delta > 0;
+  const pct = Math.round(Math.abs(deltaPct));
+  return (
+    <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded ${up ? 'bg-emerald-500/15 text-emerald-400' : 'bg-red-500/15 text-red-400'}`}>
+      {up ? '↑' : '↓'} {pct}%
+    </span>
+  );
+}
+
+function AttrRow({ attr, showColorSwatch }: { attr: RankedAttr; showColorSwatch?: boolean }) {
+  const swatch = showColorSwatch ? COLOR_SWATCH[attr.value] : null;
+  return (
+    <a
+      href={attr.topExample?.postUrl || '#'}
+      target={attr.topExample ? '_blank' : undefined}
+      rel="noopener noreferrer"
+      className={`flex items-center gap-3 p-2 rounded-lg ${attr.topExample ? 'hover:bg-[var(--bg-alt)]' : ''} transition-colors`}
+    >
+      {attr.topExample?.imageUrl ? (
+        <img src={attr.topExample.imageUrl} alt="" className="w-11 h-11 rounded-md object-cover flex-shrink-0 bg-[var(--bg-alt)]" loading="lazy" onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }} />
+      ) : swatch ? (
+        <div className="w-11 h-11 rounded-md flex-shrink-0 border border-[var(--line)]" style={{ background: swatch }} />
+      ) : (
+        <div className="w-11 h-11 rounded-md flex-shrink-0 bg-[var(--bg-alt)] flex items-center justify-center text-lg">👓</div>
+      )}
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-2">
+          <span className="text-[13px] font-semibold capitalize truncate">{attr.value}</span>
+          <DeltaBadge delta={attr.delta} deltaPct={attr.deltaPct} />
+        </div>
+        <div className="text-[10px] text-[var(--text-3)] mt-0.5">
+          {attr.count} posts · {n(attr.weightedCount)} weighted eng
+          {attr.topExample && <> · top: {attr.topExample.brand}</>}
+        </div>
+      </div>
+    </a>
+  );
+}
+
+function VisualTrends({ trends, loading }: { trends: VisualTrendsResult | null; loading: boolean }) {
+  const [view, setView] = useState<'shapes' | 'colors' | 'materials' | 'styles'>('shapes');
+
+  if (loading && !trends) {
+    return (
+      <div className="bg-[var(--surface)] border border-[var(--line)] rounded-2xl p-5 mb-4">
+        <div className="flex items-center gap-2 mb-2">
+          <div className="w-4 h-4 border-2 border-[var(--brand)] border-t-transparent rounded-full animate-spin" />
+          <span className="text-[11px] uppercase tracking-wider font-bold text-[var(--text-3)]">Gemini Vision is analyzing this week&apos;s top posts…</span>
+        </div>
+        <p className="text-[11px] text-[var(--text-3)]">Extracting shapes, colors and materials from top-engaging eyewear posts. This takes 20-40s on a cold run, then caches for 12h.</p>
+      </div>
+    );
+  }
+
+  if (!trends || trends.totalAnalyzed === 0) return null;
+
+  const active = view === 'shapes' ? trends.topShapes
+    : view === 'colors' ? trends.topColors
+    : view === 'materials' ? trends.topMaterials
+    : trends.topStyles;
+
+  return (
+    <div className="mb-5 space-y-4">
+      {/* Summary + Weekly Must-Do */}
+      <div className="bg-gradient-to-br from-[var(--brand)]/15 via-[var(--surface)] to-[var(--surface)] border border-[var(--brand)]/30 rounded-2xl p-5">
+        <div className="flex items-start justify-between gap-2 mb-2">
+          <div className="text-[10px] uppercase tracking-[0.15em] font-bold text-[var(--brand)]">
+            Visual Trends · Gemini Vision
+          </div>
+          {trends.cached && <span className="text-[9px] uppercase tracking-wider font-bold text-[var(--text-3)]">Cached</span>}
+        </div>
+        <p className="text-[14px] leading-relaxed text-[var(--text)] mb-4">{trends.summary}</p>
+
+        {trends.mustDo.length > 0 && (
+          <div>
+            <div className="text-[11px] uppercase tracking-wider font-bold text-[var(--text-2)] mb-2">Weekly Must-Do</div>
+            <div className="space-y-2">
+              {trends.mustDo.map((m, i) => (
+                <div key={i} className="bg-[var(--bg)] border border-[var(--line)] rounded-xl p-3">
+                  <div className="flex items-start justify-between gap-2 mb-1">
+                    <div className="text-[13px] font-semibold leading-snug flex-1">{m.headline}</div>
+                    <span className={`text-[9px] uppercase tracking-wider font-bold px-1.5 py-0.5 rounded border flex-shrink-0 ${URGENCY_STYLE[m.urgency] || URGENCY_STYLE['this-week']}`}>
+                      {m.urgency === 'now' ? '🔴 Now' : m.urgency === 'this-week' ? '🟡 This week' : '🔵 Watch'}
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-[var(--text-2)] leading-relaxed">{m.rationale}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        <div className="text-[9px] text-[var(--text-3)] mt-3">
+          Analyzed {trends.totalAnalyzed} top posts · last {trends.window}d
+        </div>
+      </div>
+
+      {/* Shapes / Colors / Materials / Styles tabs */}
+      <div className="bg-[var(--surface)] border border-[var(--line)] rounded-2xl p-4">
+        <div className="flex items-center justify-between mb-3">
+          <div className="text-[11px] uppercase tracking-wider font-bold text-[var(--text-2)]">Most liked & shared</div>
+          <div className="flex gap-1 bg-[var(--bg-alt)] rounded-lg p-[2px]">
+            {(['shapes', 'colors', 'materials', 'styles'] as const).map(v => (
+              <button key={v} onClick={() => setView(v)}
+                className={`px-2 py-1 rounded text-[10px] font-semibold uppercase tracking-wider transition-all ${view === v ? 'bg-[var(--surface)] text-[var(--text)] shadow-sm' : 'text-[var(--text-3)]'}`}>
+                {v}
+              </button>
+            ))}
+          </div>
+        </div>
+        {active.length === 0 ? (
+          <p className="text-[11px] text-[var(--text-3)] py-6 text-center">No {view} detected yet.</p>
+        ) : (
+          <div className="space-y-1">
+            {active.map((a, i) => <AttrRow key={i} attr={a} showColorSwatch={view === 'colors'} />)}
+          </div>
+        )}
+      </div>
+
+      {/* Regional cut view — only shown when global */}
+      {trends.region === 'ALL' && trends.byRegion.length > 0 && (
+        <div className="bg-[var(--surface)] border border-[var(--line)] rounded-2xl p-4">
+          <div className="text-[11px] uppercase tracking-wider font-bold text-[var(--text-2)] mb-3">Cut view by region</div>
+          <div className="grid sm:grid-cols-2 gap-3">
+            {trends.byRegion.map((r, i) => (
+              <div key={i} className="border border-[var(--line)] rounded-xl p-3">
+                <div className="flex items-baseline justify-between mb-2">
+                  <div className="text-[12px] font-bold">{r.region}</div>
+                  <div className="text-[9px] text-[var(--text-3)]">{r.totalPosts} posts</div>
+                </div>
+                <div className="space-y-2">
+                  {r.topShapes.length > 0 && (
+                    <div>
+                      <div className="text-[9px] uppercase tracking-wider text-[var(--text-3)] mb-1">Top shapes</div>
+                      <div className="flex flex-wrap gap-1">
+                        {r.topShapes.map((s, j) => (
+                          <span key={j} className="text-[10px] px-1.5 py-0.5 rounded bg-[var(--bg-alt)] capitalize">
+                            {s.value} <span className="text-[var(--text-3)]">·{s.count}</span>
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  {r.topColors.length > 0 && (
+                    <div>
+                      <div className="text-[9px] uppercase tracking-wider text-[var(--text-3)] mb-1">Top colors</div>
+                      <div className="flex flex-wrap gap-1 items-center">
+                        {r.topColors.map((c, j) => (
+                          <span key={j} className="text-[10px] px-1.5 py-0.5 rounded bg-[var(--bg-alt)] capitalize inline-flex items-center gap-1">
+                            {COLOR_SWATCH[c.value] && <span className="w-2 h-2 rounded-full border border-[var(--line)]" style={{ background: COLOR_SWATCH[c.value] }} />}
+                            {c.value} <span className="text-[var(--text-3)]">·{c.count}</span>
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function News() {
   const [digest, setDigest] = useState<NewsDigest | null>(null);
+  const [trends, setTrends] = useState<VisualTrendsResult | null>(null);
   const [loading, setLoading] = useState(false);
+  const [trendsLoading, setTrendsLoading] = useState(false);
   const [err, setErr] = useState('');
   const [region, setRegion] = useState('ALL');
 
@@ -1823,7 +2052,18 @@ function News() {
     setLoading(false);
   }, [region]);
 
+  const loadTrends = useCallback(async (refresh = false) => {
+    setTrendsLoading(true);
+    try {
+      const res = await fetch(`/api/visual-trends?region=${region}${refresh ? '&refresh=1' : ''}`);
+      const data = await res.json();
+      setTrends(data);
+    } catch { /* silent — trends are optional */ }
+    setTrendsLoading(false);
+  }, [region]);
+
   useEffect(() => { load(false); }, [load]);
+  useEffect(() => { loadTrends(false); }, [loadTrends]);
 
   return (
     <div className="py-4 max-w-3xl mx-auto">
@@ -1843,8 +2083,8 @@ function News() {
             <option value="South Asia">🇮🇳 SA</option>
             <option value="Asia">🌏 Asia</option>
           </select>
-          <button onClick={() => load(true)} disabled={loading} className="p-2 bg-[var(--bg-alt)] rounded-lg disabled:opacity-50" title="Refresh digest">
-            <svg width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24" className={loading ? 'animate-spin' : ''}><path d="M23 4v6h-6M1 20v-6h6"/><path d="M20.49 9A9 9 0 0 0 5.64 5.64L1 10m22 4l-4.64 4.36A9 9 0 0 1 3.51 15"/></svg>
+          <button onClick={() => { load(true); loadTrends(true); }} disabled={loading || trendsLoading} className="p-2 bg-[var(--bg-alt)] rounded-lg disabled:opacity-50" title="Refresh digest + trends">
+            <svg width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24" className={(loading || trendsLoading) ? 'animate-spin' : ''}><path d="M23 4v6h-6M1 20v-6h6"/><path d="M20.49 9A9 9 0 0 0 5.64 5.64L1 10m22 4l-4.64 4.36A9 9 0 0 1 3.51 15"/></svg>
           </button>
         </div>
       </div>
@@ -1868,6 +2108,9 @@ function News() {
               <span>Built from {digest.dataSources.map(s => `${s.count} ${s.name.toLowerCase()}`).join(' · ')}</span>
             </div>
           </div>
+
+          {/* Visual Trends — Gemini Vision-powered */}
+          <VisualTrends trends={trends} loading={trendsLoading} />
 
           {/* Sections */}
           <div className="space-y-5">
