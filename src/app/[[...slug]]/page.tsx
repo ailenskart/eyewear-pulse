@@ -11,11 +11,20 @@ interface Post {
   hashtags: string[]; postedAt: string; postUrl: string; type: string; isVideo: boolean;
 }
 interface Stats { totalPosts: number; totalBrands: number; avgEngagement: number; topHashtags: Array<{ name: string; count: number }>; contentMix: Array<{ name: string; count: number }>; byCategory: Array<{ name: string; count: number }>; byRegion: Array<{ name: string; count: number }>; }
-interface Feed { posts: Post[]; total: number; page: number; totalPages: number; stats: Stats; }
+interface LastUpdated { tier: string; ran_at: string; new_posts: number }
+interface Feed { posts: Post[]; total: number; page: number; totalPages: number; stats: Stats; source?: 'supabase' | 'json-fallback'; lastUpdated?: LastUpdated | null }
 
 /* ═══ Util ═══ */
 const n = (v: number) => v >= 1e6 ? (v/1e6).toFixed(1)+'M' : v >= 1e3 ? (v/1e3).toFixed(1)+'K' : String(v);
 const t = (d: string) => { const h = Math.floor((Date.now()-new Date(d).getTime())/36e5); return h<1?'now':h<24?h+'h':Math.floor(h/24)+'d'; };
+const rel = (d: string) => {
+  const m = Math.floor((Date.now() - new Date(d).getTime()) / 60000);
+  if (m < 1) return 'just now';
+  if (m < 60) return `${m}m ago`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `${h}h ago`;
+  return `${Math.floor(h / 24)}d ago`;
+};
 
 /* ═══ List Carousel (tap left/right to navigate) ═══ */
 function ListCarousel({ post, onOpen }: { post: Post; onOpen: () => void }) {
@@ -242,6 +251,20 @@ export default function App() {
         {/* ── Tab bar + view toggle ── */}
         {tab === 'feed' && (
           <div className="pt-3 pb-2 space-y-2">
+            {/* Last updated badge */}
+            {data?.lastUpdated && (
+              <div className="flex items-center justify-between text-[10px] text-[var(--text-3)] -mb-1">
+                <div className="flex items-center gap-1.5">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                  <span>
+                    Updated {rel(data.lastUpdated.ran_at)}
+                    {data.lastUpdated.new_posts > 0 && <> · <span className="text-emerald-500 font-semibold">+{data.lastUpdated.new_posts} new</span></>}
+                    <> · {data.lastUpdated.tier} tier</>
+                  </span>
+                </div>
+                {data.source === 'json-fallback' && <span className="text-amber-500 font-semibold uppercase tracking-wider">Fallback</span>}
+              </div>
+            )}
             {/* Categories */}
             <div className="flex gap-2 overflow-x-auto pb-1" style={{ scrollbarWidth: 'none' }}>
               {CATS.map(c => (
@@ -259,6 +282,27 @@ export default function App() {
               </div>
               <div className="flex items-center gap-2">
                 <span className="text-[11px] text-[var(--text-3)]">{data?.total}</span>
+                <button
+                  onClick={async () => {
+                    try {
+                      setLoading(true);
+                      const res = await fetch('/api/feed/refresh', { method: 'POST' });
+                      const j = await res.json();
+                      // Re-fetch the feed once the refresh kicks off (or finishes, if sync)
+                      await load();
+                      if (j.message) console.log(j.message);
+                    } catch {
+                      /* silent */
+                    }
+                  }}
+                  disabled={loading}
+                  className="p-1 rounded hover:bg-[var(--bg-alt)] disabled:opacity-50"
+                  title="Refresh feed — pulls new posts from priority brands"
+                >
+                  <svg width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24" className={loading ? 'animate-spin' : ''}>
+                    <path d="M23 4v6h-6M1 20v-6h6"/><path d="M20.49 9A9 9 0 0 0 5.64 5.64L1 10m22 4l-4.64 4.36A9 9 0 0 1 3.51 15"/>
+                  </svg>
+                </button>
                 <div className="flex bg-[var(--bg-alt)] rounded-md p-[2px]">
                   <button onClick={() => setMode('grid')} className={`p-1 rounded ${mode==='grid' ? 'bg-[var(--surface)] shadow-sm' : ''}`}>
                     <svg width="16" height="16" viewBox="0 0 16 16" fill="var(--text-2)"><rect x="1" y="1" width="6" height="6" rx="1"/><rect x="9" y="1" width="6" height="6" rx="1"/><rect x="1" y="9" width="6" height="6" rx="1"/><rect x="9" y="9" width="6" height="6" rx="1"/></svg>
@@ -2196,30 +2240,92 @@ interface CelebIgResult {
   hint?: string;
 }
 
+/* ═══ Celebrities feed — Instagram-style unified timeline ═══ */
+
+interface CelebFeedPost {
+  id: string;
+  celebName: string;
+  celebSlug: string;
+  celebCategory: string | null;
+  celebCountry: string | null;
+  imageUrl: string;
+  thumbnail?: string;
+  caption: string;
+  eyewearType: string;
+  sourceLabel: string;
+  pageUrl: string;
+  likes: number;
+  postedAt: string;
+}
+
+interface CelebFeedResponse {
+  posts: CelebFeedPost[];
+  total: number;
+  page: number;
+  totalPages: number;
+  facets: {
+    categories: Array<{ name: string; count: number }>;
+    countries: Array<{ name: string; count: number }>;
+  };
+  lastScan: { celeb_name: string; scanned_at: string; detected: number } | null;
+}
+
 function Celebrities() {
+  // Catalog mode state (fallback when feed is empty)
   const [list, setList] = useState<Celebrity[]>([]);
   const [categories, setCategories] = useState<string[]>([]);
-  const [category, setCategory] = useState('All');
-  const [q, setQ] = useState('');
-  const [total, setTotal] = useState(0);
-  const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState<Celebrity | null>(null);
   const [result, setResult] = useState<CelebIgResult | null>(null);
   const [scanning, setScanning] = useState(false);
   const [handleOverride, setHandleOverride] = useState('');
 
+  // Shared filter state
+  const [category, setCategory] = useState('All');
+  const [q, setQ] = useState('');
+
+  // Feed mode state
+  const [feed, setFeed] = useState<CelebFeedResponse | null>(null);
+  const [feedLoading, setFeedLoading] = useState(true);
+  const [openPhoto, setOpenPhoto] = useState<CelebFeedPost | null>(null);
+  const [eyewearType, setEyewearType] = useState<'' | 'sunglasses' | 'eyeglasses'>('');
+  const [refreshing, setRefreshing] = useState(false);
+
+  // Load catalog (for chips + fallback grid)
   useEffect(() => {
-    setLoading(true);
     const p = new URLSearchParams({ limit: '500' });
     if (category !== 'All') p.set('category', category);
     if (q.trim()) p.set('q', q.trim());
     fetch(`/api/celebrities?${p}`).then(r => r.json()).then(d => {
       setList(d.celebrities || []);
       setCategories(['All', ...(d.categories || [])]);
-      setTotal(d.total || 0);
-      setLoading(false);
-    }).catch(() => setLoading(false));
+    }).catch(() => {});
   }, [category, q]);
+
+  // Load feed
+  const loadFeed = useCallback(async () => {
+    setFeedLoading(true);
+    const p = new URLSearchParams({ limit: '30', page: '1' });
+    if (category !== 'All') p.set('category', category);
+    if (q.trim()) p.set('search', q.trim());
+    if (eyewearType) p.set('eyewearType', eyewearType);
+    try {
+      const res = await fetch(`/api/celebrities/feed?${p}`);
+      const data = await res.json();
+      setFeed(data);
+    } catch { /* silent */ }
+    setFeedLoading(false);
+  }, [category, q, eyewearType]);
+
+  useEffect(() => { loadFeed(); }, [loadFeed]);
+
+  const triggerCelebRefresh = async () => {
+    setRefreshing(true);
+    try {
+      await fetch('/api/celebrities/refresh', { method: 'POST' });
+      setTimeout(() => loadFeed(), 2000);
+    } catch { /* silent */ }
+    setRefreshing(false);
+  };
 
   const scanCeleb = async (c: Celebrity, overrideHandle?: string) => {
     setScanning(true);
@@ -2251,20 +2357,45 @@ function Celebrities() {
     scanCeleb(c);
   };
 
+  const feedHasPosts = feed && feed.posts.length > 0;
+
   return (
     <div className="py-4">
-      <div className="flex items-start justify-between mb-4">
+      {/* Header */}
+      <div className="flex items-start justify-between mb-3">
         <div>
-          <h2 className="text-[20px] font-bold tracking-tight">Celebrities</h2>
-          <p className="text-[11px] text-[var(--text-3)] mt-0.5">{total} curated celebrities — tap any to see their eyewear moments</p>
+          <h2 className="text-[20px] font-bold tracking-tight">Celebrity Feed</h2>
+          <p className="text-[11px] text-[var(--text-3)] mt-0.5">
+            {feed && feed.total > 0
+              ? `${feed.total} vision-approved celebrity eyewear moments`
+              : 'Web-sourced photos, filtered by Gemini Vision'}
+          </p>
         </div>
+        <button
+          onClick={triggerCelebRefresh}
+          disabled={refreshing}
+          className="px-2.5 py-1.5 bg-[var(--bg-alt)] rounded-lg text-[10px] font-semibold text-[var(--text-2)] hover:text-[var(--text)] disabled:opacity-50 flex items-center gap-1.5"
+          title="Scan fresh celebs"
+        >
+          <svg width="11" height="11" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24" className={refreshing ? 'animate-spin' : ''}>
+            <path d="M23 4v6h-6M1 20v-6h6"/><path d="M20.49 9A9 9 0 0 0 5.64 5.64L1 10m22 4l-4.64 4.36A9 9 0 0 1 3.51 15"/>
+          </svg>
+          Scan
+        </button>
       </div>
 
-      {/* Search + category chips */}
+      {feed?.lastScan && (
+        <div className="flex items-center gap-1.5 text-[9px] text-[var(--text-3)] mb-3">
+          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+          <span>Last scan: {feed.lastScan.celeb_name} · {rel(feed.lastScan.scanned_at)} · {feed.lastScan.detected} photos</span>
+        </div>
+      )}
+
+      {/* Filters */}
       <div className="bg-[var(--surface)] border border-[var(--line)] rounded-xl p-3 mb-4 space-y-2">
         <input
           type="text" value={q} onChange={e => setQ(e.target.value)}
-          placeholder="Search celebrities or known frames…"
+          placeholder="Search celebrities, frame types, captions…"
           className="w-full bg-[var(--bg-alt)] rounded-lg px-3 py-2 text-[12px] outline-none"
         />
         <div className="flex gap-1.5 overflow-x-auto" style={{ scrollbarWidth: 'none' }}>
@@ -2278,26 +2409,125 @@ function Celebrities() {
             </button>
           ))}
         </div>
-      </div>
-
-      {loading && <div className="flex items-center justify-center py-16 text-[var(--text-3)] text-[12px]"><div className="w-4 h-4 border-2 border-[var(--brand)] border-t-transparent rounded-full animate-spin mr-2" />Loading celebs…</div>}
-
-      {!loading && list.length > 0 && (
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
-          {list.map(c => (
+        <div className="flex gap-1.5">
+          {(['', 'sunglasses', 'eyeglasses'] as const).map(t => (
             <button
-              key={c.name}
-              onClick={() => openCeleb(c)}
-              className="bg-[var(--surface)] border border-[var(--line)] rounded-xl p-4 text-left hover:border-[var(--brand)] transition-colors"
+              key={t || 'all'}
+              onClick={() => setEyewearType(t)}
+              className={`px-2.5 py-1 rounded-md text-[10px] font-semibold uppercase tracking-wide ${eyewearType === t ? 'bg-[var(--brand)] text-white' : 'bg-[var(--bg-alt)] text-[var(--text-3)]'}`}
             >
-              <div className="w-12 h-12 rounded-full bg-gradient-to-br from-[var(--brand)] to-purple-500 flex items-center justify-center text-white text-[16px] font-bold mb-2">
-                {c.name.charAt(0)}
-              </div>
-              <div className="text-[13px] font-semibold line-clamp-1">{c.name}</div>
-              <div className="text-[10px] text-[var(--text-3)] mt-0.5">{c.category} · {c.country}</div>
-              <p className="text-[11px] text-[var(--text-2)] line-clamp-2 mt-1.5 leading-snug">{c.knownFor}</p>
+              {t || 'All frames'}
             </button>
           ))}
+        </div>
+      </div>
+
+      {/* Feed mode */}
+      {feedLoading && !feed && (
+        <div className="flex items-center justify-center py-16 text-[var(--text-3)] text-[12px]">
+          <div className="w-4 h-4 border-2 border-[var(--brand)] border-t-transparent rounded-full animate-spin mr-2" />
+          Loading celebrity feed…
+        </div>
+      )}
+
+      {feedHasPosts && (
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-1 sm:gap-2 pb-4">
+          {feed!.posts.map((post, i) => (
+            <div
+              key={post.id}
+              className="overflow-hidden rounded-sm sm:rounded-lg cursor-pointer"
+              style={{ animation: `up 0.3s ease ${i * 15}ms both` }}
+              onClick={() => setOpenPhoto(post)}
+            >
+              <div className="relative aspect-square bg-[var(--bg-alt)] overflow-hidden">
+                <img
+                  src={`/api/img?url=${encodeURIComponent(post.thumbnail || post.imageUrl)}`}
+                  alt={post.eyewearType}
+                  className="w-full h-full object-cover"
+                  loading="lazy"
+                  onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }}
+                />
+                <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 via-black/40 to-transparent p-2">
+                  <div className="text-white text-[11px] font-semibold truncate">{post.celebName}</div>
+                  <div className="text-white/80 text-[9px] truncate">👓 {post.eyewearType}</div>
+                </div>
+                <div className="absolute top-1.5 right-1.5 bg-black/60 text-white text-[8px] font-semibold px-1.5 py-0.5 rounded uppercase tracking-wider">
+                  {post.celebCategory}
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Empty state — catalog grid fallback so user can trigger a scan */}
+      {!feedLoading && !feedHasPosts && list.length > 0 && (
+        <>
+          <div className="bg-amber-500/10 border border-amber-500/30 rounded-xl p-3 mb-4 text-[11px] text-amber-400">
+            <div className="font-semibold mb-0.5">No celebrity photos scanned yet</div>
+            <div className="text-[10px] text-amber-300/80">The celebrity cron hasn&apos;t run. Hit the <strong>Scan</strong> button above, or tap any celebrity below to run a one-shot scan.</div>
+          </div>
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+            {list.slice(0, 40).map(c => (
+              <button
+                key={c.name}
+                onClick={() => openCeleb(c)}
+                className="bg-[var(--surface)] border border-[var(--line)] rounded-xl p-4 text-left hover:border-[var(--brand)] transition-colors"
+              >
+                <div className="w-12 h-12 rounded-full bg-gradient-to-br from-[var(--brand)] to-purple-500 flex items-center justify-center text-white text-[16px] font-bold mb-2">
+                  {c.name.charAt(0)}
+                </div>
+                <div className="text-[13px] font-semibold line-clamp-1">{c.name}</div>
+                <div className="text-[10px] text-[var(--text-3)] mt-0.5">{c.category} · {c.country}</div>
+                <p className="text-[11px] text-[var(--text-2)] line-clamp-2 mt-1.5 leading-snug">{c.knownFor}</p>
+              </button>
+            ))}
+          </div>
+        </>
+      )}
+
+      {/* Photo detail sheet */}
+      {openPhoto && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4" onClick={() => setOpenPhoto(null)}>
+          <div className="bg-[var(--surface)] max-w-2xl w-full max-h-[85vh] rounded-2xl overflow-hidden flex flex-col" onClick={e => e.stopPropagation()}>
+            <div className="relative bg-black">
+              <img
+                src={`/api/img?url=${encodeURIComponent(openPhoto.imageUrl)}`}
+                alt={openPhoto.eyewearType}
+                className="w-full max-h-[55vh] object-contain"
+              />
+              <button onClick={() => setOpenPhoto(null)} className="absolute top-2 right-2 w-8 h-8 rounded-full bg-black/60 text-white text-[20px] leading-none flex items-center justify-center">×</button>
+            </div>
+            <div className="p-4 space-y-2">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="text-[18px] font-bold truncate">{openPhoto.celebName}</div>
+                  <div className="text-[11px] text-[var(--text-3)]">{openPhoto.celebCategory} · {openPhoto.celebCountry}</div>
+                </div>
+                <div className="text-[10px] px-2 py-0.5 bg-[var(--brand)]/15 text-[var(--brand)] rounded font-semibold uppercase tracking-wider flex-shrink-0">Vision ✓</div>
+              </div>
+              <div className="bg-[var(--bg-alt)] rounded-lg p-2.5">
+                <div className="text-[9px] uppercase tracking-wider text-[var(--text-3)] font-bold">Eyewear detected</div>
+                <div className="text-[13px] font-semibold text-[var(--brand)] mt-0.5">👓 {openPhoto.eyewearType}</div>
+              </div>
+              <p className="text-[12px] text-[var(--text-2)] leading-relaxed">{openPhoto.caption}</p>
+              <div className="flex items-center gap-2 text-[10px] text-[var(--text-3)]">
+                <span>{openPhoto.sourceLabel}</span>
+                <span>·</span>
+                <span>{rel(openPhoto.postedAt)}</span>
+              </div>
+              {openPhoto.pageUrl && (
+                <a
+                  href={openPhoto.pageUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="block w-full text-center px-3 py-2 bg-[var(--brand)] text-white text-[12px] font-semibold rounded-lg mt-2"
+                >
+                  View source →
+                </a>
+              )}
+            </div>
+          </div>
         </div>
       )}
 
