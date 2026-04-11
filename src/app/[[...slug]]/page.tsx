@@ -2648,14 +2648,14 @@ function Celebrities() {
 
 /* ═══ Sources — Unified intelligence hub (Shopify + Trends + Reddit + Google Ads) ═══ */
 
-type SourceTab = 'shopify' | 'trends' | 'reddit' | 'google-ads' | 'youtube' | 'brave' | 'tiktok' | 'amazon' | 'linkedin';
+type SourceTab = 'brands' | 'shopify' | 'trends' | 'reddit' | 'google-ads' | 'youtube' | 'brave' | 'tiktok' | 'amazon' | 'linkedin';
 
 interface ShopifyStore { handle: string; domain: string; name: string }
 interface ShopifyProd { id: number; title: string; image: string; price: string; comparePrice: string | null; available: boolean; createdAt: string; url: string; variantCount: number; soldOut: boolean }
 interface ShopifyStats { totalProducts: number; totalActive: number; totalVariants: number; avgPrice: number; minPrice: number; maxPrice: number; newThisWeek: number; topTypes: Array<{ name: string; count: number }>; topTags: Array<{ name: string; count: number }> }
 
 function Sources() {
-  const [sub, setSub] = useState<SourceTab>('shopify');
+  const [sub, setSub] = useState<SourceTab>('brands');
 
   return (
     <div className="py-4">
@@ -2667,6 +2667,7 @@ function Sources() {
       {/* Sub-tabs */}
       <div className="flex gap-2 mb-4 overflow-x-auto" style={{ scrollbarWidth: 'none' }}>
         {[
+          { k: 'brands', l: 'Brands', icon: '📋' },
           { k: 'shopify', l: 'Shopify', icon: '🛍️' },
           { k: 'amazon', l: 'Amazon', icon: '📦' },
           { k: 'trends', l: 'Trends', icon: '📈' },
@@ -2687,6 +2688,7 @@ function Sources() {
         ))}
       </div>
 
+      {sub === 'brands' && <BrandsManager />}
       {sub === 'shopify' && <ShopifySource />}
       {sub === 'amazon' && <AmazonSource />}
       {sub === 'trends' && <TrendsSource />}
@@ -2696,6 +2698,369 @@ function Sources() {
       {sub === 'linkedin' && <LinkedInSource />}
       {sub === 'brave' && <BraveSource />}
       {sub === 'google-ads' && <GoogleAdsSource />}
+    </div>
+  );
+}
+
+/* ═══ Brand Manager — upload, list, manage tracked brands ═══ */
+
+interface TrackedBrand {
+  handle: string;
+  name: string;
+  category: string | null;
+  region: string | null;
+  price_range: string | null;
+  tier: 'fast' | 'mid' | 'full';
+  active: boolean;
+  source: string;
+  posts_scraped: number;
+  last_scraped_at: string | null;
+  added_at: string;
+}
+
+interface UploadLog {
+  id: number;
+  filename: string | null;
+  format: string;
+  total_rows: number;
+  inserted: number;
+  updated: number;
+  skipped: number;
+  uploaded_at: string;
+}
+
+interface BrandsResponse {
+  brands: TrackedBrand[];
+  total: number;
+  page: number;
+  totalPages: number;
+  uploads: UploadLog[];
+  facets: {
+    categories: Array<{ name: string; count: number }>;
+    regions: Array<{ name: string; count: number }>;
+    tiers: Array<{ name: string; count: number }>;
+  };
+}
+
+function BrandsManager() {
+  const [data, setData] = useState<BrandsResponse | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [search, setSearch] = useState('');
+  const [category, setCategory] = useState('All');
+  const [tier, setTier] = useState('');
+  const [page, setPage] = useState(1);
+
+  // Upload state
+  const [uploadOpen, setUploadOpen] = useState(false);
+  const [pasteText, setPasteText] = useState('');
+  const [dragOver, setDragOver] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [uploadError, setUploadError] = useState('');
+  const [uploadResult, setUploadResult] = useState<{ inserted: number; updated: number; duplicates: number; message: string } | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    const p = new URLSearchParams({ page: String(page), limit: '100' });
+    if (category !== 'All') p.set('category', category);
+    if (tier) p.set('tier', tier);
+    if (search.trim()) p.set('search', search.trim());
+    try {
+      const res = await fetch(`/api/brands/tracked?${p}`);
+      setData(await res.json());
+    } catch { /* silent */ }
+    setLoading(false);
+  }, [page, category, tier, search]);
+
+  useEffect(() => { load(); }, [load]);
+
+  const uploadFile = async (file: File) => {
+    setUploading(true);
+    setUploadError('');
+    setUploadResult(null);
+    try {
+      const form = new FormData();
+      form.append('file', file);
+      const res = await fetch('/api/brands/upload', { method: 'POST', body: form });
+      const j = await res.json();
+      if (j.error) setUploadError(j.error);
+      else {
+        setUploadResult(j);
+        setTimeout(() => load(), 500);
+      }
+    } catch (e) {
+      setUploadError(e instanceof Error ? e.message : 'Upload failed');
+    }
+    setUploading(false);
+  };
+
+  const uploadPaste = async () => {
+    if (!pasteText.trim()) return;
+    setUploading(true);
+    setUploadError('');
+    setUploadResult(null);
+    try {
+      const res = await fetch('/api/brands/upload', {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain' },
+        body: pasteText,
+      });
+      const j = await res.json();
+      if (j.error) setUploadError(j.error);
+      else {
+        setUploadResult(j);
+        setPasteText('');
+        setTimeout(() => load(), 500);
+      }
+    } catch (e) {
+      setUploadError(e instanceof Error ? e.message : 'Upload failed');
+    }
+    setUploading(false);
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    setDragOver(false);
+    const file = e.dataTransfer.files[0];
+    if (file) uploadFile(file);
+  };
+
+  const deactivate = async (handle: string) => {
+    if (!confirm(`Deactivate @${handle}? It'll stop being scraped by the cron.`)) return;
+    await fetch(`/api/brands/tracked?handle=${handle}`, { method: 'DELETE' });
+    load();
+  };
+
+  const updateTier = async (handle: string, newTier: string) => {
+    await fetch('/api/brands/tracked', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ handle, tier: newTier }),
+    });
+    load();
+  };
+
+  return (
+    <div>
+      {/* Summary header */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
+        <div className="bg-[var(--surface)] border border-[var(--line)] rounded-xl p-3">
+          <div className="text-[10px] uppercase tracking-wider text-[var(--text-3)] font-bold">Tracked</div>
+          <div className="text-[22px] font-bold mt-1">{data?.total || 0}</div>
+          <div className="text-[10px] text-[var(--text-3)] mt-0.5">active brands</div>
+        </div>
+        <div className="bg-[var(--surface)] border border-[var(--line)] rounded-xl p-3">
+          <div className="text-[10px] uppercase tracking-wider text-[var(--text-3)] font-bold">Fast tier</div>
+          <div className="text-[22px] font-bold mt-1 text-emerald-500">
+            {data?.facets.tiers.find(t => t.name === 'fast')?.count || 0}
+          </div>
+          <div className="text-[10px] text-[var(--text-3)] mt-0.5">scraped hourly</div>
+        </div>
+        <div className="bg-[var(--surface)] border border-[var(--line)] rounded-xl p-3">
+          <div className="text-[10px] uppercase tracking-wider text-[var(--text-3)] font-bold">Mid tier</div>
+          <div className="text-[22px] font-bold mt-1 text-amber-500">
+            {data?.facets.tiers.find(t => t.name === 'mid')?.count || 0}
+          </div>
+          <div className="text-[10px] text-[var(--text-3)] mt-0.5">every 6h</div>
+        </div>
+        <div className="bg-[var(--surface)] border border-[var(--line)] rounded-xl p-3">
+          <div className="text-[10px] uppercase tracking-wider text-[var(--text-3)] font-bold">Full tier</div>
+          <div className="text-[22px] font-bold mt-1 text-blue-500">
+            {data?.facets.tiers.find(t => t.name === 'full')?.count || 0}
+          </div>
+          <div className="text-[10px] text-[var(--text-3)] mt-0.5">daily</div>
+        </div>
+      </div>
+
+      {/* Upload panel */}
+      <div className="bg-[var(--surface)] border border-[var(--line)] rounded-xl p-4 mb-4">
+        <div className="flex items-start justify-between mb-3">
+          <div>
+            <div className="text-[14px] font-bold">Upload brands</div>
+            <div className="text-[11px] text-[var(--text-3)] mt-0.5">CSV, JSON, or plain text. One handle per line minimum.</div>
+          </div>
+          <button
+            onClick={() => setUploadOpen(v => !v)}
+            className="px-3 py-1.5 bg-[var(--brand)] text-white text-[11px] font-semibold rounded-lg"
+          >
+            {uploadOpen ? 'Hide' : 'Show uploader'}
+          </button>
+        </div>
+
+        {uploadOpen && (
+          <div className="space-y-3">
+            {/* Drop zone */}
+            <div
+              onDragOver={e => { e.preventDefault(); setDragOver(true); }}
+              onDragLeave={() => setDragOver(false)}
+              onDrop={handleDrop}
+              onClick={() => fileInputRef.current?.click()}
+              className={`border-2 border-dashed rounded-xl p-6 text-center cursor-pointer transition-colors ${dragOver ? 'border-[var(--brand)] bg-[var(--brand)]/5' : 'border-[var(--line)]'}`}
+            >
+              <div className="text-[32px] mb-1">📂</div>
+              <div className="text-[13px] font-semibold">Drop a file here or click to browse</div>
+              <div className="text-[10px] text-[var(--text-3)] mt-1">
+                Accepts <code className="text-[var(--text-2)]">.csv</code>, <code className="text-[var(--text-2)]">.tsv</code>, <code className="text-[var(--text-2)]">.json</code>, <code className="text-[var(--text-2)]">.txt</code>
+              </div>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept=".csv,.tsv,.json,.txt"
+                className="hidden"
+                onChange={e => { const f = e.target.files?.[0]; if (f) uploadFile(f); }}
+              />
+            </div>
+
+            {/* Or paste */}
+            <div>
+              <div className="text-[11px] font-semibold text-[var(--text-2)] mb-1.5">Or paste your list</div>
+              <textarea
+                value={pasteText}
+                onChange={e => setPasteText(e.target.value)}
+                placeholder={'rayban\ngucci\nwarbyparker\n\n— or CSV —\nhandle,name,category,region\nrayban,Ray-Ban,Luxury,Europe'}
+                className="w-full bg-[var(--bg-alt)] rounded-lg px-3 py-2 text-[12px] font-mono outline-none resize-y min-h-[120px]"
+              />
+              <button
+                onClick={uploadPaste}
+                disabled={uploading || !pasteText.trim()}
+                className="mt-2 px-3 py-1.5 bg-[var(--text)] text-[var(--bg)] text-[11px] font-semibold rounded-lg disabled:opacity-50"
+              >
+                {uploading ? 'Uploading…' : 'Upload paste'}
+              </button>
+            </div>
+
+            {/* Accepted format reference */}
+            <div className="bg-[var(--bg-alt)] rounded-lg p-3 text-[10px] text-[var(--text-3)] leading-relaxed">
+              <div className="text-[var(--text-2)] font-semibold mb-1">Accepted CSV columns (any subset, any order):</div>
+              <code className="text-[var(--text-2)]">handle, name, category, region, price_range, country, website, notes, tier</code>
+              <div className="mt-2">Column aliases work: <code>username</code>/<code>ig</code>/<code>instagram_handle</code> → handle, <code>brand</code>/<code>brand_name</code> → name.</div>
+              <div className="mt-1"><code>tier</code> accepts <code>fast</code> (hourly), <code>mid</code> (6h), or <code>full</code> (daily, default).</div>
+            </div>
+          </div>
+        )}
+
+        {uploadError && (
+          <div className="mt-3 bg-red-500/10 border border-red-500/30 text-red-400 rounded-lg p-2 text-[11px]">{uploadError}</div>
+        )}
+        {uploadResult && (
+          <div className="mt-3 bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 rounded-lg p-2 text-[11px]">
+            <div className="font-semibold">✓ {uploadResult.message}</div>
+            <div className="text-[10px] mt-0.5">+{uploadResult.inserted} new · {uploadResult.updated} updated · {uploadResult.duplicates} duplicates dropped</div>
+          </div>
+        )}
+      </div>
+
+      {/* Upload history */}
+      {data && data.uploads.length > 0 && (
+        <div className="bg-[var(--surface)] border border-[var(--line)] rounded-xl p-3 mb-4">
+          <div className="text-[11px] uppercase tracking-wider font-bold text-[var(--text-3)] mb-2">Upload history</div>
+          <div className="space-y-1.5">
+            {data.uploads.slice(0, 5).map(u => (
+              <div key={u.id} className="flex items-center justify-between text-[11px] py-1 border-b border-[var(--line)] last:border-b-0">
+                <div className="min-w-0 flex-1">
+                  <div className="font-semibold truncate">{u.filename || `${u.format} paste`}</div>
+                  <div className="text-[9px] text-[var(--text-3)]">{rel(u.uploaded_at)} · {u.format}</div>
+                </div>
+                <div className="text-[10px] text-right">
+                  <div className="text-emerald-400 font-semibold">+{u.inserted} new</div>
+                  <div className="text-[var(--text-3)]">{u.updated} updated</div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Filters */}
+      <div className="flex gap-2 mb-3 flex-wrap">
+        <input
+          type="text"
+          value={search}
+          onChange={e => { setSearch(e.target.value); setPage(1); }}
+          placeholder="Search handles, names, notes…"
+          className="flex-1 min-w-[200px] bg-[var(--bg-alt)] rounded-lg px-3 py-1.5 text-[12px] outline-none"
+        />
+        <select value={tier} onChange={e => { setTier(e.target.value); setPage(1); }} className="bg-[var(--bg-alt)] rounded-lg px-2 py-1.5 text-[11px] outline-none">
+          <option value="">All tiers</option>
+          <option value="fast">Fast (hourly)</option>
+          <option value="mid">Mid (6h)</option>
+          <option value="full">Full (daily)</option>
+        </select>
+        <select value={category} onChange={e => { setCategory(e.target.value); setPage(1); }} className="bg-[var(--bg-alt)] rounded-lg px-2 py-1.5 text-[11px] outline-none">
+          <option value="All">All categories</option>
+          {data?.facets.categories.map(c => <option key={c.name} value={c.name}>{c.name} ({c.count})</option>)}
+        </select>
+      </div>
+
+      {/* Brand list */}
+      {loading && !data && (
+        <div className="flex items-center justify-center py-16 text-[var(--text-3)] text-[12px]">
+          <div className="w-4 h-4 border-2 border-[var(--brand)] border-t-transparent rounded-full animate-spin mr-2" />
+          Loading tracked brands…
+        </div>
+      )}
+
+      {data && data.brands.length === 0 && (
+        <div className="bg-[var(--bg-alt)] rounded-xl p-8 text-center text-[var(--text-3)] text-[12px]">
+          No tracked brands yet. Upload a file above to get started.
+        </div>
+      )}
+
+      {data && data.brands.length > 0 && (
+        <>
+          <div className="bg-[var(--surface)] border border-[var(--line)] rounded-xl overflow-hidden">
+            <div className="max-h-[600px] overflow-y-auto">
+              <table className="w-full text-[11px]">
+                <thead className="sticky top-0 bg-[var(--surface)] border-b border-[var(--line)] z-10">
+                  <tr className="text-[var(--text-3)] uppercase tracking-wider">
+                    <th className="text-left py-2 px-3 font-bold">Handle</th>
+                    <th className="text-left py-2 px-2 font-bold">Name</th>
+                    <th className="text-left py-2 px-2 font-bold">Category</th>
+                    <th className="text-left py-2 px-2 font-bold">Region</th>
+                    <th className="text-left py-2 px-2 font-bold">Tier</th>
+                    <th className="text-left py-2 px-2 font-bold">Last scrape</th>
+                    <th className="text-right py-2 px-3 font-bold">Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {data.brands.map((b, i) => (
+                    <tr key={b.handle} className={`border-b border-[var(--line)] last:border-b-0 ${i % 2 === 0 ? 'bg-transparent' : 'bg-[var(--bg-alt)]/40'}`}>
+                      <td className="py-2 px-3 font-mono text-[var(--brand)] font-semibold">@{b.handle}</td>
+                      <td className="py-2 px-2 font-semibold">{b.name}</td>
+                      <td className="py-2 px-2 text-[var(--text-2)]">{b.category || '—'}</td>
+                      <td className="py-2 px-2 text-[var(--text-2)]">{b.region || '—'}</td>
+                      <td className="py-2 px-2">
+                        <select
+                          value={b.tier}
+                          onChange={e => updateTier(b.handle, e.target.value)}
+                          className={`bg-transparent border border-[var(--line)] rounded px-1.5 py-0.5 text-[10px] font-semibold ${b.tier === 'fast' ? 'text-emerald-500' : b.tier === 'mid' ? 'text-amber-500' : 'text-blue-500'}`}
+                        >
+                          <option value="fast">fast</option>
+                          <option value="mid">mid</option>
+                          <option value="full">full</option>
+                        </select>
+                      </td>
+                      <td className="py-2 px-2 text-[10px] text-[var(--text-3)]">{b.last_scraped_at ? rel(b.last_scraped_at) : 'never'}</td>
+                      <td className="py-2 px-3 text-right">
+                        <button onClick={() => deactivate(b.handle)} className="text-red-400 text-[10px] font-semibold hover:underline">Remove</button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          {/* Pagination */}
+          {data.totalPages > 1 && (
+            <div className="flex items-center justify-center gap-3 mt-3">
+              <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1} className="px-3 py-1 text-[11px] bg-[var(--bg-alt)] rounded-lg disabled:opacity-30">Prev</button>
+              <span className="text-[11px] text-[var(--text-3)]">{page}/{data.totalPages} · {data.total} total</span>
+              <button onClick={() => setPage(p => Math.min(data.totalPages, p + 1))} disabled={page === data.totalPages} className="px-3 py-1 text-[11px] bg-[var(--bg-alt)] rounded-lg disabled:opacity-30">Next</button>
+            </div>
+          )}
+        </>
+      )}
     </div>
   );
 }

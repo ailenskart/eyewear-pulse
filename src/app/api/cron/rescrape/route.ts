@@ -99,6 +99,26 @@ function handlesForTier(tier: string): string[] {
   return FULL_HANDLES;
 }
 
+/* ─── Merge hardcoded + user-uploaded handles from tracked_brands ─── */
+
+async function mergedHandlesForTier(tier: string): Promise<string[]> {
+  const base = handlesForTier(tier);
+  try {
+    const client = supabaseServer();
+    // For 'fast' — only pull tier=fast uploads. For 'mid' — fast+mid. For 'full' — everything active.
+    let q = client.from('tracked_brands').select('handle').eq('active', true);
+    if (tier === 'fast') q = q.eq('tier', 'fast');
+    else if (tier === 'mid') q = q.in('tier', ['fast', 'mid']);
+    // full = all active
+    const { data } = await q;
+    const uploaded = (data || []).map((r: { handle: string }) => r.handle.toLowerCase());
+    // Dedupe
+    return Array.from(new Set([...base, ...uploaded]));
+  } catch {
+    return base;
+  }
+}
+
 /* ─── Media upload helpers ─── */
 
 async function uploadToBlob(data: ArrayBuffer, path: string, contentType: string): Promise<string | null> {
@@ -202,7 +222,7 @@ export async function GET(request: NextRequest) {
   const limitOverride = parseInt(request.nextUrl.searchParams.get('limit') || '0');
   const postsPerBrand = tier === 'full' ? 15 : 10;
 
-  const handles = handlesForTier(tier);
+  const handles = await mergedHandlesForTier(tier);
   const workingHandles = limitOverride > 0 ? handles.slice(0, limitOverride) : handles;
 
   const startedAt = Date.now();
@@ -280,6 +300,18 @@ export async function GET(request: NextRequest) {
   if (newRows.length > 0) {
     upsertResult = await upsertPosts(newRows);
   }
+
+  // Mark scraped brands in tracked_brands so the UI can show "last scraped"
+  try {
+    const scrapedHandles = Array.from(new Set(newRows.map(r => r.brand_handle)));
+    if (scrapedHandles.length > 0) {
+      const client = supabaseServer();
+      await client
+        .from('tracked_brands')
+        .update({ last_scraped_at: new Date().toISOString() })
+        .in('handle', scrapedHandles);
+    }
+  } catch { /* non-fatal */ }
 
   const durationMs = Date.now() - startedAt;
   await logCronRun({
