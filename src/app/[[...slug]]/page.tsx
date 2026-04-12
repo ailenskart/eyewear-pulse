@@ -224,7 +224,10 @@ export default function App() {
   const load = useCallback(async () => {
     setLoading(true);
     const p = new URLSearchParams({ category: cat, sortBy: sort, search: q, page: String(pg), limit: mode==='list'?'15':'30' });
-    const r = await fetch(`/api/feed?${p}`);
+    // Cache-bust so the brand-spread randomiser returns a different order
+    // every fetch (the /api/feed route seeds randomness per request).
+    p.set('_', String(Date.now()));
+    const r = await fetch(`/api/feed?${p}`, { cache: 'no-store' });
     setData(await r.json());
     setLoading(false);
   }, [cat, sort, q, pg, mode]);
@@ -275,7 +278,7 @@ export default function App() {
             {/* Sort + view toggle */}
             <div className="flex items-center justify-between">
               <div className="flex gap-1">
-                {[{k:'recent',l:'Recent'},{k:'likes',l:'Top'},{k:'engagement',l:'Trending'}].map(s => (
+                {[{k:'recent',l:'Recent'},{k:'likes',l:'Top'},{k:'engagement',l:'Trending'},{k:'shuffle',l:'Shuffle'}].map(s => (
                   <button key={s.k} onClick={() => { setSort(s.k); setPg(1); }}
                     className={`px-2.5 py-1 rounded-md text-[11px] font-semibold tracking-wide uppercase transition-all ${sort===s.k ? 'bg-[var(--brand)] text-white' : 'text-[var(--text-3)] hover:text-[var(--text-2)]'}`}>{s.l}</button>
                 ))}

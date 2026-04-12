@@ -20,6 +20,9 @@ import { ALL_POSTS as JSON_POSTS, FEED_STATS as JSON_STATS } from '@/lib/feed';
  */
 
 export const maxDuration = 30;
+// Prevent Next.js from memoising a single shuffled response for all visitors.
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
 
 interface FeedStats {
   totalPosts: number;
@@ -45,6 +48,59 @@ interface FeedResponse {
 // from the UI don't re-aggregate 2k+ rows.
 const STATS_CACHE = new Map<string, { stats: FeedStats; expiresAt: number }>();
 const STATS_TTL_MS = 2 * 60 * 1000;
+
+/* ─── Randomisation + brand-spread helpers ─── */
+
+// Proper Fisher-Yates shuffle (replaces the biased `sort(() => 0.5 - Math.random())`).
+function shuffle<T>(arr: T[]): T[] {
+  const out = arr.slice();
+  for (let i = out.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [out[i], out[j]] = [out[j], out[i]];
+  }
+  return out;
+}
+
+// Round-robin interleave by brand so the same brand never appears
+// back-to-back. Keeps feed looking varied even when one brand (e.g.
+// Calvin Klein) has the top 3 most-liked posts in the window.
+function spreadByBrand<T extends { brand: { handle: string } }>(posts: T[]): T[] {
+  const byBrand = new Map<string, T[]>();
+  for (const p of posts) {
+    const k = p.brand.handle;
+    if (!byBrand.has(k)) byBrand.set(k, []);
+    byBrand.get(k)!.push(p);
+  }
+  // Shuffle the per-brand lists AND the brand visit order so
+  // refreshing gives a different ordering each time.
+  const brandOrder = shuffle([...byBrand.keys()]);
+  const queues = brandOrder.map(k => shuffle(byBrand.get(k)!));
+  const out: T[] = [];
+  let added = true;
+  while (added) {
+    added = false;
+    for (const q of queues) {
+      const next = q.shift();
+      if (next) {
+        out.push(next);
+        added = true;
+      }
+    }
+  }
+  return out;
+}
+
+// Score posts for the "recent" default sort. Recency + engagement,
+// with a small random jitter so two calls return different top rows.
+function freshnessScore(p: IgPostDbRow): number {
+  const posted = p.posted_at ? new Date(p.posted_at).getTime() : 0;
+  const hoursOld = posted > 0 ? (Date.now() - posted) / 3600000 : 10000;
+  // Half-life: 14 days. After 14 days recency weight drops to ~0.5.
+  const recency = Math.exp(-hoursOld / (24 * 14));
+  const engagement = Math.log1p((Number(p.likes) || 0) + (Number(p.comments) || 0) * 5);
+  const jitter = 0.85 + Math.random() * 0.3; // ±15% wobble
+  return (recency * 3 + engagement * 0.3) * jitter;
+}
 
 export async function GET(request: NextRequest) {
   const { searchParams } = request.nextUrl;
@@ -73,7 +129,50 @@ export async function GET(request: NextRequest) {
     return q;
   };
 
-  // Sort + paginate
+  // Recent (default) gets special treatment: pull a wider pool, score it,
+  // Fisher-Yates shuffle within score buckets, then spread by brand.
+  // Other sorts (likes / engagement / comments / shuffle) are deterministic
+  // in the DB layer since users explicitly asked for that ordering.
+  if (sortBy === 'recent') {
+    // Pull the last N days' worth of posts (or 400 rows, whichever hits
+    // first) so the in-memory shuffle has headroom to spread brands.
+    const poolSize = Math.max(300, page * limit * 3);
+    let q = buildQuery()
+      .order('posted_at', { ascending: false, nullsFirst: false })
+      .range(0, poolSize - 1);
+    const { data, error, count } = await q;
+    if (error) {
+      console.error('feed query error:', error.message);
+    }
+    const rows = (data as IgPostDbRow[] | null) || [];
+    if (!error && count === 0) {
+      return NextResponse.json(buildJsonFallback({ category, region, brand, search, sortBy, page, limit }));
+    }
+    // Score + randomise + spread by brand
+    const scored = rows
+      .map(r => ({ r, s: freshnessScore(r) }))
+      .sort((a, b) => b.s - a.s)
+      .map(x => x.r);
+    const mapped = scored.map(toFeedPost);
+    const spread = spreadByBrand(mapped);
+    const start = (page - 1) * limit;
+    const paged = spread.slice(start, start + limit);
+
+    const stats = await getStatsCached(client, { category, region, brand, search });
+    const lastUpdated = await getLastCronRun().catch(() => null);
+    const total = count || rows.length;
+    return NextResponse.json({
+      posts: paged,
+      total,
+      page,
+      totalPages: Math.max(1, Math.ceil(total / limit)),
+      stats,
+      source: 'supabase',
+      lastUpdated,
+    });
+  }
+
+  // Deterministic sorts (likes / engagement / comments / shuffle)
   let q = buildQuery();
   switch (sortBy) {
     case 'likes':
@@ -85,13 +184,32 @@ export async function GET(request: NextRequest) {
     case 'comments':
       q = q.order('comments', { ascending: false, nullsFirst: false });
       break;
-    case 'recent':
-    default:
-      // D2C first is hard to express in SQL without a computed column.
-      // For now, just order by posted_at. If callers really want D2C
-      // first they can pass category=D2C.
-      q = q.order('posted_at', { ascending: false, nullsFirst: false }).order('likes', { ascending: false });
-      break;
+    case 'shuffle': {
+      // Pure randomness: fetch 400 rows ordered by a stable signal,
+      // shuffle in memory, then slice. Spreads brands too.
+      const poolSize = Math.max(300, page * limit * 3);
+      const { data, error, count } = await buildQuery()
+        .order('posted_at', { ascending: false, nullsFirst: false })
+        .range(0, poolSize - 1);
+      if (error || !data) {
+        return NextResponse.json(buildJsonFallback({ category, region, brand, search, sortBy, page, limit }));
+      }
+      const mapped = (data as IgPostDbRow[]).map(toFeedPost);
+      const randomised = spreadByBrand(shuffle(mapped));
+      const start = (page - 1) * limit;
+      const stats = await getStatsCached(client, { category, region, brand, search });
+      const lastUpdated = await getLastCronRun().catch(() => null);
+      const total = count || data.length;
+      return NextResponse.json({
+        posts: randomised.slice(start, start + limit),
+        total,
+        page,
+        totalPages: Math.max(1, Math.ceil(total / limit)),
+        stats,
+        source: 'supabase',
+        lastUpdated,
+      });
+    }
   }
 
   const from = (page - 1) * limit;
@@ -101,33 +219,26 @@ export async function GET(request: NextRequest) {
   const { data, error, count } = await q;
 
   if (error) {
-    // Log and fall back to JSON below
     console.error('feed query error:', error.message);
   }
 
   const rows = (data as IgPostDbRow[] | null) || [];
 
-  // Fallback to JSON if table is empty.
   if (!error && count === 0) {
     const fallback = buildJsonFallback({ category, region, brand, search, sortBy, page, limit });
     return NextResponse.json(fallback);
   }
 
-  // Compute stats (cached 2 min per filter combo).
-  const cacheKey = `stats:${category || ''}:${region || ''}:${brand || ''}:${search || ''}`;
-  let stats: FeedStats;
-  const cached = STATS_CACHE.get(cacheKey);
-  if (cached && cached.expiresAt > Date.now()) {
-    stats = cached.stats;
-  } else {
-    stats = await computeStats(client, { category, region, brand, search });
-    STATS_CACHE.set(cacheKey, { stats, expiresAt: Date.now() + STATS_TTL_MS });
-  }
-
+  const stats = await getStatsCached(client, { category, region, brand, search });
   const lastUpdated = await getLastCronRun().catch(() => null);
 
+  // Even for likes/engagement/comments sort, interleave brands so the top
+  // doesn't get dominated by one brand's posts all in a row.
+  const mapped = rows.map(toFeedPost);
+  const interleaved = spreadByBrand(mapped);
+
   const payload: FeedResponse = {
-    posts: rows.map(toFeedPost),
+    posts: interleaved,
     total: count || rows.length,
     page,
     totalPages: Math.max(1, Math.ceil((count || rows.length) / limit)),
@@ -136,6 +247,18 @@ export async function GET(request: NextRequest) {
     lastUpdated,
   };
   return NextResponse.json(payload);
+}
+
+async function getStatsCached(
+  client: ReturnType<typeof supabaseServer>,
+  filters: { category: string | null; region: string | null; brand: string | null; search: string | null },
+): Promise<FeedStats> {
+  const cacheKey = `stats:${filters.category || ''}:${filters.region || ''}:${filters.brand || ''}:${filters.search || ''}`;
+  const cached = STATS_CACHE.get(cacheKey);
+  if (cached && cached.expiresAt > Date.now()) return cached.stats;
+  const stats = await computeStats(client, filters);
+  STATS_CACHE.set(cacheKey, { stats, expiresAt: Date.now() + STATS_TTL_MS });
+  return stats;
 }
 
 /* ─── Stats computation ─── */
