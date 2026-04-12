@@ -1,32 +1,33 @@
 /**
- * Apify SDK-less helper.
+ * Apify SDK helper — uses the official `apify-client` package.
  *
- * Runs any Apify actor via the `run-sync-get-dataset-items` endpoint
- * which blocks until the actor completes (or times out) and returns
- * the dataset items directly — perfect for serverless.
+ * Runs any Apify actor, waits for completion, and returns
+ * the dataset items. Perfect for serverless functions.
  *
  * Usage:
- *   const { ok, items, error } = await runActor('apify/instagram-scraper', {
+ *   const { ok, items } = await runActor('shu8hvrXbJbY3Eb9W', {
  *     directUrls: ['https://instagram.com/lenskart'],
- *     resultsLimit: 10,
+ *     resultsType: 'posts',
+ *     resultsLimit: 25,
  *   });
  *
- * Actor IDs can be:
- *   - 'username/actor-name' (slug format)
- *   - 'username~actor-name' (URL-safe format)
- * Both are accepted here — we normalize to `~`.
- *
- * Pricing: each actor costs Apify credits. Typical scrape runs $0.25–$2
- * per 1000 results. Requires APIFY_TOKEN env var (free $5/mo credit on
- * signup at apify.com).
+ * Requires APIFY_TOKEN env var. Free $5 credit on signup.
  */
+
+import { ApifyClient } from 'apify-client';
 
 const APIFY_TOKEN = process.env.APIFY_TOKEN || '';
 
+let _client: ApifyClient | null = null;
+function getClient(): ApifyClient {
+  if (!_client) _client = new ApifyClient({ token: APIFY_TOKEN });
+  return _client;
+}
+
 export interface ApifyRunOptions {
-  timeout?: number;       // max seconds to wait (default 55, Vercel serverless cap)
-  memoryMbytes?: number;  // actor memory — more = faster but costs more
-  maxItems?: number;      // hard cap on dataset items returned
+  timeout?: number;       // max seconds to wait (default 55)
+  memoryMbytes?: number;  // actor memory
+  maxItems?: number;      // hard cap on items returned
 }
 
 export type ApifyResult<T> =
@@ -41,7 +42,7 @@ export function apifySetupInstructions() {
   return {
     title: 'Connect Apify',
     steps: [
-      'Go to apify.com → Sign up (free, $5 credit/month included)',
+      'Go to apify.com → Sign up (free, $5 credit included)',
       'Settings → Integrations → Personal API token → copy it',
       'Add APIFY_TOKEN to your Vercel env vars',
       'Redeploy — all Apify-backed intelligence sources light up',
@@ -60,52 +61,46 @@ export async function runActor<T = Record<string, unknown>>(
       ok: false,
       actor: actorId,
       needsSetup: true,
-      error: 'APIFY_TOKEN not set. Get a free token at apify.com (signup gives $5/mo credit).',
+      error: 'APIFY_TOKEN not set. Get a free token at apify.com.',
     };
   }
 
-  const safeActorId = actorId.replace('/', '~');
-  const url = new URL(`https://api.apify.com/v2/acts/${safeActorId}/run-sync-get-dataset-items`);
-  url.searchParams.set('token', APIFY_TOKEN);
-  url.searchParams.set('timeout', String(options.timeout ?? 55));
-  if (options.memoryMbytes) url.searchParams.set('memory', String(options.memoryMbytes));
-  if (options.maxItems) url.searchParams.set('limit', String(options.maxItems));
-
   try {
-    const res = await fetch(url.toString(), {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(input),
+    const client = getClient();
+    const timeoutSecs = options.timeout ?? 55;
+
+    // Run the actor and wait for it to finish
+    const run = await client.actor(actorId).call(input, {
+      waitSecs: timeoutSecs,
+      ...(options.memoryMbytes ? { memoryMbytes: options.memoryMbytes } : {}),
     });
 
-    if (!res.ok) {
-      const txt = await res.text().catch(() => '');
-      let msg = `Apify actor ${actorId} returned HTTP ${res.status}`;
-      try {
-        const parsed = JSON.parse(txt);
-        msg = parsed?.error?.message || parsed?.error || msg;
-      } catch { /* non-JSON body */ }
-      return { ok: false, actor: actorId, error: msg };
+    if (!run || !run.defaultDatasetId) {
+      return { ok: false, actor: actorId, error: 'Actor run did not return a dataset.' };
     }
 
-    const items = (await res.json()) as T[];
-    return { ok: true, actor: actorId, items: Array.isArray(items) ? items : [] };
+    // Fetch results from the dataset
+    const { items } = await client.dataset(run.defaultDatasetId).listItems({
+      limit: options.maxItems,
+    });
+
+    return { ok: true, actor: actorId, items: (items || []) as T[] };
   } catch (err) {
-    return {
-      ok: false,
-      actor: actorId,
-      error: err instanceof Error ? err.message : 'Apify fetch failed',
-    };
+    const msg = err instanceof Error ? err.message : 'Apify run failed';
+    // Check for common errors
+    if (msg.includes('401') || msg.includes('Unauthorized')) {
+      return { ok: false, actor: actorId, error: 'Invalid APIFY_TOKEN. Check your token at apify.com → Settings → Integrations.' };
+    }
+    return { ok: false, actor: actorId, error: msg };
   }
 }
 
 /**
  * Default actor IDs for each data source. Each can be overridden via
- * env var so you can swap in a different community actor if one
- * breaks or you find a better one.
+ * env var so you can swap in a different community actor.
  */
 export const DEFAULT_ACTORS = {
-  instagram: process.env.APIFY_INSTAGRAM_ACTOR || 'apify/instagram-scraper',
+  instagram: process.env.APIFY_INSTAGRAM_ACTOR || 'shu8hvrXbJbY3Eb9W',
   metaAds: process.env.APIFY_META_ADS_ACTOR || 'curious_coder/facebook-ads-library-scraper',
   tiktok: process.env.APIFY_TIKTOK_ACTOR || 'clockworks/free-tiktok-scraper',
   amazon: process.env.APIFY_AMAZON_ACTOR || 'junglee/Amazon-crawler',

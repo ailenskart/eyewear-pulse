@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { ApifyClient } from 'apify-client';
 import { supabaseServer } from '@/lib/supabase';
+import { isApifyConfigured } from '@/lib/apify';
 import { toDbRow, upsertPosts, logCronRun, type RawScrapedPost, type IgPostDbRow } from '@/lib/feed-db';
 
 /**
@@ -214,9 +216,11 @@ export async function GET(request: NextRequest) {
   if (key !== CRON_SECRET && authHeader !== `Bearer ${CRON_SECRET}`) {
     return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
   }
-  if (!APIFY_TOKEN) {
+  if (!isApifyConfigured()) {
     return NextResponse.json({ error: 'APIFY_TOKEN not set' }, { status: 500 });
   }
+
+  const apify = new ApifyClient({ token: APIFY_TOKEN });
 
   const tier = (request.nextUrl.searchParams.get('tier') || 'fast').toLowerCase();
   const limitOverride = parseInt(request.nextUrl.searchParams.get('limit') || '0');
@@ -245,29 +249,19 @@ export async function GET(request: NextRequest) {
     const urls = batch.map(h => `https://www.instagram.com/${h}/`);
 
     try {
-      const runRes = await fetch(
-        `https://api.apify.com/v2/acts/${ACTOR_ID}/runs?waitForFinish=300`,
-        {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${APIFY_TOKEN}`,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({ directUrls: urls, resultsType: 'posts', resultsLimit: postsPerBrand }),
-        }
+      // Run via official SDK
+      const run = await apify.actor(ACTOR_ID).call(
+        { directUrls: urls, resultsType: 'posts', resultsLimit: postsPerBrand },
+        { waitSecs: 300 },
       );
-      const runData = await runRes.json();
-      const run = (runData as { data: { status: string; defaultDatasetId: string } }).data;
-      if (run.status !== 'SUCCEEDED') {
-        results.errors.push(`Batch ${i / BATCH_SIZE + 1}: ${run.status}`);
+
+      if (!run || !run.defaultDatasetId) {
+        results.errors.push(`Batch ${i / BATCH_SIZE + 1}: no dataset returned`);
         continue;
       }
 
-      const dsRes = await fetch(
-        `https://api.apify.com/v2/datasets/${run.defaultDatasetId}/items?limit=500`,
-        { headers: { 'Authorization': `Bearer ${APIFY_TOKEN}` } }
-      );
-      const posts: RawScrapedPost[] = await dsRes.json();
+      const { items } = await apify.dataset(run.defaultDatasetId).listItems({ limit: 500 });
+      const posts = items as RawScrapedPost[];
 
       for (const post of posts) {
         const pid = String(post.id || '');
