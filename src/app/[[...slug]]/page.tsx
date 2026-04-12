@@ -2459,8 +2459,9 @@ function Celebrities() {
         <div className="flex items-center gap-2 bg-[var(--surface)] border border-[var(--line)] rounded-xl p-3 mb-3">
           <div className="w-3 h-3 border-2 border-[var(--brand)] border-t-transparent rounded-full animate-spin flex-shrink-0" />
           <div className="text-[11px] text-[var(--text-2)]">
-            Scanning <span className="font-semibold text-[var(--text)]">{scanProgress}</span> for eyewear photos…
-            <span className="text-[var(--text-3)]"> · {feedPosts.length} found so far</span>
+            Scanning <span className="font-semibold text-[var(--text)]">@{scanProgress}</span>&apos;s Instagram for eyewear…
+            <span className="text-[var(--text-3)]"> · {feedPosts.length} eyewear posts found so far</span>
+            <div className="text-[9px] text-[var(--text-3)] mt-0.5">Apify scrapes their recent IG posts → Gemini Vision confirms eyewear on face → only real sunglass/eyeglass posts shown</div>
           </div>
         </div>
       )}
