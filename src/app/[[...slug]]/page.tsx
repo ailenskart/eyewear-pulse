@@ -2292,6 +2292,7 @@ function Celebrities() {
   const [openPhoto, setOpenPhoto] = useState<CelebFeedPost | null>(null);
   const [eyewearType, setEyewearType] = useState<'' | 'sunglasses' | 'eyeglasses'>('');
   const [refreshing, setRefreshing] = useState(false);
+  const [celebMode, setCelebMode] = useState<'grid' | 'list'>('list');
 
   // Load catalog (for chips + fallback grid)
   useEffect(() => {
@@ -2363,69 +2364,40 @@ function Celebrities() {
   const feedHasPosts = feed && feed.posts.length > 0;
 
   return (
-    <div className="py-4">
-      {/* Header */}
-      <div className="flex items-start justify-between mb-3">
-        <div>
-          <h2 className="text-[20px] font-bold tracking-tight">Celebrity Feed</h2>
-          <p className="text-[11px] text-[var(--text-3)] mt-0.5">
-            {feed && feed.total > 0
-              ? `${feed.total} vision-approved celebrity eyewear moments`
-              : 'Web-sourced photos, filtered by Gemini Vision'}
-          </p>
-        </div>
-        <button
-          onClick={triggerCelebRefresh}
-          disabled={refreshing}
-          className="px-2.5 py-1.5 bg-[var(--bg-alt)] rounded-lg text-[10px] font-semibold text-[var(--text-2)] hover:text-[var(--text)] disabled:opacity-50 flex items-center gap-1.5"
-          title="Scan fresh celebs"
-        >
-          <svg width="11" height="11" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24" className={refreshing ? 'animate-spin' : ''}>
-            <path d="M23 4v6h-6M1 20v-6h6"/><path d="M20.49 9A9 9 0 0 0 5.64 5.64L1 10m22 4l-4.64 4.36A9 9 0 0 1 3.51 15"/>
-          </svg>
-          Scan
-        </button>
-      </div>
-
-      {feed?.lastScan && (
-        <div className="flex items-center gap-1.5 text-[9px] text-[var(--text-3)] mb-3">
-          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-          <span>Last scan: {feed.lastScan.celeb_name} · {rel(feed.lastScan.scanned_at)} · {feed.lastScan.detected} photos</span>
-        </div>
-      )}
-
-      {/* Filters */}
-      <div className="bg-[var(--surface)] border border-[var(--line)] rounded-xl p-3 mb-4 space-y-2">
-        <input
-          type="text" value={q} onChange={e => setQ(e.target.value)}
-          placeholder="Search celebrities, frame types, captions…"
-          className="w-full bg-[var(--bg-alt)] rounded-lg px-3 py-2 text-[12px] outline-none"
-        />
-        <div className="flex gap-1.5 overflow-x-auto" style={{ scrollbarWidth: 'none' }}>
+    <div className="py-3">
+      {/* ── Top bar: categories + view toggle (mirrors main feed) ── */}
+      <div className="space-y-2 pb-2">
+        <div className="flex gap-2 overflow-x-auto pb-1" style={{ scrollbarWidth: 'none' }}>
           {categories.map(c => (
-            <button
-              key={c}
-              onClick={() => setCategory(c)}
-              className={`px-2.5 py-1 rounded-full text-[11px] font-medium whitespace-nowrap flex-shrink-0 ${category === c ? 'bg-[var(--text)] text-[var(--bg)]' : 'bg-[var(--bg-alt)] text-[var(--text-2)]'}`}
-            >
-              {c}
-            </button>
+            <button key={c} onClick={() => setCategory(c)}
+              className={`px-3 py-[5px] rounded-full text-[12px] font-medium whitespace-nowrap flex-shrink-0 transition-all ${category === c ? 'bg-[var(--text)] text-[var(--bg)]' : 'bg-[var(--bg-alt)] text-[var(--text-2)]'}`}>{c}</button>
           ))}
         </div>
-        <div className="flex gap-1.5">
-          {(['', 'sunglasses', 'eyeglasses'] as const).map(t => (
-            <button
-              key={t || 'all'}
-              onClick={() => setEyewearType(t)}
-              className={`px-2.5 py-1 rounded-md text-[10px] font-semibold uppercase tracking-wide ${eyewearType === t ? 'bg-[var(--brand)] text-white' : 'bg-[var(--bg-alt)] text-[var(--text-3)]'}`}
-            >
-              {t || 'All frames'}
+        <div className="flex items-center justify-between">
+          <div className="flex gap-1">
+            {(['', 'sunglasses', 'eyeglasses'] as const).map(tt => (
+              <button key={tt || 'all'} onClick={() => setEyewearType(tt)}
+                className={`px-2.5 py-1 rounded-md text-[11px] font-semibold tracking-wide uppercase transition-all ${eyewearType === tt ? 'bg-[var(--brand)] text-white' : 'text-[var(--text-3)] hover:text-[var(--text-2)]'}`}>{tt || 'All'}</button>
+            ))}
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="text-[11px] text-[var(--text-3)]">{feed?.total || list.length}</span>
+            <button onClick={triggerCelebRefresh} disabled={refreshing} className="p-1 rounded hover:bg-[var(--bg-alt)] disabled:opacity-50" title="Scan new celeb photos">
+              <svg width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24" className={refreshing ? 'animate-spin' : ''}><path d="M23 4v6h-6M1 20v-6h6"/><path d="M20.49 9A9 9 0 0 0 5.64 5.64L1 10m22 4l-4.64 4.36A9 9 0 0 1 3.51 15"/></svg>
             </button>
-          ))}
+            <div className="flex bg-[var(--bg-alt)] rounded-md p-[2px]">
+              <button onClick={() => setCelebMode('grid')} className={`p-1 rounded ${celebMode==='grid' ? 'bg-[var(--surface)] shadow-sm' : ''}`}>
+                <svg width="16" height="16" viewBox="0 0 16 16" fill="var(--text-2)"><rect x="1" y="1" width="6" height="6" rx="1"/><rect x="9" y="1" width="6" height="6" rx="1"/><rect x="1" y="9" width="6" height="6" rx="1"/><rect x="9" y="9" width="6" height="6" rx="1"/></svg>
+              </button>
+              <button onClick={() => setCelebMode('list')} className={`p-1 rounded ${celebMode==='list' ? 'bg-[var(--surface)] shadow-sm' : ''}`}>
+                <svg width="16" height="16" viewBox="0 0 16 16" fill="var(--text-2)"><rect x="1" y="2" width="14" height="3" rx="1"/><rect x="1" y="7" width="14" height="3" rx="1"/><rect x="1" y="12" width="14" height="3" rx="1"/></svg>
+              </button>
+            </div>
+          </div>
         </div>
       </div>
 
-      {/* Feed mode */}
+      {/* ── Loading ── */}
       {feedLoading && !feed && (
         <div className="flex items-center justify-center py-16 text-[var(--text-3)] text-[12px]">
           <div className="w-4 h-4 border-2 border-[var(--brand)] border-t-transparent rounded-full animate-spin mr-2" />
@@ -2433,29 +2405,15 @@ function Celebrities() {
         </div>
       )}
 
-      {feedHasPosts && (
+      {/* ── Grid mode (matches main feed grid) ── */}
+      {feedHasPosts && celebMode === 'grid' && (
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-1 sm:gap-2 pb-4">
           {feed!.posts.map((post, i) => (
-            <div
-              key={post.id}
-              className="overflow-hidden rounded-sm sm:rounded-lg cursor-pointer"
-              style={{ animation: `up 0.3s ease ${i * 15}ms both` }}
-              onClick={() => setOpenPhoto(post)}
-            >
+            <div key={post.id} className="overflow-hidden rounded-sm sm:rounded-lg cursor-pointer" style={{ animation: `up 0.3s ease ${i * 15}ms both` }} onClick={() => setOpenPhoto(post)}>
               <div className="relative aspect-square bg-[var(--bg-alt)] overflow-hidden">
-                <img
-                  src={`/api/img?url=${encodeURIComponent(post.thumbnail || post.imageUrl)}`}
-                  alt={post.eyewearType}
-                  className="w-full h-full object-cover"
-                  loading="lazy"
-                  onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }}
-                />
-                <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 via-black/40 to-transparent p-2">
+                <img src={`/api/img?url=${encodeURIComponent(post.thumbnail || post.imageUrl)}`} alt={post.eyewearType} className="w-full h-full object-cover" loading="lazy" onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }} />
+                <div className="absolute bottom-0 inset-x-0 p-1.5 bg-gradient-to-t from-black/70 to-transparent">
                   <div className="text-white text-[11px] font-semibold truncate">{post.celebName}</div>
-                  <div className="text-white/80 text-[9px] truncate">👓 {post.eyewearType}</div>
-                </div>
-                <div className="absolute top-1.5 right-1.5 bg-black/60 text-white text-[8px] font-semibold px-1.5 py-0.5 rounded uppercase tracking-wider">
-                  {post.celebCategory}
                 </div>
               </div>
             </div>
@@ -2463,70 +2421,118 @@ function Celebrities() {
         </div>
       )}
 
-      {/* Empty state — catalog grid fallback so user can trigger a scan */}
-      {!feedLoading && !feedHasPosts && list.length > 0 && (
-        <>
-          <div className="bg-amber-500/10 border border-amber-500/30 rounded-xl p-3 mb-4 text-[11px] text-amber-400">
-            <div className="font-semibold mb-0.5">No celebrity photos scanned yet</div>
-            <div className="text-[10px] text-amber-300/80">The celebrity cron hasn&apos;t run. Hit the <strong>Scan</strong> button above, or tap any celebrity below to run a one-shot scan.</div>
-          </div>
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
-            {list.slice(0, 40).map(c => (
-              <button
-                key={c.name}
-                onClick={() => openCeleb(c)}
-                className="bg-[var(--surface)] border border-[var(--line)] rounded-xl p-4 text-left hover:border-[var(--brand)] transition-colors"
-              >
-                <div className="w-12 h-12 rounded-full bg-gradient-to-br from-[var(--brand)] to-purple-500 flex items-center justify-center text-white text-[16px] font-bold mb-2">
-                  {c.name.charAt(0)}
+      {/* ── List mode (Instagram-style cards — matches main feed list) ── */}
+      {feedHasPosts && celebMode === 'list' && (
+        <div className="pb-4 max-w-xl mx-auto space-y-3">
+          {feed!.posts.map((post, i) => (
+            <div key={post.id} className="rounded-xl overflow-hidden border border-[var(--line)] bg-[var(--surface)]" style={{ animation: `up 0.3s ease ${i * 25}ms both` }}>
+              {/* IG-style header: avatar + name + time */}
+              <div className="flex items-center gap-2.5 px-3 py-2.5">
+                <div className="w-8 h-8 rounded-full bg-gradient-to-br from-[var(--brand)] to-purple-500 flex items-center justify-center text-white text-[12px] font-bold flex-shrink-0">
+                  {post.celebName.charAt(0)}
                 </div>
-                <div className="text-[13px] font-semibold line-clamp-1">{c.name}</div>
-                <div className="text-[10px] text-[var(--text-3)] mt-0.5">{c.category} · {c.country}</div>
-                <p className="text-[11px] text-[var(--text-2)] line-clamp-2 mt-1.5 leading-snug">{c.knownFor}</p>
-              </button>
-            ))}
-          </div>
-        </>
+                <div className="flex-1 min-w-0">
+                  <div className="text-[13px] font-semibold truncate">{post.celebName}</div>
+                  <div className="text-[10px] text-[var(--text-3)]">{post.celebCategory} · {post.celebCountry}</div>
+                </div>
+                <span className="text-[10px] text-[var(--text-3)] flex-shrink-0">{rel(post.postedAt)}</span>
+              </div>
+              {/* Full-width image */}
+              <div className="relative bg-[var(--bg-alt)]" onClick={() => setOpenPhoto(post)}>
+                <img
+                  src={`/api/img?url=${encodeURIComponent(post.imageUrl)}`}
+                  alt={post.eyewearType}
+                  className="w-full max-h-[70vh] object-contain cursor-pointer"
+                  loading="lazy"
+                  onError={e => { (e.target as HTMLImageElement).src = ''; (e.target as HTMLImageElement).parentElement!.style.display = 'none'; }}
+                />
+              </div>
+              {/* Action row + caption (IG-style) */}
+              <div className="p-3">
+                <div className="flex items-center gap-3 mb-2">
+                  <span className="px-2 py-0.5 bg-[var(--brand)]/10 text-[var(--brand)] text-[10px] font-bold rounded-full uppercase tracking-wide">👓 {post.eyewearType}</span>
+                  <span className="text-[10px] text-[var(--text-3)] ml-auto">{post.sourceLabel}</span>
+                </div>
+                {post.likes > 0 && <div className="text-[12px] font-semibold mb-1">{n(post.likes)} likes</div>}
+                <p className="text-[12px] text-[var(--text-2)] line-clamp-3 leading-relaxed">
+                  <span className="font-semibold text-[var(--text)] mr-1">{post.celebName}</span>
+                  {post.caption}
+                </p>
+                {post.pageUrl && (
+                  <a href={post.pageUrl} target="_blank" rel="noopener noreferrer" className="text-[11px] text-[var(--text-3)] mt-1 inline-block hover:text-[var(--brand)]">View source →</a>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
       )}
 
-      {/* Photo detail sheet */}
-      {openPhoto && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4" onClick={() => setOpenPhoto(null)}>
-          <div className="bg-[var(--surface)] max-w-2xl w-full max-h-[85vh] rounded-2xl overflow-hidden flex flex-col" onClick={e => e.stopPropagation()}>
-            <div className="relative bg-black">
-              <img
-                src={`/api/img?url=${encodeURIComponent(openPhoto.imageUrl)}`}
-                alt={openPhoto.eyewearType}
-                className="w-full max-h-[55vh] object-contain"
-              />
-              <button onClick={() => setOpenPhoto(null)} className="absolute top-2 right-2 w-8 h-8 rounded-full bg-black/60 text-white text-[20px] leading-none flex items-center justify-center">×</button>
-            </div>
-            <div className="p-4 space-y-2">
-              <div className="flex items-start justify-between gap-3">
-                <div className="min-w-0">
-                  <div className="text-[18px] font-bold truncate">{openPhoto.celebName}</div>
-                  <div className="text-[11px] text-[var(--text-3)]">{openPhoto.celebCategory} · {openPhoto.celebCountry}</div>
+      {/* ── Empty state — show celebs as an Insta-style feed of cards the user can tap to scan ── */}
+      {!feedLoading && !feedHasPosts && list.length > 0 && (
+        <div className="pb-4 max-w-xl mx-auto space-y-3">
+          <div className="bg-amber-500/10 border border-amber-500/30 rounded-xl p-3 text-[11px] text-amber-400">
+            <div className="font-semibold">Celebrity photos haven&apos;t been scanned yet.</div>
+            <div className="text-[10px] text-amber-300/80 mt-0.5">Tap any celebrity below to scan their eyewear photos with Gemini Vision, or hit the refresh icon above to batch-scan.</div>
+          </div>
+          {list.slice(0, 30).map((c, i) => (
+            <button key={c.name} onClick={() => openCeleb(c)} className="w-full rounded-xl overflow-hidden border border-[var(--line)] bg-[var(--surface)] text-left hover:border-[var(--brand)] transition-colors" style={{ animation: `up 0.3s ease ${i * 25}ms both` }}>
+              <div className="flex items-center gap-2.5 px-3 py-2.5">
+                <div className="w-8 h-8 rounded-full bg-gradient-to-br from-[var(--brand)] to-purple-500 flex items-center justify-center text-white text-[12px] font-bold flex-shrink-0">
+                  {c.name.charAt(0)}
                 </div>
-                <div className="text-[10px] px-2 py-0.5 bg-[var(--brand)]/15 text-[var(--brand)] rounded font-semibold uppercase tracking-wider flex-shrink-0">Vision ✓</div>
+                <div className="flex-1 min-w-0">
+                  <div className="text-[13px] font-semibold truncate">{c.name}</div>
+                  <div className="text-[10px] text-[var(--text-3)]">{c.category} · {c.country}</div>
+                </div>
+                <span className="px-2 py-0.5 bg-[var(--bg-alt)] text-[10px] font-medium text-[var(--text-3)] rounded-full flex-shrink-0">Tap to scan</span>
               </div>
-              <div className="bg-[var(--bg-alt)] rounded-lg p-2.5">
-                <div className="text-[9px] uppercase tracking-wider text-[var(--text-3)] font-bold">Eyewear detected</div>
-                <div className="text-[13px] font-semibold text-[var(--brand)] mt-0.5">👓 {openPhoto.eyewearType}</div>
+              <div className="px-3 pb-3">
+                <p className="text-[11px] text-[var(--text-2)] line-clamp-2 leading-snug">Known for: {c.knownFor}</p>
               </div>
-              <p className="text-[12px] text-[var(--text-2)] leading-relaxed">{openPhoto.caption}</p>
-              <div className="flex items-center gap-2 text-[10px] text-[var(--text-3)]">
-                <span>{openPhoto.sourceLabel}</span>
-                <span>·</span>
-                <span>{rel(openPhoto.postedAt)}</span>
+            </button>
+          ))}
+        </div>
+      )}
+
+      {/* ── Detail sheet (full-screen IG-style) ── */}
+      {openPhoto && (
+        <div className="fixed inset-0 z-50 bg-[var(--bg)] overflow-y-auto" onClick={() => setOpenPhoto(null)}>
+          <div className="max-w-xl mx-auto min-h-full" onClick={e => e.stopPropagation()}>
+            {/* Back button */}
+            <div className="sticky top-0 z-10 bg-[var(--bg)] border-b border-[var(--line)] px-4 h-12 flex items-center">
+              <button onClick={() => setOpenPhoto(null)} className="text-[var(--text)] text-[22px] leading-none mr-3">←</button>
+              <span className="text-[14px] font-semibold">{openPhoto.celebName}</span>
+            </div>
+            {/* IG-style header */}
+            <div className="flex items-center gap-2.5 px-4 py-3">
+              <div className="w-9 h-9 rounded-full bg-gradient-to-br from-[var(--brand)] to-purple-500 flex items-center justify-center text-white text-[14px] font-bold flex-shrink-0">
+                {openPhoto.celebName.charAt(0)}
               </div>
+              <div className="flex-1 min-w-0">
+                <div className="text-[14px] font-semibold truncate">{openPhoto.celebName}</div>
+                <div className="text-[11px] text-[var(--text-3)]">{openPhoto.celebCategory} · {openPhoto.celebCountry}</div>
+              </div>
+              <span className="text-[10px] text-[var(--text-3)]">{rel(openPhoto.postedAt)}</span>
+            </div>
+            {/* Full image */}
+            <div className="bg-black">
+              <img src={`/api/img?url=${encodeURIComponent(openPhoto.imageUrl)}`} alt={openPhoto.eyewearType} className="w-full max-h-[70vh] object-contain" />
+            </div>
+            {/* Caption area */}
+            <div className="p-4 space-y-3">
+              <div className="flex items-center gap-3">
+                <span className="px-2.5 py-1 bg-[var(--brand)]/10 text-[var(--brand)] text-[11px] font-bold rounded-full uppercase tracking-wide">👓 {openPhoto.eyewearType}</span>
+                <span className="text-[10px] px-2 py-0.5 bg-emerald-500/10 text-emerald-400 rounded font-semibold uppercase tracking-wider">Vision verified</span>
+              </div>
+              {openPhoto.likes > 0 && <div className="text-[14px] font-semibold">{n(openPhoto.likes)} likes</div>}
+              <p className="text-[13px] text-[var(--text-2)] leading-relaxed">
+                <span className="font-semibold text-[var(--text)] mr-1">{openPhoto.celebName}</span>
+                {openPhoto.caption}
+              </p>
+              <div className="text-[11px] text-[var(--text-3)]">Source: {openPhoto.sourceLabel} · {rel(openPhoto.postedAt)}</div>
               {openPhoto.pageUrl && (
-                <a
-                  href={openPhoto.pageUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="block w-full text-center px-3 py-2 bg-[var(--brand)] text-white text-[12px] font-semibold rounded-lg mt-2"
-                >
-                  View source →
+                <a href={openPhoto.pageUrl} target="_blank" rel="noopener noreferrer" className="block w-full text-center px-3 py-2.5 bg-[var(--brand)] text-white text-[12px] font-semibold rounded-lg">
+                  View original source →
                 </a>
               )}
             </div>
