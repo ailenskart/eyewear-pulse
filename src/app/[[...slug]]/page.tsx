@@ -2274,7 +2274,7 @@ interface CelebFeedResponse {
 }
 
 function Celebrities() {
-  // Catalog mode state (fallback when feed is empty)
+  // Catalog
   const [list, setList] = useState<Celebrity[]>([]);
   const [categories, setCategories] = useState<string[]>([]);
   const [selected, setSelected] = useState<Celebrity | null>(null);
@@ -2282,11 +2282,11 @@ function Celebrities() {
   const [scanning, setScanning] = useState(false);
   const [handleOverride, setHandleOverride] = useState('');
 
-  // Shared filter state
+  // Filters
   const [category, setCategory] = useState('All');
   const [q, setQ] = useState('');
 
-  // Feed mode state
+  // Feed from celeb_photos DB
   const [feed, setFeed] = useState<CelebFeedResponse | null>(null);
   const [feedLoading, setFeedLoading] = useState(true);
   const [openPhoto, setOpenPhoto] = useState<CelebFeedPost | null>(null);
@@ -2294,7 +2294,21 @@ function Celebrities() {
   const [refreshing, setRefreshing] = useState(false);
   const [celebMode, setCelebMode] = useState<'grid' | 'list'>('list');
 
-  // Load catalog (for chips + fallback grid)
+  // Auto-scan state: live scan results that stream in when DB is empty
+  const [livePosts, setLivePosts] = useState<CelebFeedPost[]>([]);
+  const [autoScanning, setAutoScanning] = useState(false);
+  const [scanProgress, setScanProgress] = useState('');
+  const autoScanRan = useRef(false);
+
+  // A-list celebs to auto-scan on first visit (high chance of eyewear photos)
+  const AUTO_SCAN_CELEBS = useMemo(() => [
+    'Rihanna', 'Zendaya', 'Bad Bunny', 'ASAP Rocky', 'Timothée Chalamet',
+    'Virat Kohli', 'Ranveer Singh', 'Shah Rukh Khan', 'Deepika Padukone',
+    'Gigi Hadid', 'Beyoncé', 'Harry Styles', 'Kanye West', 'Jennifer Aniston',
+    'David Beckham', 'LeBron James', 'Pharrell Williams', 'Elton John',
+  ], []);
+
+  // Load catalog
   useEffect(() => {
     const p = new URLSearchParams({ limit: '500' });
     if (category !== 'All') p.set('category', category);
@@ -2305,10 +2319,10 @@ function Celebrities() {
     }).catch(() => {});
   }, [category, q]);
 
-  // Load feed
+  // Load feed from celeb_photos DB
   const loadFeed = useCallback(async () => {
     setFeedLoading(true);
-    const p = new URLSearchParams({ limit: '30', page: '1' });
+    const p = new URLSearchParams({ limit: '60', page: '1' });
     if (category !== 'All') p.set('category', category);
     if (q.trim()) p.set('search', q.trim());
     if (eyewearType) p.set('eyewearType', eyewearType);
@@ -2321,6 +2335,47 @@ function Celebrities() {
   }, [category, q, eyewearType]);
 
   useEffect(() => { loadFeed(); }, [loadFeed]);
+
+  // Auto-scan: when DB feed is empty, progressively scan A-list celebs
+  // and render their Vision-confirmed eyewear photos live.
+  useEffect(() => {
+    if (autoScanRan.current) return;
+    if (feedLoading) return;
+    if (feed && feed.posts.length > 0) return; // DB has data, skip
+    autoScanRan.current = true;
+
+    const run = async () => {
+      setAutoScanning(true);
+      for (const name of AUTO_SCAN_CELEBS) {
+        setScanProgress(name);
+        try {
+          const res = await fetch(`/api/celebrities/instagram?name=${encodeURIComponent(name)}&limit=8`);
+          const data: CelebIgResult = await res.json();
+          if (data.photos && data.photos.length > 0) {
+            const newPosts: CelebFeedPost[] = data.photos.map((p, idx) => ({
+              id: p.id || `${name}_${idx}`,
+              celebName: name,
+              celebSlug: name.toLowerCase().replace(/[^a-z0-9]+/g, '-'),
+              celebCategory: null,
+              celebCountry: null,
+              imageUrl: p.imageUrl,
+              thumbnail: p.thumbnail,
+              caption: `${name} spotted in ${p.eyewearType}`,
+              eyewearType: p.eyewearType,
+              sourceLabel: p.source || 'web',
+              pageUrl: p.pageUrl || '',
+              likes: p.likes || 0,
+              postedAt: p.postedAt || new Date().toISOString(),
+            }));
+            setLivePosts(prev => [...prev, ...newPosts]);
+          }
+        } catch { /* skip failed celebs */ }
+      }
+      setScanProgress('');
+      setAutoScanning(false);
+    };
+    run();
+  }, [feedLoading, feed, AUTO_SCAN_CELEBS]);
 
   const triggerCelebRefresh = async () => {
     setRefreshing(true);
@@ -2342,26 +2397,19 @@ function Celebrities() {
       setResult(data);
     } catch (e) {
       setResult({
-        name: c.name,
-        totalScanned: 0,
-        eyewearCount: 0,
-        photos: [],
-        source: 'none',
-        fetchedAt: new Date().toISOString(),
-        cached: false,
+        name: c.name, totalScanned: 0, eyewearCount: 0, photos: [],
+        source: 'none', fetchedAt: new Date().toISOString(), cached: false,
         error: e instanceof Error ? e.message : 'Scan failed',
       });
     }
     setScanning(false);
   };
 
-  const openCeleb = (c: Celebrity) => {
-    setSelected(c);
-    setHandleOverride('');
-    scanCeleb(c);
-  };
+  const openCeleb = (c: Celebrity) => { setSelected(c); setHandleOverride(''); scanCeleb(c); };
 
-  const feedHasPosts = feed && feed.posts.length > 0;
+  // Merge: DB feed posts take priority, live-scanned posts fill the gap
+  const feedPosts = feed && feed.posts.length > 0 ? feed.posts : livePosts;
+  const hasPosts = feedPosts.length > 0;
 
   return (
     <div className="py-3">
@@ -2406,9 +2454,21 @@ function Celebrities() {
       )}
 
       {/* ── Grid mode (matches main feed grid) ── */}
-      {feedHasPosts && celebMode === 'grid' && (
+      {/* ── Auto-scan progress banner ── */}
+      {autoScanning && (
+        <div className="flex items-center gap-2 bg-[var(--surface)] border border-[var(--line)] rounded-xl p-3 mb-3">
+          <div className="w-3 h-3 border-2 border-[var(--brand)] border-t-transparent rounded-full animate-spin flex-shrink-0" />
+          <div className="text-[11px] text-[var(--text-2)]">
+            Scanning <span className="font-semibold text-[var(--text)]">{scanProgress}</span> for eyewear photos…
+            <span className="text-[var(--text-3)]"> · {feedPosts.length} found so far</span>
+          </div>
+        </div>
+      )}
+
+      {/* ── Grid mode ── */}
+      {hasPosts && celebMode === 'grid' && (
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-1 sm:gap-2 pb-4">
-          {feed!.posts.map((post, i) => (
+          {feedPosts.map((post, i) => (
             <div key={post.id} className="overflow-hidden rounded-sm sm:rounded-lg cursor-pointer" style={{ animation: `up 0.3s ease ${i * 15}ms both` }} onClick={() => setOpenPhoto(post)}>
               <div className="relative aspect-square bg-[var(--bg-alt)] overflow-hidden">
                 <img src={`/api/img?url=${encodeURIComponent(post.thumbnail || post.imageUrl)}`} alt={post.eyewearType} className="w-full h-full object-cover" loading="lazy" onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }} />
@@ -2422,9 +2482,10 @@ function Celebrities() {
       )}
 
       {/* ── List mode (Instagram-style cards — matches main feed list) ── */}
-      {feedHasPosts && celebMode === 'list' && (
+      {/* ── List mode (Instagram-style) ── */}
+      {hasPosts && celebMode === 'list' && (
         <div className="pb-4 max-w-xl mx-auto space-y-3">
-          {feed!.posts.map((post, i) => (
+          {feedPosts.map((post, i) => (
             <div key={post.id} className="rounded-xl overflow-hidden border border-[var(--line)] bg-[var(--surface)]" style={{ animation: `up 0.3s ease ${i * 25}ms both` }}>
               {/* IG-style header: avatar + name + time */}
               <div className="flex items-center gap-2.5 px-3 py-2.5">
@@ -2468,7 +2529,8 @@ function Celebrities() {
       )}
 
       {/* ── Empty state — show celebs as an Insta-style feed of cards the user can tap to scan ── */}
-      {!feedLoading && !feedHasPosts && list.length > 0 && (
+      {/* ── Empty state (only shows if auto-scan also found nothing) ── */}
+      {!feedLoading && !hasPosts && !autoScanning && list.length > 0 && (
         <div className="pb-4 max-w-xl mx-auto space-y-3">
           <div className="bg-amber-500/10 border border-amber-500/30 rounded-xl p-3 text-[11px] text-amber-400">
             <div className="font-semibold">Celebrity photos haven&apos;t been scanned yet.</div>
