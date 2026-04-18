@@ -2797,6 +2797,8 @@ interface TrackedBrand {
   active: boolean;
   source: string;
   posts_scraped: number;
+  posts_count: number;
+  products_count: number;
   last_scraped_at: string | null;
   added_at: string;
   website: string | null;
@@ -2949,7 +2951,7 @@ function BrandsManager() {
     setEditBrand({
       handle: '', name: '', category: null, region: null, price_range: null,
       subcategory: null, country: null, tier: 'full', active: true, source: 'manual',
-      posts_scraped: 0, last_scraped_at: null, added_at: new Date().toISOString(),
+      posts_scraped: 0, posts_count: 0, products_count: 0, last_scraped_at: null, added_at: new Date().toISOString(),
       website: null, notes: null,
       instagram_url: null, facebook_url: null, twitter_url: null,
       tiktok_url: null, youtube_url: null, linkedin_url: null,
@@ -3037,7 +3039,7 @@ function BrandsManager() {
               const j = await res.json();
               const brands = j.brands || [];
               if (brands.length === 0) { alert('No brands to export.'); return; }
-              const headers = ['handle','name','category','region','price_range','subcategory','country','hq_city','tier','website','instagram_url','facebook_url','twitter_url','tiktok_url','youtube_url','linkedin_url','logo_url','founded_year','employee_count','notes','active','source','last_scraped_at','added_at'];
+              const headers = ['handle','name','category','region','price_range','subcategory','country','hq_city','tier','posts_count','products_count','website','instagram_url','facebook_url','twitter_url','tiktok_url','youtube_url','linkedin_url','logo_url','founded_year','employee_count','notes','active','source','last_scraped_at','added_at'];
               const csvRows = [headers.join(',')];
               for (const b of brands as TrackedBrand[]) {
                 csvRows.push(headers.map(h => {
@@ -3066,6 +3068,26 @@ function BrandsManager() {
         >
           <svg width="12" height="12" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M17 8l-5-5-5 5M12 3v12"/></svg>
           Update existing
+        </button>
+        <button
+          onClick={async () => {
+            try {
+              const preview = await fetch('/api/brands/cleanup?mode=dryrun', { method: 'POST' }).then(r => r.json());
+              if (!preview.suspects) { alert('No suspect handles found.'); return; }
+              const sample = (preview.sample || []).slice(0, 10).map((x: { handle: string }) => '@' + x.handle).join(', ');
+              if (!confirm(`Found ${preview.suspects} suspect handles (composite xLenskart/xJJ names + brands that scraped zero posts).\n\nSample: ${sample}\n\nDelete them permanently?`)) return;
+              const result = await fetch('/api/brands/cleanup?mode=delete', { method: 'POST' }).then(r => r.json());
+              alert(`Removed ${result.affected} fake handles.`);
+              load();
+            } catch (e) {
+              alert('Cleanup failed: ' + (e instanceof Error ? e.message : 'unknown'));
+            }
+          }}
+          className="px-3 py-2 bg-red-500/15 text-red-400 text-[12px] font-semibold rounded-lg flex items-center gap-1.5 hover:bg-red-500/25"
+          title="Find and delete fake/composite handles (like 'shahrukhkhanxlenskart')"
+        >
+          <svg width="12" height="12" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M3 6h18M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/></svg>
+          Clean fakes
         </button>
       </div>
 
@@ -3213,6 +3235,8 @@ function BrandsManager() {
                     <th className="text-left py-2 px-2 font-bold">Category</th>
                     <th className="text-left py-2 px-2 font-bold">Region</th>
                     <th className="text-left py-2 px-2 font-bold">Tier</th>
+                    <th className="text-right py-2 px-2 font-bold">Posts</th>
+                    <th className="text-right py-2 px-2 font-bold">Products</th>
                     <th className="text-left py-2 px-2 font-bold">Last scrape</th>
                     <th className="text-right py-2 px-3 font-bold">Actions</th>
                   </tr>
@@ -3239,6 +3263,8 @@ function BrandsManager() {
                               <option value="full">full</option>
                             </select>
                           </td>
+                          <td className={`py-2 px-2 text-right font-mono text-[11px] ${b.posts_count > 0 ? 'text-[var(--text)]' : 'text-[var(--text-3)]'}`}>{b.posts_count || 0}</td>
+                          <td className={`py-2 px-2 text-right font-mono text-[11px] ${b.products_count > 0 ? 'text-[var(--text)]' : 'text-[var(--text-3)]'}`}>{b.products_count || 0}</td>
                           <td className="py-2 px-2 text-[10px] text-[var(--text-3)]">{b.last_scraped_at ? rel(b.last_scraped_at) : 'never'}</td>
                           <td className="py-2 px-3 text-right whitespace-nowrap">
                             <button onClick={() => openEdit(b)} className="text-[var(--text-2)] text-[10px] font-semibold hover:text-[var(--brand)] mr-2">Edit</button>
@@ -3247,7 +3273,7 @@ function BrandsManager() {
                         </tr>
                         {expanded && (
                           <tr className="border-b border-[var(--line)] bg-[var(--bg-alt)]/30">
-                            <td colSpan={7} className="p-4">
+                            <td colSpan={9} className="p-4">
                               <div className="grid sm:grid-cols-2 gap-4">
                                 {/* Social links */}
                                 <div>

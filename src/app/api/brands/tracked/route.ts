@@ -50,6 +50,43 @@ export async function GET(request: NextRequest) {
   const { data, count, error } = await q;
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
+  // ── Enrich with posts_count + products_count ──
+  const rows = (data || []) as Array<{ handle: string; name: string; [key: string]: unknown }>;
+  const handles = rows.map(r => r.handle);
+  const names = rows.map(r => r.name).filter(Boolean);
+
+  // Post counts per brand_handle
+  const postCounts = new Map<string, number>();
+  if (handles.length > 0) {
+    // Supabase doesn't expose GROUP BY directly — pull minimal rows and count in JS.
+    const { data: postRows } = await client
+      .from('ig_posts')
+      .select('brand_handle')
+      .in('brand_handle', handles);
+    for (const r of (postRows || []) as Array<{ brand_handle: string }>) {
+      postCounts.set(r.brand_handle, (postCounts.get(r.brand_handle) || 0) + 1);
+    }
+  }
+
+  // Product counts per brand name (products.brand holds the display name)
+  const productCounts = new Map<string, number>();
+  if (names.length > 0) {
+    const { data: productRows } = await client
+      .from('products')
+      .select('brand')
+      .in('brand', names);
+    for (const r of (productRows || []) as Array<{ brand: string }>) {
+      const key = (r.brand || '').toLowerCase();
+      productCounts.set(key, (productCounts.get(key) || 0) + 1);
+    }
+  }
+
+  const enriched = rows.map(r => ({
+    ...r,
+    posts_count: postCounts.get(r.handle) || 0,
+    products_count: productCounts.get((r.name || '').toLowerCase()) || 0,
+  }));
+
   // Upload history
   const { data: uploads } = await client
     .from('brand_upload_log')
@@ -69,7 +106,7 @@ export async function GET(request: NextRequest) {
   }
 
   return NextResponse.json({
-    brands: data || [],
+    brands: enriched,
     total: count || 0,
     page,
     totalPages: Math.max(1, Math.ceil((count || 0) / limit)),
