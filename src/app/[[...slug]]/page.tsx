@@ -2720,7 +2720,7 @@ function Celebrities() {
 
 /* ═══ Sources — Unified intelligence hub (Shopify + Trends + Reddit + Google Ads) ═══ */
 
-type SourceTab = 'brands' | 'shopify' | 'trends' | 'reddit' | 'google-ads' | 'youtube' | 'brave' | 'tiktok' | 'amazon' | 'linkedin';
+type SourceTab = 'brands' | 'people' | 'shopify' | 'trends' | 'reddit' | 'google-ads' | 'youtube' | 'brave' | 'tiktok' | 'amazon' | 'linkedin';
 
 interface ShopifyStore { handle: string; domain: string; name: string }
 interface ShopifyProd { id: number; title: string; image: string; price: string; comparePrice: string | null; available: boolean; createdAt: string; url: string; variantCount: number; soldOut: boolean }
@@ -2740,6 +2740,7 @@ function Sources() {
       <div className="flex gap-2 mb-4 overflow-x-auto" style={{ scrollbarWidth: 'none' }}>
         {[
           { k: 'brands', l: 'Brands', icon: '📋' },
+          { k: 'people', l: 'People', icon: '👤' },
           { k: 'shopify', l: 'Shopify', icon: '🛍️' },
           { k: 'amazon', l: 'Amazon', icon: '📦' },
           { k: 'trends', l: 'Trends', icon: '📈' },
@@ -2761,6 +2762,7 @@ function Sources() {
       </div>
 
       {sub === 'brands' && <BrandsManager />}
+      {sub === 'people' && <PeopleDirectory />}
       {sub === 'shopify' && <ShopifySource />}
       {sub === 'amazon' && <AmazonSource />}
       {sub === 'trends' && <TrendsSource />}
@@ -3676,6 +3678,346 @@ function BrandEditDialog({
           </div>
         </div>
       </div>
+    </div>
+  );
+}
+
+/* ═══ People Directory — standalone industry people mapping ═══ */
+
+interface DirectoryPerson {
+  id: number;
+  name: string;
+  title: string | null;
+  department: string | null;
+  seniority: string | null;
+  linkedin_url: string | null;
+  photo_url: string | null;
+  email: string | null;
+  phone: string | null;
+  location: string | null;
+  company_current: string | null;
+  brand_handles: string[];
+  previous_companies: string[] | null;
+  tenure: string | null;
+  bio: string | null;
+  tags: string[] | null;
+  source: string;
+  added_at: string;
+}
+
+interface PeopleResponse {
+  people: DirectoryPerson[];
+  total: number;
+  page: number;
+  totalPages: number;
+  facets: {
+    departments: Array<{ name: string; count: number }>;
+    seniorities: Array<{ name: string; count: number }>;
+    companies: Array<{ name: string; count: number }>;
+  };
+}
+
+function PeopleDirectory() {
+  const [data, setData] = useState<PeopleResponse | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [search, setSearch] = useState('');
+  const [department, setDepartment] = useState('All');
+  const [seniority, setSeniority] = useState('All');
+  const [page, setPage] = useState(1);
+  const [addOpen, setAddOpen] = useState(false);
+  const [uploadOpen, setUploadOpen] = useState(false);
+  const [editPerson, setEditPerson] = useState<DirectoryPerson | null>(null);
+
+  // Add person form state
+  const [form, setForm] = useState({ name: '', title: '', department: '', seniority: '', linkedin_url: '', email: '', phone: '', location: '', company_current: '', brand_handles: '', previous_companies: '', tenure: '', bio: '', tags: '' });
+  const [formSaving, setFormSaving] = useState(false);
+
+  // Upload state
+  const [pasteText, setPasteText] = useState('');
+  const [uploading, setUploading] = useState(false);
+  const [uploadResult, setUploadResult] = useState<{ inserted: number; message: string } | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    const p = new URLSearchParams({ page: String(page), limit: '50' });
+    if (department !== 'All') p.set('department', department);
+    if (seniority !== 'All') p.set('seniority', seniority);
+    if (search.trim()) p.set('search', search.trim());
+    try {
+      const res = await fetch(`/api/people?${p}`);
+      setData(await res.json());
+    } catch { /* silent */ }
+    setLoading(false);
+  }, [page, department, seniority, search]);
+
+  useEffect(() => { load(); }, [load]);
+
+  const savePerson = async () => {
+    if (!form.name.trim()) return;
+    setFormSaving(true);
+    try {
+      const body: Record<string, unknown> = { ...form };
+      if (editPerson) body.id = editPerson.id;
+      const res = await fetch('/api/people', {
+        method: editPerson ? 'PATCH' : 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      const j = await res.json();
+      if (j.error) alert(j.error);
+      else { setAddOpen(false); setEditPerson(null); load(); }
+    } catch (e) { alert(e instanceof Error ? e.message : 'Save failed'); }
+    setFormSaving(false);
+  };
+
+  const openEdit = (p: DirectoryPerson) => {
+    setEditPerson(p);
+    setForm({
+      name: p.name || '', title: p.title || '', department: p.department || '',
+      seniority: p.seniority || '', linkedin_url: p.linkedin_url || '',
+      email: p.email || '', phone: p.phone || '', location: p.location || '',
+      company_current: p.company_current || '',
+      brand_handles: (p.brand_handles || []).join(', '),
+      previous_companies: (p.previous_companies || []).join(', '),
+      tenure: p.tenure || '', bio: p.bio || '', tags: (p.tags || []).join(', '),
+    });
+    setAddOpen(true);
+  };
+
+  const openNew = () => {
+    setEditPerson(null);
+    setForm({ name: '', title: '', department: '', seniority: '', linkedin_url: '', email: '', phone: '', location: '', company_current: '', brand_handles: '', previous_companies: '', tenure: '', bio: '', tags: '' });
+    setAddOpen(true);
+  };
+
+  const deletePerson = async (id: number) => {
+    if (!confirm('Delete this person?')) return;
+    await fetch(`/api/people?id=${id}`, { method: 'DELETE' });
+    load();
+  };
+
+  const uploadFile = async (file: File) => {
+    setUploading(true);
+    setUploadResult(null);
+    try {
+      const fd = new FormData(); fd.append('file', file);
+      const res = await fetch('/api/people/upload', { method: 'POST', body: fd });
+      const j = await res.json();
+      if (j.error) alert(j.error);
+      else { setUploadResult(j); load(); }
+    } catch { alert('Upload failed'); }
+    setUploading(false);
+  };
+
+  const uploadPaste = async () => {
+    if (!pasteText.trim()) return;
+    setUploading(true); setUploadResult(null);
+    try {
+      const res = await fetch('/api/people/upload', { method: 'POST', headers: { 'Content-Type': 'text/plain' }, body: pasteText });
+      const j = await res.json();
+      if (j.error) alert(j.error);
+      else { setUploadResult(j); setPasteText(''); load(); }
+    } catch { alert('Upload failed'); }
+    setUploading(false);
+  };
+
+  const downloadCsv = async () => {
+    const res = await fetch('/api/people?limit=5000');
+    const j = await res.json();
+    const people = j.people || [];
+    if (people.length === 0) { alert('No people to export.'); return; }
+    const h = ['id','name','title','department','seniority','company_current','brand_handles','linkedin_url','email','phone','location','previous_companies','tenure','bio','tags','source','added_at'];
+    const rows = [h.join(',')];
+    for (const p of people) {
+      rows.push(h.map(k => {
+        const v = (p as Record<string, unknown>)[k];
+        if (v === null || v === undefined) return '';
+        let s: string;
+        if (Array.isArray(v)) s = v.join(';');
+        else s = String(v);
+        return s.includes(',') || s.includes('"') || s.includes('\n') ? `"${s.replace(/"/g, '""')}"` : s;
+      }).join(','));
+    }
+    const blob = new Blob([rows.join('\n')], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a'); a.href = url; a.download = `lenzy-people-${new Date().toISOString().slice(0,10)}.csv`; a.click(); URL.revokeObjectURL(url);
+  };
+
+  const Field = ({ label, value, onChange, placeholder, type = 'text' }: { label: string; value: string; onChange: (v: string) => void; placeholder?: string; type?: string }) => (
+    <label className="block">
+      <div className="text-[10px] uppercase tracking-wider text-[var(--text-3)] font-bold mb-1">{label}</div>
+      <input type={type} value={value} onChange={e => onChange(e.target.value)} placeholder={placeholder}
+        className="w-full bg-[var(--bg-alt)] rounded-lg px-3 py-1.5 text-[12px] outline-none border border-transparent focus:border-[var(--brand)]" />
+    </label>
+  );
+
+  return (
+    <div>
+      {/* Summary */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-4">
+        <div className="bg-[var(--surface)] border border-[var(--line)] rounded-xl p-3">
+          <div className="text-[10px] uppercase tracking-wider text-[var(--text-3)] font-bold">Total</div>
+          <div className="text-[22px] font-bold mt-1">{data?.total || 0}</div>
+          <div className="text-[10px] text-[var(--text-3)]">people mapped</div>
+        </div>
+        <div className="bg-[var(--surface)] border border-[var(--line)] rounded-xl p-3">
+          <div className="text-[10px] uppercase tracking-wider text-[var(--text-3)] font-bold">Companies</div>
+          <div className="text-[22px] font-bold mt-1">{data?.facets.companies.length || 0}</div>
+          <div className="text-[10px] text-[var(--text-3)]">represented</div>
+        </div>
+        <div className="bg-[var(--surface)] border border-[var(--line)] rounded-xl p-3">
+          <div className="text-[10px] uppercase tracking-wider text-[var(--text-3)] font-bold">Departments</div>
+          <div className="text-[22px] font-bold mt-1">{data?.facets.departments.length || 0}</div>
+          <div className="text-[10px] text-[var(--text-3)]">covered</div>
+        </div>
+      </div>
+
+      {/* Actions */}
+      <div className="flex gap-2 mb-4 flex-wrap">
+        <button onClick={openNew} className="px-3 py-2 bg-[var(--brand)] text-white text-[12px] font-semibold rounded-lg flex items-center gap-1.5">
+          <span className="text-[14px]">+</span> Add person
+        </button>
+        <button onClick={() => setUploadOpen(v => !v)} className="px-3 py-2 bg-[var(--bg-alt)] text-[var(--text-2)] text-[12px] font-semibold rounded-lg">
+          {uploadOpen ? 'Hide upload' : 'Bulk upload'}
+        </button>
+        <button onClick={downloadCsv} className="px-3 py-2 bg-[var(--bg-alt)] text-[var(--text-2)] text-[12px] font-semibold rounded-lg flex items-center gap-1.5">
+          <svg width="12" height="12" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
+          Download CSV
+        </button>
+      </div>
+
+      {/* Upload panel */}
+      {uploadOpen && (
+        <div className="bg-[var(--surface)] border border-[var(--line)] rounded-xl p-4 mb-4 space-y-3">
+          <div className="text-[14px] font-bold">Upload people</div>
+          <div onClick={() => fileInputRef.current?.click()} className="border-2 border-dashed border-[var(--line)] rounded-xl p-6 text-center cursor-pointer hover:border-[var(--brand)]">
+            <div className="text-[32px] mb-1">📂</div>
+            <div className="text-[13px] font-semibold">Drop CSV / JSON here or click to browse</div>
+            <input ref={fileInputRef} type="file" accept=".csv,.json,.txt" className="hidden" onChange={e => { const f = e.target.files?.[0]; if (f) uploadFile(f); }} />
+          </div>
+          <textarea value={pasteText} onChange={e => setPasteText(e.target.value)} placeholder={'name,title,company_current,brand_handles,linkedin_url\nJohn Doe,CEO,Ray-Ban,rayban,https://linkedin.com/in/john'} className="w-full bg-[var(--bg-alt)] rounded-lg px-3 py-2 text-[12px] font-mono outline-none min-h-[100px] resize-y" />
+          <button onClick={uploadPaste} disabled={uploading || !pasteText.trim()} className="px-3 py-1.5 bg-[var(--text)] text-[var(--bg)] text-[11px] font-semibold rounded-lg disabled:opacity-50">
+            {uploading ? 'Uploading…' : 'Upload paste'}
+          </button>
+          {uploadResult && <div className="bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 rounded-lg p-2 text-[11px] font-semibold">{uploadResult.message}</div>}
+        </div>
+      )}
+
+      {/* Filters */}
+      <div className="flex gap-2 mb-3 flex-wrap">
+        <input type="text" value={search} onChange={e => { setSearch(e.target.value); setPage(1); }} placeholder="Search people…" className="flex-1 min-w-[200px] bg-[var(--bg-alt)] rounded-lg px-3 py-1.5 text-[12px] outline-none" />
+        <select value={department} onChange={e => { setDepartment(e.target.value); setPage(1); }} className="bg-[var(--bg-alt)] rounded-lg px-2 py-1.5 text-[11px] outline-none">
+          <option value="All">All departments</option>
+          {data?.facets.departments.map(d => <option key={d.name} value={d.name}>{d.name} ({d.count})</option>)}
+        </select>
+        <select value={seniority} onChange={e => { setSeniority(e.target.value); setPage(1); }} className="bg-[var(--bg-alt)] rounded-lg px-2 py-1.5 text-[11px] outline-none">
+          <option value="All">All levels</option>
+          {data?.facets.seniorities.map(s => <option key={s.name} value={s.name}>{s.name} ({s.count})</option>)}
+        </select>
+      </div>
+
+      {loading && !data && <div className="flex items-center justify-center py-16 text-[12px] text-[var(--text-3)]"><div className="w-4 h-4 border-2 border-[var(--brand)] border-t-transparent rounded-full animate-spin mr-2" />Loading…</div>}
+
+      {data && data.people.length === 0 && !loading && (
+        <div className="bg-[var(--bg-alt)] rounded-xl p-8 text-center text-[var(--text-3)] text-[12px]">No people yet. Click &quot;Add person&quot; or bulk upload a CSV.</div>
+      )}
+
+      {/* People list */}
+      {data && data.people.length > 0 && (
+        <div className="space-y-2 pb-4">
+          {data.people.map(p => (
+            <div key={p.id} className="bg-[var(--surface)] border border-[var(--line)] rounded-xl p-3 flex items-start gap-3">
+              {p.photo_url ? (
+                <img src={p.photo_url} alt="" className="w-10 h-10 rounded-full object-cover flex-shrink-0 bg-[var(--bg-alt)]" onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }} />
+              ) : (
+                <div className="w-10 h-10 rounded-full bg-gradient-to-br from-[var(--brand)] to-purple-500 flex items-center justify-center text-white text-[14px] font-bold flex-shrink-0">{p.name.charAt(0)}</div>
+              )}
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <div className="text-[13px] font-semibold">{p.name}</div>
+                  {p.seniority && <span className="text-[9px] px-1.5 py-0.5 bg-[var(--bg-alt)] rounded font-semibold text-[var(--text-3)]">{p.seniority}</span>}
+                </div>
+                {p.title && <div className="text-[11px] text-[var(--text-2)] mt-0.5">{p.title}</div>}
+                <div className="flex items-center gap-2 mt-1 text-[10px] text-[var(--text-3)] flex-wrap">
+                  {p.company_current && <span className="font-semibold text-[var(--text-2)]">{p.company_current}</span>}
+                  {p.department && <><span>·</span><span>{p.department}</span></>}
+                  {p.location && <><span>·</span><span>{p.location}</span></>}
+                  {p.tenure && <><span>·</span><span>{p.tenure}</span></>}
+                </div>
+                {p.brand_handles.length > 0 && (
+                  <div className="flex gap-1 mt-1.5 flex-wrap">
+                    {p.brand_handles.map(h => (
+                      <span key={h} className="text-[9px] px-1.5 py-0.5 bg-[var(--brand)]/10 text-[var(--brand)] rounded font-mono font-semibold">@{h}</span>
+                    ))}
+                  </div>
+                )}
+                {p.tags && p.tags.length > 0 && (
+                  <div className="flex gap-1 mt-1 flex-wrap">
+                    {p.tags.map(t => <span key={t} className="text-[9px] px-1.5 py-0.5 bg-[var(--bg-alt)] rounded text-[var(--text-3)]">#{t}</span>)}
+                  </div>
+                )}
+              </div>
+              <div className="flex items-center gap-2 flex-shrink-0">
+                {p.linkedin_url && (
+                  <a href={p.linkedin_url} target="_blank" rel="noopener noreferrer" className="text-[var(--brand)] text-[10px] font-semibold hover:underline">LinkedIn</a>
+                )}
+                <button onClick={() => openEdit(p)} className="text-[var(--text-3)] text-[10px] hover:text-[var(--text)]">Edit</button>
+                <button onClick={() => deletePerson(p.id)} className="text-red-400 text-[10px] hover:underline">Del</button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Pagination */}
+      {data && data.totalPages > 1 && (
+        <div className="flex items-center justify-center gap-3 mt-2">
+          <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1} className="px-3 py-1 text-[11px] bg-[var(--bg-alt)] rounded-lg disabled:opacity-30">Prev</button>
+          <span className="text-[11px] text-[var(--text-3)]">{page}/{data.totalPages} · {data.total} people</span>
+          <button onClick={() => setPage(p => Math.min(data.totalPages, p + 1))} disabled={page === data.totalPages} className="px-3 py-1 text-[11px] bg-[var(--bg-alt)] rounded-lg disabled:opacity-30">Next</button>
+        </div>
+      )}
+
+      {/* Add / Edit dialog */}
+      {addOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4" onClick={() => { setAddOpen(false); setEditPerson(null); }}>
+          <div className="bg-[var(--surface)] max-w-2xl w-full max-h-[90vh] rounded-2xl overflow-hidden flex flex-col" onClick={e => e.stopPropagation()}>
+            <div className="p-4 border-b border-[var(--line)] flex items-center justify-between">
+              <div className="text-[16px] font-bold">{editPerson ? `Edit ${editPerson.name}` : 'Add person'}</div>
+              <button onClick={() => { setAddOpen(false); setEditPerson(null); }} className="text-[var(--text-3)] text-[20px]">×</button>
+            </div>
+            <div className="flex-1 overflow-y-auto p-4 space-y-3">
+              <div className="grid sm:grid-cols-2 gap-3">
+                <Field label="Name *" value={form.name} onChange={v => setForm(f => ({ ...f, name: v }))} placeholder="Francesco Milleri" />
+                <Field label="Title" value={form.title} onChange={v => setForm(f => ({ ...f, title: v }))} placeholder="CEO & Chairman" />
+                <Field label="Company" value={form.company_current} onChange={v => setForm(f => ({ ...f, company_current: v }))} placeholder="EssilorLuxottica" />
+                <Field label="Department" value={form.department} onChange={v => setForm(f => ({ ...f, department: v }))} placeholder="C-Suite / Marketing / Product…" />
+                <Field label="Seniority" value={form.seniority} onChange={v => setForm(f => ({ ...f, seniority: v }))} placeholder="C-Level / VP / Director / Manager" />
+                <Field label="Location" value={form.location} onChange={v => setForm(f => ({ ...f, location: v }))} placeholder="Milan, Italy" />
+                <Field label="LinkedIn" value={form.linkedin_url} onChange={v => setForm(f => ({ ...f, linkedin_url: v }))} placeholder="https://linkedin.com/in/..." />
+                <Field label="Email" value={form.email} onChange={v => setForm(f => ({ ...f, email: v }))} placeholder="f.milleri@example.com" />
+                <Field label="Phone" value={form.phone} onChange={v => setForm(f => ({ ...f, phone: v }))} placeholder="+39 ..." />
+                <Field label="Tenure" value={form.tenure} onChange={v => setForm(f => ({ ...f, tenure: v }))} placeholder="8 years" />
+              </div>
+              <Field label="Linked brands (comma-separated handles)" value={form.brand_handles} onChange={v => setForm(f => ({ ...f, brand_handles: v }))} placeholder="rayban, oakley, persol, oliverpeoples" />
+              <Field label="Previous companies (comma-separated)" value={form.previous_companies} onChange={v => setForm(f => ({ ...f, previous_companies: v }))} placeholder="Luxottica, McKinsey" />
+              <Field label="Tags (comma-separated)" value={form.tags} onChange={v => setForm(f => ({ ...f, tags: v }))} placeholder="leadership, strategy, acquisition" />
+              <label className="block">
+                <div className="text-[10px] uppercase tracking-wider text-[var(--text-3)] font-bold mb-1">Bio / notes</div>
+                <textarea value={form.bio} onChange={e => setForm(f => ({ ...f, bio: e.target.value }))} placeholder="Background, notable achievements…"
+                  className="w-full bg-[var(--bg-alt)] rounded-lg px-3 py-2 text-[12px] outline-none min-h-[80px] resize-y" />
+              </label>
+            </div>
+            <div className="p-4 border-t border-[var(--line)] flex justify-end gap-2">
+              <button onClick={() => { setAddOpen(false); setEditPerson(null); }} className="px-3 py-1.5 text-[12px] bg-[var(--bg-alt)] rounded-lg">Cancel</button>
+              <button onClick={savePerson} disabled={formSaving || !form.name.trim()} className="px-4 py-1.5 text-[12px] font-semibold bg-[var(--brand)] text-white rounded-lg disabled:opacity-50">
+                {formSaving ? 'Saving…' : editPerson ? 'Save changes' : 'Add person'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
