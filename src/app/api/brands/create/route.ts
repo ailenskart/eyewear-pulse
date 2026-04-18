@@ -113,6 +113,7 @@ async function upsertBrand(request: NextRequest) {
     price_range: body.price_range ? String(body.price_range).trim() : null,
     subcategory: body.subcategory ? String(body.subcategory).trim() : null,
     country: body.country ? String(body.country).trim() : null,
+    source_country: body.source_country ? String(body.source_country).trim() : null,
     hq_city: body.hq_city ? String(body.hq_city).trim() : null,
     notes: body.notes ? String(body.notes).trim() : null,
     tier,

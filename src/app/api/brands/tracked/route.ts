@@ -143,7 +143,7 @@ export async function PATCH(request: NextRequest) {
   const { handle, ...rest } = body;
   const allowed: Record<string, unknown> = {};
   const editableFields = [
-    'name', 'category', 'region', 'price_range', 'subcategory', 'country',
+    'name', 'category', 'region', 'price_range', 'subcategory', 'country', 'source_country',
     'website', 'notes', 'tier', 'active',
     'instagram_url', 'facebook_url', 'twitter_url', 'tiktok_url', 'youtube_url', 'linkedin_url',
     'logo_url', 'founded_year', 'employee_count', 'hq_city',

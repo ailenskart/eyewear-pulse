@@ -45,6 +45,7 @@ interface ParsedBrand {
   website?: string;
   notes?: string;
   tier?: 'fast' | 'mid' | 'full';
+  source_country?: string;
   // Extended social fields (all optional)
   instagram_url?: string;
   facebook_url?: string;
@@ -134,6 +135,9 @@ function parseCsv(text: string): ParsedBrand[] {
     price_range: 'price_range', pricerange: 'price_range', price: 'price_range', 'price range': 'price_range',
     subcategory: 'subcategory',
     country: 'country',
+    source_country: 'source_country', sourcecountry: 'source_country', 'source country': 'source_country',
+    source: 'source_country', sourced_from: 'source_country', sourced_in: 'source_country',
+    manufactured_in: 'source_country', made_in: 'source_country', origin: 'source_country',
     website: 'website', url: 'website', site: 'website',
     notes: 'notes', description: 'notes',
     tier: 'tier',
@@ -181,6 +185,7 @@ function parseCsv(text: string): ParsedBrand[] {
       price_range: row.price_range?.trim() || undefined,
       subcategory: row.subcategory?.trim() || undefined,
       country: row.country?.trim() || undefined,
+      source_country: row.source_country?.trim() || undefined,
       website: row.website?.trim() || undefined,
       notes: row.notes?.trim() || undefined,
       tier: row.tier ? normalizeTier(row.tier) : undefined,
@@ -232,6 +237,7 @@ function parseJsonArray(raw: unknown): ParsedBrand[] {
       price_range: item.price_range ? String(item.price_range) : (item.priceRange ? String(item.priceRange) : undefined),
       subcategory: item.subcategory ? String(item.subcategory) : undefined,
       country: item.country ? String(item.country) : undefined,
+      source_country: item.source_country ? String(item.source_country) : (item.origin ? String(item.origin) : (item.made_in ? String(item.made_in) : undefined)),
       website: item.website ? String(item.website) : (item.url ? String(item.url) : undefined),
       notes: item.notes ? String(item.notes) : (item.description ? String(item.description) : undefined),
       tier: item.tier ? normalizeTier(String(item.tier)) : undefined,
@@ -357,6 +363,7 @@ export async function POST(request: NextRequest) {
     price_range: r.price_range || null,
     subcategory: r.subcategory || null,
     country: r.country || null,
+    source_country: r.source_country || null,
     website: r.website || null,
     notes: r.notes || null,
     tier: r.tier || 'full',

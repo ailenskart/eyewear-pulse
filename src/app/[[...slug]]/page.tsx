@@ -2793,6 +2793,7 @@ interface TrackedBrand {
   price_range: string | null;
   subcategory: string | null;
   country: string | null;
+  source_country: string | null;
   tier: 'fast' | 'mid' | 'full';
   active: boolean;
   source: string;
@@ -2950,7 +2951,7 @@ function BrandsManager() {
   const openNew = () => {
     setEditBrand({
       handle: '', name: '', category: null, region: null, price_range: null,
-      subcategory: null, country: null, tier: 'full', active: true, source: 'manual',
+      subcategory: null, country: null, source_country: null, tier: 'full', active: true, source: 'manual',
       posts_scraped: 0, posts_count: 0, products_count: 0, last_scraped_at: null, added_at: new Date().toISOString(),
       website: null, notes: null,
       instagram_url: null, facebook_url: null, twitter_url: null,
@@ -3039,7 +3040,7 @@ function BrandsManager() {
               const j = await res.json();
               const brands = j.brands || [];
               if (brands.length === 0) { alert('No brands to export.'); return; }
-              const headers = ['handle','name','category','region','price_range','subcategory','country','hq_city','tier','posts_count','products_count','website','instagram_url','facebook_url','twitter_url','tiktok_url','youtube_url','linkedin_url','logo_url','founded_year','employee_count','notes','active','source','last_scraped_at','added_at'];
+              const headers = ['handle','name','category','region','price_range','subcategory','country','source_country','hq_city','tier','posts_count','products_count','website','instagram_url','facebook_url','twitter_url','tiktok_url','youtube_url','linkedin_url','logo_url','founded_year','employee_count','notes','active','source','last_scraped_at','added_at'];
               const csvRows = [headers.join(',')];
               for (const b of brands as TrackedBrand[]) {
                 csvRows.push(headers.map(h => {
@@ -3303,6 +3304,7 @@ function BrandsManager() {
                                   <div className="text-[10px] uppercase tracking-wider text-[var(--text-3)] font-bold mb-2">Company</div>
                                   <dl className="space-y-1 text-[11px]">
                                     <div className="flex gap-2"><dt className="text-[var(--text-3)] w-20">Country</dt><dd>{b.country || '—'}</dd></div>
+                                    <div className="flex gap-2"><dt className="text-[var(--text-3)] w-20">Source</dt><dd>{b.source_country || '—'}</dd></div>
                                     <div className="flex gap-2"><dt className="text-[var(--text-3)] w-20">HQ city</dt><dd>{b.hq_city || '—'}</dd></div>
                                     <div className="flex gap-2"><dt className="text-[var(--text-3)] w-20">Founded</dt><dd>{b.founded_year || '—'}</dd></div>
                                     <div className="flex gap-2"><dt className="text-[var(--text-3)] w-20">Employees</dt><dd>{b.employee_count ? b.employee_count.toLocaleString() : '—'}</dd></div>
@@ -3453,7 +3455,8 @@ function BrandEditDialog({
               <Field label="Region" value={b.region} onChange={v => set('region', v || null)} placeholder="Europe / North America…" />
               <Field label="Price range" value={b.price_range} onChange={v => set('price_range', v || null)} placeholder="$ / $$ / $$$ / $$$$" />
               <Field label="Subcategory" value={b.subcategory} onChange={v => set('subcategory', v || null)} placeholder="Sunglasses / Optical / Both" />
-              <Field label="Country" value={b.country} onChange={v => set('country', v || null)} placeholder="Italy" />
+              <Field label="Country" value={b.country} onChange={v => set('country', v || null)} placeholder="Italy (HQ / brand origin)" />
+              <Field label="Source country (optional)" value={b.source_country} onChange={v => set('source_country', v || null)} placeholder="Where products are made" />
               <Field label="HQ city" value={b.hq_city} onChange={v => set('hq_city', v || null)} placeholder="Milan" />
               <Field label="Founded year" value={b.founded_year} onChange={v => set('founded_year', v ? parseInt(v) : null)} type="number" placeholder="1937" />
               <Field label="Employees" value={b.employee_count} onChange={v => set('employee_count', v ? parseInt(v) : null)} type="number" placeholder="5000" />
