@@ -105,6 +105,23 @@ async function upsertBrand(request: NextRequest) {
     location: p.location ? String(p.location).trim() : null,
   })).filter(p => p.name);
 
+  // Tags: accept array or comma/semicolon-separated string
+  let tags: string[] | null = null;
+  if (Array.isArray(body.tags)) {
+    tags = (body.tags as unknown[]).map(t => String(t).trim()).filter(Boolean);
+  } else if (typeof body.tags === 'string' && body.tags.trim()) {
+    tags = body.tags.split(/[,;]/).map(t => t.trim()).filter(Boolean);
+  }
+
+  const parseBool = (v: unknown): boolean | null => {
+    if (v === true || v === false) return v;
+    if (v === null || v === undefined || v === '') return null;
+    const s = String(v).toLowerCase().trim();
+    if (['true','yes','y','1'].includes(s)) return true;
+    if (['false','no','n','0'].includes(s)) return false;
+    return null;
+  };
+
   const row = {
     handle,
     name: String(body.name || '').trim() || titlecase(handle),
@@ -130,6 +147,23 @@ async function upsertBrand(request: NextRequest) {
     logo_url: body.logo_url ? String(body.logo_url).trim() : null,
     founded_year: body.founded_year ? Number(body.founded_year) : null,
     employee_count: body.employee_count ? Number(body.employee_count) : null,
+    iso_code: body.iso_code ? String(body.iso_code).trim().toUpperCase() : null,
+    business_type: body.business_type ? String(body.business_type).trim() : null,
+    instagram_followers: body.instagram_followers ? Number(body.instagram_followers) : null,
+    store_count: body.store_count ? Number(body.store_count) : null,
+    revenue_estimate: body.revenue_estimate ? Number(body.revenue_estimate) : null,
+    is_public: parseBool(body.is_public),
+    stock_ticker: body.stock_ticker ? String(body.stock_ticker).trim().toUpperCase() : null,
+    parent_company: body.parent_company ? String(body.parent_company).trim() : null,
+    ownership_type: body.ownership_type ? String(body.ownership_type).trim() : null,
+    has_manufacturing: parseBool(body.has_manufacturing),
+    sustainability_focus: body.sustainability_focus ? String(body.sustainability_focus).trim() : null,
+    ceo_name: body.ceo_name ? String(body.ceo_name).trim() : null,
+    naics_code: body.naics_code ? String(body.naics_code).trim() : null,
+    sic_code: body.sic_code ? String(body.sic_code).trim() : null,
+    description: body.description ? String(body.description).trim() : null,
+    tags,
+    confidence_pct: body.confidence_pct != null && body.confidence_pct !== '' ? Math.max(0, Math.min(100, Math.round(Number(body.confidence_pct)))) : null,
     details: (body.details && typeof body.details === 'object') ? body.details : {},
     people,
     people_updated_at: people.length > 0 ? new Date().toISOString() : null,

@@ -46,7 +46,6 @@ interface ParsedBrand {
   notes?: string;
   tier?: 'fast' | 'mid' | 'full';
   source_country?: string;
-  // Extended social fields (all optional)
   instagram_url?: string;
   facebook_url?: string;
   twitter_url?: string;
@@ -57,6 +56,55 @@ interface ParsedBrand {
   founded_year?: number;
   employee_count?: number;
   hq_city?: string;
+  // Full-profile
+  iso_code?: string;
+  business_type?: string;
+  instagram_followers?: number;
+  store_count?: number;
+  revenue_estimate?: number;
+  is_public?: boolean;
+  stock_ticker?: string;
+  parent_company?: string;
+  ownership_type?: string;
+  has_manufacturing?: boolean;
+  sustainability_focus?: string;
+  ceo_name?: string;
+  naics_code?: string;
+  sic_code?: string;
+  description?: string;
+  tags?: string[];
+  confidence_pct?: number;
+}
+
+function parseBoolCell(raw: string | undefined): boolean | undefined {
+  if (!raw) return undefined;
+  const s = raw.toLowerCase().trim();
+  if (['true','yes','y','1','public','publicly traded'].includes(s)) return true;
+  if (['false','no','n','0','private'].includes(s)) return false;
+  return undefined;
+}
+
+function parseTagsCell(raw: string | undefined): string[] | undefined {
+  if (!raw || !raw.trim()) return undefined;
+  return raw.split(/[,;|]/).map(t => t.trim()).filter(Boolean);
+}
+
+function parseNumCell(raw: string | undefined): number | undefined {
+  if (!raw) return undefined;
+  const trimmed = raw.trim();
+  if (!trimmed) return undefined;
+  // Handle suffixes like 1.2M, 500K, 2B
+  const suffixMatch = trimmed.match(/^([\d,.]+)\s*([kKmMbB])$/);
+  if (suffixMatch) {
+    const base = parseFloat(suffixMatch[1].replace(/,/g, ''));
+    const mult = suffixMatch[2].toLowerCase();
+    if (mult === 'k') return base * 1e3;
+    if (mult === 'm') return base * 1e6;
+    if (mult === 'b') return base * 1e9;
+  }
+  const cleaned = trimmed.replace(/[$,€£¥₹\s]/g, '');
+  const n = parseFloat(cleaned);
+  return Number.isFinite(n) ? n : undefined;
 }
 
 function normalizeUrl(raw: string | undefined | null, prefix: string): string | null {
@@ -139,7 +187,7 @@ function parseCsv(text: string): ParsedBrand[] {
     source: 'source_country', sourced_from: 'source_country', sourced_in: 'source_country',
     manufactured_in: 'source_country', made_in: 'source_country', origin: 'source_country',
     website: 'website', url: 'website', site: 'website',
-    notes: 'notes', description: 'notes',
+    notes: 'notes',
     tier: 'tier',
     instagram_url: 'instagram_url', ig_url: 'instagram_url',
     facebook_url: 'facebook_url', fb_url: 'facebook_url', fb: 'facebook_url', facebook: 'facebook_url',
@@ -152,6 +200,29 @@ function parseCsv(text: string): ParsedBrand[] {
     employee_count: 'employee_count', employees: 'employee_count', headcount: 'employee_count',
     hq_city: 'hq_city', hq: 'hq_city', city: 'hq_city',
     headquarters: 'hq_city',
+    // Full profile
+    id: '__ignore_id__',
+    'company name': 'name', company: 'name',
+    iso_code: 'iso_code', iso: 'iso_code', 'iso code': 'iso_code', countrycode: 'iso_code', country_code: 'iso_code',
+    business_type: 'business_type', 'business type': 'business_type', businesstype: 'business_type',
+    'primary category': 'category',
+    instagram_followers: 'instagram_followers', 'instagram followers': 'instagram_followers', ig_followers: 'instagram_followers', followers: 'instagram_followers',
+    store_count: 'store_count', 'store count': 'store_count', stores: 'store_count', 'number of stores': 'store_count', 'retail stores': 'store_count',
+    revenue_estimate: 'revenue_estimate', 'revenue estimate': 'revenue_estimate', revenue: 'revenue_estimate', sales: 'revenue_estimate', 'annual revenue': 'revenue_estimate',
+    is_public: 'is_public', 'publicly traded': 'is_public', public: 'is_public', 'is public': 'is_public',
+    stock_ticker: 'stock_ticker', 'stock ticker': 'stock_ticker', ticker: 'stock_ticker', stock: 'stock_ticker', symbol: 'stock_ticker',
+    parent_company: 'parent_company', 'parent company': 'parent_company', parent: 'parent_company', owner: 'parent_company',
+    ownership_type: 'ownership_type', 'ownership type': 'ownership_type', ownership: 'ownership_type', 'ownership structure': 'ownership_type',
+    'price tier': 'price_range', pricetier: 'price_range',
+    has_manufacturing: 'has_manufacturing', 'has manufacturing': 'has_manufacturing', manufacturing: 'has_manufacturing', owns_factory: 'has_manufacturing',
+    sustainability_focus: 'sustainability_focus', 'sustainability focus': 'sustainability_focus', sustainability: 'sustainability_focus', sustainable: 'sustainability_focus',
+    ceo_name: 'ceo_name', 'ceo name': 'ceo_name', ceo: 'ceo_name', founder: 'ceo_name',
+    naics_code: 'naics_code', 'naics code': 'naics_code', naics: 'naics_code',
+    sic_code: 'sic_code', 'sic code': 'sic_code', sic: 'sic_code',
+    description: 'description', about: 'description', bio: 'description', summary: 'description',
+    tags: 'tags',
+    confidence_pct: 'confidence_pct', 'confidence %': 'confidence_pct', 'confidence': 'confidence_pct', 'confidence pct': 'confidence_pct',
+    'completeness %': '__ignore_completeness__', completeness: '__ignore_completeness__',
   };
 
   const firstCells = splitLine(lines[0]).map(c => c.toLowerCase());
@@ -197,8 +268,25 @@ function parseCsv(text: string): ParsedBrand[] {
       linkedin_url: row.linkedin_url?.trim() || undefined,
       logo_url: row.logo_url?.trim() || undefined,
       founded_year: row.founded_year ? parseInt(row.founded_year) : undefined,
-      employee_count: row.employee_count ? parseInt(row.employee_count) : undefined,
+      employee_count: row.employee_count ? parseNumCell(row.employee_count) : undefined,
       hq_city: row.hq_city?.trim() || undefined,
+      iso_code: row.iso_code?.trim().toUpperCase() || undefined,
+      business_type: row.business_type?.trim() || undefined,
+      instagram_followers: parseNumCell(row.instagram_followers),
+      store_count: parseNumCell(row.store_count),
+      revenue_estimate: parseNumCell(row.revenue_estimate),
+      is_public: parseBoolCell(row.is_public),
+      stock_ticker: row.stock_ticker?.trim().toUpperCase() || undefined,
+      parent_company: row.parent_company?.trim() || undefined,
+      ownership_type: row.ownership_type?.trim() || undefined,
+      has_manufacturing: parseBoolCell(row.has_manufacturing),
+      sustainability_focus: row.sustainability_focus?.trim() || undefined,
+      ceo_name: row.ceo_name?.trim() || undefined,
+      naics_code: row.naics_code?.trim() || undefined,
+      sic_code: row.sic_code?.trim() || undefined,
+      description: row.description?.trim() || undefined,
+      tags: parseTagsCell(row.tags),
+      confidence_pct: row.confidence_pct ? Math.max(0, Math.min(100, Math.round(parseFloat(row.confidence_pct.replace('%', ''))))) : undefined,
     });
   }
   return rows;
@@ -251,6 +339,23 @@ function parseJsonArray(raw: unknown): ParsedBrand[] {
       founded_year: item.founded_year ? Number(item.founded_year) : (item.founded ? Number(item.founded) : undefined),
       employee_count: item.employee_count ? Number(item.employee_count) : (item.employees ? Number(item.employees) : undefined),
       hq_city: item.hq_city ? String(item.hq_city) : (item.headquarters ? String(item.headquarters) : undefined),
+      iso_code: item.iso_code ? String(item.iso_code).toUpperCase() : undefined,
+      business_type: item.business_type ? String(item.business_type) : undefined,
+      instagram_followers: item.instagram_followers != null ? Number(item.instagram_followers) : (item.followers != null ? Number(item.followers) : undefined),
+      store_count: item.store_count != null ? Number(item.store_count) : (item.stores != null ? Number(item.stores) : undefined),
+      revenue_estimate: item.revenue_estimate != null ? Number(item.revenue_estimate) : (item.revenue != null ? Number(item.revenue) : undefined),
+      is_public: typeof item.is_public === 'boolean' ? item.is_public : parseBoolCell(item.is_public ? String(item.is_public) : (item['publicly_traded'] ? String(item['publicly_traded']) : undefined)),
+      stock_ticker: item.stock_ticker ? String(item.stock_ticker).toUpperCase() : (item.ticker ? String(item.ticker).toUpperCase() : undefined),
+      parent_company: item.parent_company ? String(item.parent_company) : (item.parent ? String(item.parent) : undefined),
+      ownership_type: item.ownership_type ? String(item.ownership_type) : (item.ownership ? String(item.ownership) : undefined),
+      has_manufacturing: typeof item.has_manufacturing === 'boolean' ? item.has_manufacturing : parseBoolCell(item.has_manufacturing ? String(item.has_manufacturing) : undefined),
+      sustainability_focus: item.sustainability_focus ? String(item.sustainability_focus) : (item.sustainability ? String(item.sustainability) : undefined),
+      ceo_name: item.ceo_name ? String(item.ceo_name) : (item.ceo ? String(item.ceo) : undefined),
+      naics_code: item.naics_code ? String(item.naics_code) : (item.naics ? String(item.naics) : undefined),
+      sic_code: item.sic_code ? String(item.sic_code) : (item.sic ? String(item.sic) : undefined),
+      description: item.description ? String(item.description) : (item.about ? String(item.about) : undefined),
+      tags: Array.isArray(item.tags) ? (item.tags as unknown[]).map(t => String(t).trim()).filter(Boolean) : (typeof item.tags === 'string' ? parseTagsCell(item.tags as string) : undefined),
+      confidence_pct: item.confidence_pct != null ? Math.max(0, Math.min(100, Math.round(Number(item.confidence_pct)))) : undefined,
     });
   }
   return out;
@@ -379,6 +484,23 @@ export async function POST(request: NextRequest) {
     founded_year: r.founded_year || null,
     employee_count: r.employee_count || null,
     hq_city: r.hq_city || null,
+    iso_code: r.iso_code || null,
+    business_type: r.business_type || null,
+    instagram_followers: r.instagram_followers ?? null,
+    store_count: r.store_count ?? null,
+    revenue_estimate: r.revenue_estimate ?? null,
+    is_public: typeof r.is_public === 'boolean' ? r.is_public : null,
+    stock_ticker: r.stock_ticker || null,
+    parent_company: r.parent_company || null,
+    ownership_type: r.ownership_type || null,
+    has_manufacturing: typeof r.has_manufacturing === 'boolean' ? r.has_manufacturing : null,
+    sustainability_focus: r.sustainability_focus || null,
+    ceo_name: r.ceo_name || null,
+    naics_code: r.naics_code || null,
+    sic_code: r.sic_code || null,
+    description: r.description || null,
+    tags: r.tags || null,
+    confidence_pct: r.confidence_pct ?? null,
     added_at: now,
   }));
 

@@ -2817,6 +2817,24 @@ interface TrackedBrand {
   details: Record<string, unknown> | null;
   people: BrandPerson[] | null;
   people_updated_at: string | null;
+  iso_code: string | null;
+  business_type: string | null;
+  instagram_followers: number | null;
+  store_count: number | null;
+  revenue_estimate: number | null;
+  is_public: boolean | null;
+  stock_ticker: string | null;
+  parent_company: string | null;
+  ownership_type: string | null;
+  has_manufacturing: boolean | null;
+  sustainability_focus: string | null;
+  ceo_name: string | null;
+  naics_code: string | null;
+  sic_code: string | null;
+  description: string | null;
+  tags: string[] | null;
+  confidence_pct: number | null;
+  completeness_pct: number | null;
 }
 
 interface UploadLog {
@@ -2958,6 +2976,11 @@ function BrandsManager() {
       tiktok_url: null, youtube_url: null, linkedin_url: null,
       logo_url: null, founded_year: null, employee_count: null, hq_city: null,
       details: {}, people: [], people_updated_at: null,
+      iso_code: null, business_type: null, instagram_followers: null, store_count: null,
+      revenue_estimate: null, is_public: null, stock_ticker: null, parent_company: null,
+      ownership_type: null, has_manufacturing: null, sustainability_focus: null, ceo_name: null,
+      naics_code: null, sic_code: null, description: null, tags: null,
+      confidence_pct: null, completeness_pct: 0,
     });
     setEditOpen(true);
   };
@@ -3040,13 +3063,23 @@ function BrandsManager() {
               const j = await res.json();
               const brands = j.brands || [];
               if (brands.length === 0) { alert('No brands to export.'); return; }
-              const headers = ['handle','name','category','region','price_range','subcategory','country','source_country','hq_city','tier','posts_count','products_count','website','instagram_url','facebook_url','twitter_url','tiktok_url','youtube_url','linkedin_url','logo_url','founded_year','employee_count','notes','active','source','last_scraped_at','added_at'];
+              const headers = [
+                'handle','name','category','business_type','region','country','iso_code','source_country','hq_city','founded_year',
+                'website','instagram_url','instagram_followers','facebook_url','twitter_url','linkedin_url','youtube_url','tiktok_url',
+                'employee_count','store_count','revenue_estimate','is_public','stock_ticker','parent_company','ownership_type','price_range',
+                'has_manufacturing','sustainability_focus','ceo_name','naics_code','sic_code',
+                'subcategory','logo_url','tier','posts_count','products_count','completeness_pct','confidence_pct',
+                'tags','description','notes','active','source','last_scraped_at','added_at',
+              ];
               const csvRows = [headers.join(',')];
               for (const b of brands as TrackedBrand[]) {
                 csvRows.push(headers.map(h => {
                   const v = (b as unknown as Record<string, unknown>)[h];
                   if (v === null || v === undefined) return '';
-                  const s = String(v);
+                  let s: string;
+                  if (Array.isArray(v)) s = v.join(';');
+                  else if (typeof v === 'boolean') s = v ? 'yes' : 'no';
+                  else s = String(v);
                   return s.includes(',') || s.includes('"') || s.includes('\n') ? `"${s.replace(/"/g, '""')}"` : s;
                 }).join(','));
               }
@@ -3275,6 +3308,32 @@ function BrandsManager() {
                         {expanded && (
                           <tr className="border-b border-[var(--line)] bg-[var(--bg-alt)]/30">
                             <td colSpan={9} className="p-4">
+                              {/* Top bar: completeness + tags + description */}
+                              <div className="flex items-start gap-3 mb-3 flex-wrap">
+                                {b.completeness_pct !== null && (
+                                  <div className="flex items-center gap-1.5 text-[10px]">
+                                    <div className="w-14 h-1.5 bg-[var(--bg-alt)] rounded-full overflow-hidden">
+                                      <div className={`h-full rounded-full ${b.completeness_pct >= 75 ? 'bg-emerald-500' : b.completeness_pct >= 40 ? 'bg-amber-500' : 'bg-red-500'}`} style={{ width: `${b.completeness_pct}%` }} />
+                                    </div>
+                                    <span className="font-semibold text-[var(--text-2)]">{b.completeness_pct}% complete</span>
+                                  </div>
+                                )}
+                                {b.confidence_pct != null && (
+                                  <div className="text-[10px] px-2 py-0.5 bg-[var(--brand)]/15 text-[var(--brand)] rounded font-semibold">
+                                    Confidence {b.confidence_pct}%
+                                  </div>
+                                )}
+                                {b.tags && b.tags.length > 0 && (
+                                  <div className="flex gap-1 flex-wrap">
+                                    {b.tags.map(t => (
+                                      <span key={t} className="text-[9px] px-1.5 py-0.5 bg-[var(--bg-alt)] rounded text-[var(--text-2)] font-semibold">#{t}</span>
+                                    ))}
+                                  </div>
+                                )}
+                              </div>
+                              {b.description && (
+                                <p className="text-[11px] text-[var(--text-2)] leading-relaxed mb-3 max-w-3xl">{b.description}</p>
+                              )}
                               <div className="grid sm:grid-cols-2 gap-4">
                                 {/* Social links */}
                                 <div>
@@ -3303,13 +3362,23 @@ function BrandsManager() {
                                 <div>
                                   <div className="text-[10px] uppercase tracking-wider text-[var(--text-3)] font-bold mb-2">Company</div>
                                   <dl className="space-y-1 text-[11px]">
-                                    <div className="flex gap-2"><dt className="text-[var(--text-3)] w-20">Country</dt><dd>{b.country || '—'}</dd></div>
-                                    <div className="flex gap-2"><dt className="text-[var(--text-3)] w-20">Source</dt><dd>{b.source_country || '—'}</dd></div>
-                                    <div className="flex gap-2"><dt className="text-[var(--text-3)] w-20">HQ city</dt><dd>{b.hq_city || '—'}</dd></div>
-                                    <div className="flex gap-2"><dt className="text-[var(--text-3)] w-20">Founded</dt><dd>{b.founded_year || '—'}</dd></div>
-                                    <div className="flex gap-2"><dt className="text-[var(--text-3)] w-20">Employees</dt><dd>{b.employee_count ? b.employee_count.toLocaleString() : '—'}</dd></div>
-                                    <div className="flex gap-2"><dt className="text-[var(--text-3)] w-20">Price</dt><dd>{b.price_range || '—'}</dd></div>
-                                    <div className="flex gap-2"><dt className="text-[var(--text-3)] w-20">Source</dt><dd>{b.source}</dd></div>
+                                    <div className="flex gap-2"><dt className="text-[var(--text-3)] w-24">Country</dt><dd>{b.country || '—'}{b.iso_code ? ` (${b.iso_code})` : ''}</dd></div>
+                                    <div className="flex gap-2"><dt className="text-[var(--text-3)] w-24">Source</dt><dd>{b.source_country || '—'}</dd></div>
+                                    <div className="flex gap-2"><dt className="text-[var(--text-3)] w-24">HQ city</dt><dd>{b.hq_city || '—'}</dd></div>
+                                    <div className="flex gap-2"><dt className="text-[var(--text-3)] w-24">Founded</dt><dd>{b.founded_year || '—'}</dd></div>
+                                    <div className="flex gap-2"><dt className="text-[var(--text-3)] w-24">Business type</dt><dd>{b.business_type || '—'}</dd></div>
+                                    <div className="flex gap-2"><dt className="text-[var(--text-3)] w-24">Parent</dt><dd>{b.parent_company || '—'}</dd></div>
+                                    <div className="flex gap-2"><dt className="text-[var(--text-3)] w-24">Ownership</dt><dd>{b.ownership_type || '—'}{b.is_public && b.stock_ticker ? ` · ${b.stock_ticker}` : ''}</dd></div>
+                                    <div className="flex gap-2"><dt className="text-[var(--text-3)] w-24">CEO</dt><dd>{b.ceo_name || '—'}</dd></div>
+                                    <div className="flex gap-2"><dt className="text-[var(--text-3)] w-24">Employees</dt><dd>{b.employee_count ? b.employee_count.toLocaleString() : '—'}</dd></div>
+                                    <div className="flex gap-2"><dt className="text-[var(--text-3)] w-24">Stores</dt><dd>{b.store_count ? b.store_count.toLocaleString() : '—'}</dd></div>
+                                    <div className="flex gap-2"><dt className="text-[var(--text-3)] w-24">Revenue</dt><dd>{b.revenue_estimate ? '$' + (b.revenue_estimate >= 1e9 ? (b.revenue_estimate / 1e9).toFixed(1) + 'B' : b.revenue_estimate >= 1e6 ? (b.revenue_estimate / 1e6).toFixed(1) + 'M' : b.revenue_estimate.toLocaleString()) : '—'}</dd></div>
+                                    <div className="flex gap-2"><dt className="text-[var(--text-3)] w-24">Price tier</dt><dd>{b.price_range || '—'}</dd></div>
+                                    <div className="flex gap-2"><dt className="text-[var(--text-3)] w-24">Mfg</dt><dd>{b.has_manufacturing === null ? '—' : b.has_manufacturing ? 'Yes' : 'No'}</dd></div>
+                                    <div className="flex gap-2"><dt className="text-[var(--text-3)] w-24">Sustainability</dt><dd>{b.sustainability_focus || '—'}</dd></div>
+                                    <div className="flex gap-2"><dt className="text-[var(--text-3)] w-24">IG followers</dt><dd>{b.instagram_followers ? b.instagram_followers.toLocaleString() : '—'}</dd></div>
+                                    <div className="flex gap-2"><dt className="text-[var(--text-3)] w-24">NAICS / SIC</dt><dd>{[b.naics_code, b.sic_code].filter(Boolean).join(' · ') || '—'}</dd></div>
+                                    <div className="flex gap-2"><dt className="text-[var(--text-3)] w-24">Source</dt><dd>{b.source}</dd></div>
                                   </dl>
                                   {b.notes && <p className="text-[10px] text-[var(--text-2)] mt-2 leading-snug">{b.notes}</p>}
                                 </div>
@@ -3456,11 +3525,86 @@ function BrandEditDialog({
               <Field label="Price range" value={b.price_range} onChange={v => set('price_range', v || null)} placeholder="$ / $$ / $$$ / $$$$" />
               <Field label="Subcategory" value={b.subcategory} onChange={v => set('subcategory', v || null)} placeholder="Sunglasses / Optical / Both" />
               <Field label="Country" value={b.country} onChange={v => set('country', v || null)} placeholder="Italy (HQ / brand origin)" />
+              <Field label="ISO code" value={b.iso_code} onChange={v => set('iso_code', v ? v.toUpperCase() : null)} placeholder="ITA" />
               <Field label="Source country (optional)" value={b.source_country} onChange={v => set('source_country', v || null)} placeholder="Where products are made" />
               <Field label="HQ city" value={b.hq_city} onChange={v => set('hq_city', v || null)} placeholder="Milan" />
               <Field label="Founded year" value={b.founded_year} onChange={v => set('founded_year', v ? parseInt(v) : null)} type="number" placeholder="1937" />
-              <Field label="Employees" value={b.employee_count} onChange={v => set('employee_count', v ? parseInt(v) : null)} type="number" placeholder="5000" />
+              <Field label="Business type" value={b.business_type} onChange={v => set('business_type', v || null)} placeholder="D2C / B2B / Retailer / OEM" />
             </div>
+          </div>
+
+          {/* Company / financial */}
+          <div>
+            <div className="text-[11px] uppercase tracking-wider font-bold text-[var(--text-2)] mb-2">Company & ownership</div>
+            <div className="grid sm:grid-cols-2 gap-3">
+              <Field label="Parent company" value={b.parent_company} onChange={v => set('parent_company', v || null)} placeholder="EssilorLuxottica" />
+              <Field label="Ownership type" value={b.ownership_type} onChange={v => set('ownership_type', v || null)} placeholder="Public / Private / PE-owned / VC-backed" />
+              <label className="block">
+                <div className="text-[10px] uppercase tracking-wider text-[var(--text-3)] font-bold mb-1">Publicly traded</div>
+                <select value={b.is_public === null ? '' : b.is_public ? 'yes' : 'no'}
+                  onChange={e => set('is_public', e.target.value === '' ? null : e.target.value === 'yes')}
+                  className="w-full bg-[var(--bg-alt)] rounded-lg px-3 py-1.5 text-[12px] outline-none">
+                  <option value="">—</option>
+                  <option value="yes">Yes</option>
+                  <option value="no">No</option>
+                </select>
+              </label>
+              <Field label="Stock ticker" value={b.stock_ticker} onChange={v => set('stock_ticker', v ? v.toUpperCase() : null)} placeholder="NYSE:EL" />
+              <Field label="Price tier" value={b.price_range} onChange={v => set('price_range', v || null)} placeholder="$ / $$ / $$$ / $$$$" />
+              <Field label="Subcategory" value={b.subcategory} onChange={v => set('subcategory', v || null)} placeholder="Sunglasses / Optical / Both" />
+              <Field label="Employees" value={b.employee_count} onChange={v => set('employee_count', v ? parseInt(v) : null)} type="number" placeholder="5000" />
+              <Field label="Number of stores" value={b.store_count} onChange={v => set('store_count', v ? parseInt(v) : null)} type="number" placeholder="850" />
+              <Field label="Revenue estimate (USD)" value={b.revenue_estimate} onChange={v => set('revenue_estimate', v ? parseFloat(v) : null)} type="number" placeholder="1200000000" />
+              <Field label="CEO name" value={b.ceo_name} onChange={v => set('ceo_name', v || null)} placeholder="Francesco Milleri" />
+              <label className="block">
+                <div className="text-[10px] uppercase tracking-wider text-[var(--text-3)] font-bold mb-1">Has manufacturing</div>
+                <select value={b.has_manufacturing === null ? '' : b.has_manufacturing ? 'yes' : 'no'}
+                  onChange={e => set('has_manufacturing', e.target.value === '' ? null : e.target.value === 'yes')}
+                  className="w-full bg-[var(--bg-alt)] rounded-lg px-3 py-1.5 text-[12px] outline-none">
+                  <option value="">—</option>
+                  <option value="yes">Yes</option>
+                  <option value="no">No</option>
+                </select>
+              </label>
+              <Field label="Sustainability focus" value={b.sustainability_focus} onChange={v => set('sustainability_focus', v || null)} placeholder="Yes / No / Partial / details" />
+            </div>
+          </div>
+
+          {/* Classification codes */}
+          <div>
+            <div className="text-[11px] uppercase tracking-wider font-bold text-[var(--text-2)] mb-2">Classification</div>
+            <div className="grid sm:grid-cols-2 gap-3">
+              <Field label="NAICS code" value={b.naics_code} onChange={v => set('naics_code', v || null)} placeholder="339115" />
+              <Field label="SIC code" value={b.sic_code} onChange={v => set('sic_code', v || null)} placeholder="3851" />
+              <Field label="Instagram followers" value={b.instagram_followers} onChange={v => set('instagram_followers', v ? parseInt(v) : null)} type="number" placeholder="23000000" />
+              <Field label="Confidence % (0-100)" value={b.confidence_pct} onChange={v => set('confidence_pct', v ? Math.max(0, Math.min(100, parseInt(v))) : null)} type="number" placeholder="85" />
+            </div>
+          </div>
+
+          {/* Tags */}
+          <div>
+            <label className="block">
+              <div className="text-[10px] uppercase tracking-wider text-[var(--text-3)] font-bold mb-1">Tags (comma-separated)</div>
+              <input
+                value={(b.tags || []).join(', ')}
+                onChange={e => set('tags', e.target.value.split(',').map(t => t.trim()).filter(Boolean))}
+                placeholder="threat, luxury, collab-target"
+                className="w-full bg-[var(--bg-alt)] rounded-lg px-3 py-1.5 text-[12px] outline-none"
+              />
+            </label>
+          </div>
+
+          {/* Description */}
+          <div>
+            <label className="block">
+              <div className="text-[10px] uppercase tracking-wider text-[var(--text-3)] font-bold mb-1">Description</div>
+              <textarea
+                value={b.description || ''}
+                onChange={e => set('description', e.target.value || null)}
+                placeholder="Full company description — what they do, positioning, history."
+                className="w-full bg-[var(--bg-alt)] rounded-lg px-3 py-2 text-[12px] outline-none min-h-[80px] resize-y"
+              />
+            </label>
           </div>
 
           {/* Cron tier */}

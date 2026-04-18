@@ -81,10 +81,31 @@ export async function GET(request: NextRequest) {
     }
   }
 
+  // Fields used to compute completeness %. Weighted equally.
+  const COMPLETENESS_FIELDS = [
+    'name', 'category', 'region', 'country', 'hq_city', 'founded_year',
+    'website', 'instagram_url', 'facebook_url', 'linkedin_url',
+    'parent_company', 'ownership_type', 'business_type', 'price_range',
+    'employee_count', 'store_count', 'ceo_name', 'description',
+    'iso_code', 'tags',
+  ];
+  const computeCompleteness = (r: Record<string, unknown>): number => {
+    let filled = 0;
+    for (const f of COMPLETENESS_FIELDS) {
+      const v = r[f];
+      if (v === null || v === undefined) continue;
+      if (typeof v === 'string' && v.trim() === '') continue;
+      if (Array.isArray(v) && v.length === 0) continue;
+      filled++;
+    }
+    return Math.round((filled / COMPLETENESS_FIELDS.length) * 100);
+  };
+
   const enriched = rows.map(r => ({
     ...r,
     posts_count: postCounts.get(r.handle) || 0,
     products_count: productCounts.get((r.name || '').toLowerCase()) || 0,
+    completeness_pct: computeCompleteness(r),
   }));
 
   // Upload history
@@ -148,6 +169,10 @@ export async function PATCH(request: NextRequest) {
     'instagram_url', 'facebook_url', 'twitter_url', 'tiktok_url', 'youtube_url', 'linkedin_url',
     'logo_url', 'founded_year', 'employee_count', 'hq_city',
     'details', 'people',
+    'iso_code', 'business_type', 'instagram_followers', 'store_count', 'revenue_estimate',
+    'is_public', 'stock_ticker', 'parent_company', 'ownership_type',
+    'has_manufacturing', 'sustainability_focus', 'ceo_name',
+    'naics_code', 'sic_code', 'description', 'tags', 'confidence_pct',
   ];
   for (const k of editableFields) {
     if (k in rest) allowed[k] = rest[k];
