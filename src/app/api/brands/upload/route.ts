@@ -45,6 +45,26 @@ interface ParsedBrand {
   website?: string;
   notes?: string;
   tier?: 'fast' | 'mid' | 'full';
+  // Extended social fields (all optional)
+  instagram_url?: string;
+  facebook_url?: string;
+  twitter_url?: string;
+  tiktok_url?: string;
+  youtube_url?: string;
+  linkedin_url?: string;
+  logo_url?: string;
+  founded_year?: number;
+  employee_count?: number;
+  hq_city?: string;
+}
+
+function normalizeUrl(raw: string | undefined | null, prefix: string): string | null {
+  if (!raw) return null;
+  const trimmed = String(raw).trim();
+  if (!trimmed) return null;
+  if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) return trimmed;
+  const clean = trimmed.replace(/^@/, '').replace(/\/$/, '');
+  return `${prefix}${clean}`;
 }
 
 /* ─── Normalizers ─── */
@@ -117,6 +137,17 @@ function parseCsv(text: string): ParsedBrand[] {
     website: 'website', url: 'website', site: 'website',
     notes: 'notes', description: 'notes',
     tier: 'tier',
+    instagram_url: 'instagram_url', ig_url: 'instagram_url',
+    facebook_url: 'facebook_url', fb_url: 'facebook_url', fb: 'facebook_url', facebook: 'facebook_url',
+    twitter_url: 'twitter_url', x_url: 'twitter_url', x: 'twitter_url', twitter: 'twitter_url',
+    tiktok_url: 'tiktok_url', tiktok: 'tiktok_url', tt: 'tiktok_url',
+    youtube_url: 'youtube_url', youtube: 'youtube_url', yt: 'youtube_url',
+    linkedin_url: 'linkedin_url', linkedin: 'linkedin_url', li: 'linkedin_url',
+    logo_url: 'logo_url', logo: 'logo_url',
+    founded_year: 'founded_year', founded: 'founded_year', year_founded: 'founded_year',
+    employee_count: 'employee_count', employees: 'employee_count', headcount: 'employee_count',
+    hq_city: 'hq_city', hq: 'hq_city', city: 'hq_city',
+    headquarters: 'hq_city',
   };
 
   const firstCells = splitLine(lines[0]).map(c => c.toLowerCase());
@@ -153,6 +184,16 @@ function parseCsv(text: string): ParsedBrand[] {
       website: row.website?.trim() || undefined,
       notes: row.notes?.trim() || undefined,
       tier: row.tier ? normalizeTier(row.tier) : undefined,
+      instagram_url: normalizeUrl(row.instagram_url, 'https://instagram.com/') || undefined,
+      facebook_url: normalizeUrl(row.facebook_url, 'https://facebook.com/') || undefined,
+      twitter_url: normalizeUrl(row.twitter_url, 'https://x.com/') || undefined,
+      tiktok_url: normalizeUrl(row.tiktok_url, 'https://tiktok.com/@') || undefined,
+      youtube_url: normalizeUrl(row.youtube_url, 'https://youtube.com/@') || undefined,
+      linkedin_url: row.linkedin_url?.trim() || undefined,
+      logo_url: row.logo_url?.trim() || undefined,
+      founded_year: row.founded_year ? parseInt(row.founded_year) : undefined,
+      employee_count: row.employee_count ? parseInt(row.employee_count) : undefined,
+      hq_city: row.hq_city?.trim() || undefined,
     });
   }
   return rows;
@@ -194,6 +235,16 @@ function parseJsonArray(raw: unknown): ParsedBrand[] {
       website: item.website ? String(item.website) : (item.url ? String(item.url) : undefined),
       notes: item.notes ? String(item.notes) : (item.description ? String(item.description) : undefined),
       tier: item.tier ? normalizeTier(String(item.tier)) : undefined,
+      instagram_url: normalizeUrl(String(item.instagram_url || item.instagram || ''), 'https://instagram.com/') || undefined,
+      facebook_url: normalizeUrl(String(item.facebook_url || item.facebook || item.fb || ''), 'https://facebook.com/') || undefined,
+      twitter_url: normalizeUrl(String(item.twitter_url || item.twitter || item.x || ''), 'https://x.com/') || undefined,
+      tiktok_url: normalizeUrl(String(item.tiktok_url || item.tiktok || ''), 'https://tiktok.com/@') || undefined,
+      youtube_url: normalizeUrl(String(item.youtube_url || item.youtube || ''), 'https://youtube.com/@') || undefined,
+      linkedin_url: item.linkedin_url ? String(item.linkedin_url) : (item.linkedin ? String(item.linkedin) : undefined),
+      logo_url: item.logo_url ? String(item.logo_url) : (item.logo ? String(item.logo) : undefined),
+      founded_year: item.founded_year ? Number(item.founded_year) : (item.founded ? Number(item.founded) : undefined),
+      employee_count: item.employee_count ? Number(item.employee_count) : (item.employees ? Number(item.employees) : undefined),
+      hq_city: item.hq_city ? String(item.hq_city) : (item.headquarters ? String(item.headquarters) : undefined),
     });
   }
   return out;
@@ -311,6 +362,16 @@ export async function POST(request: NextRequest) {
     tier: r.tier || 'full',
     active: true,
     source: 'upload',
+    instagram_url: r.instagram_url || `https://instagram.com/${r.handle}`,
+    facebook_url: r.facebook_url || null,
+    twitter_url: r.twitter_url || null,
+    tiktok_url: r.tiktok_url || null,
+    youtube_url: r.youtube_url || null,
+    linkedin_url: r.linkedin_url || null,
+    logo_url: r.logo_url || null,
+    founded_year: r.founded_year || null,
+    employee_count: r.employee_count || null,
+    hq_city: r.hq_city || null,
     added_at: now,
   }));
 

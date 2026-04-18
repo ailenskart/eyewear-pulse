@@ -105,8 +105,18 @@ export async function PATCH(request: NextRequest) {
   }
   const { handle, ...rest } = body;
   const allowed: Record<string, unknown> = {};
-  for (const k of ['name', 'category', 'region', 'price_range', 'subcategory', 'country', 'website', 'notes', 'tier', 'active']) {
+  const editableFields = [
+    'name', 'category', 'region', 'price_range', 'subcategory', 'country',
+    'website', 'notes', 'tier', 'active',
+    'instagram_url', 'facebook_url', 'twitter_url', 'tiktok_url', 'youtube_url', 'linkedin_url',
+    'logo_url', 'founded_year', 'employee_count', 'hq_city',
+    'details', 'people',
+  ];
+  for (const k of editableFields) {
     if (k in rest) allowed[k] = rest[k];
+  }
+  if ('people' in allowed) {
+    allowed.people_updated_at = new Date().toISOString();
   }
   if (Object.keys(allowed).length === 0) {
     return NextResponse.json({ error: 'no updatable fields in body' }, { status: 400 });

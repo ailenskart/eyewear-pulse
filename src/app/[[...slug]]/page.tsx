@@ -2776,18 +2776,44 @@ function Sources() {
 
 /* ═══ Brand Manager — upload, list, manage tracked brands ═══ */
 
+interface BrandPerson {
+  name: string;
+  title: string;
+  linkedin_url: string | null;
+  photo_url: string | null;
+  tenure: string | null;
+  location: string | null;
+}
+
 interface TrackedBrand {
   handle: string;
   name: string;
   category: string | null;
   region: string | null;
   price_range: string | null;
+  subcategory: string | null;
+  country: string | null;
   tier: 'fast' | 'mid' | 'full';
   active: boolean;
   source: string;
   posts_scraped: number;
   last_scraped_at: string | null;
   added_at: string;
+  website: string | null;
+  notes: string | null;
+  instagram_url: string | null;
+  facebook_url: string | null;
+  twitter_url: string | null;
+  tiktok_url: string | null;
+  youtube_url: string | null;
+  linkedin_url: string | null;
+  logo_url: string | null;
+  founded_year: number | null;
+  employee_count: number | null;
+  hq_city: string | null;
+  details: Record<string, unknown> | null;
+  people: BrandPerson[] | null;
+  people_updated_at: string | null;
 }
 
 interface UploadLog {
@@ -2912,6 +2938,58 @@ function BrandsManager() {
     load();
   };
 
+  // Add / Edit dialog state
+  const [editBrand, setEditBrand] = useState<TrackedBrand | null>(null);
+  const [editOpen, setEditOpen] = useState(false);
+  const [expandHandle, setExpandHandle] = useState<string | null>(null);
+  const [scanningPeople, setScanningPeople] = useState<string | null>(null);
+  const [peopleError, setPeopleError] = useState('');
+
+  const openNew = () => {
+    setEditBrand({
+      handle: '', name: '', category: null, region: null, price_range: null,
+      subcategory: null, country: null, tier: 'full', active: true, source: 'manual',
+      posts_scraped: 0, last_scraped_at: null, added_at: new Date().toISOString(),
+      website: null, notes: null,
+      instagram_url: null, facebook_url: null, twitter_url: null,
+      tiktok_url: null, youtube_url: null, linkedin_url: null,
+      logo_url: null, founded_year: null, employee_count: null, hq_city: null,
+      details: {}, people: [], people_updated_at: null,
+    });
+    setEditOpen(true);
+  };
+  const openEdit = (b: TrackedBrand) => { setEditBrand(b); setEditOpen(true); };
+
+  const saveBrand = async (b: TrackedBrand) => {
+    const res = await fetch('/api/brands/create', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(b),
+    });
+    const j = await res.json();
+    if (j.error) { alert(j.error); return; }
+    setEditOpen(false);
+    load();
+  };
+
+  const scanPeople = async (handle: string) => {
+    setScanningPeople(handle);
+    setPeopleError('');
+    try {
+      const res = await fetch('/api/brands/scrape-people', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ handle }),
+      });
+      const j = await res.json();
+      if (j.error) setPeopleError(`${handle}: ${j.error}`);
+      load();
+    } catch (e) {
+      setPeopleError(e instanceof Error ? e.message : 'Scan failed');
+    }
+    setScanningPeople(null);
+  };
+
   return (
     <div>
       {/* Summary header */}
@@ -2944,19 +3022,27 @@ function BrandsManager() {
         </div>
       </div>
 
+      {/* Add single brand + open bulk uploader */}
+      <div className="flex gap-2 mb-4">
+        <button onClick={openNew} className="px-3 py-2 bg-[var(--brand)] text-white text-[12px] font-semibold rounded-lg flex items-center gap-1.5">
+          <span className="text-[14px]">+</span> Add brand
+        </button>
+        <button onClick={() => setUploadOpen(v => !v)} className="px-3 py-2 bg-[var(--bg-alt)] text-[var(--text-2)] text-[12px] font-semibold rounded-lg">
+          {uploadOpen ? 'Hide bulk upload' : 'Bulk upload (CSV / JSON / TXT)'}
+        </button>
+      </div>
+
+      {peopleError && (
+        <div className="mb-3 bg-red-500/10 border border-red-500/30 text-red-400 rounded-lg p-2 text-[11px]">{peopleError}</div>
+      )}
+
       {/* Upload panel */}
-      <div className="bg-[var(--surface)] border border-[var(--line)] rounded-xl p-4 mb-4">
+      <div className={`bg-[var(--surface)] border border-[var(--line)] rounded-xl p-4 mb-4 ${uploadOpen ? '' : 'hidden'}`}>
         <div className="flex items-start justify-between mb-3">
           <div>
-            <div className="text-[14px] font-bold">Upload brands</div>
+            <div className="text-[14px] font-bold">Bulk upload</div>
             <div className="text-[11px] text-[var(--text-3)] mt-0.5">CSV, JSON, or plain text. One handle per line minimum.</div>
           </div>
-          <button
-            onClick={() => setUploadOpen(v => !v)}
-            className="px-3 py-1.5 bg-[var(--brand)] text-white text-[11px] font-semibold rounded-lg"
-          >
-            {uploadOpen ? 'Hide' : 'Show uploader'}
-          </button>
         </div>
 
         {uploadOpen && (
@@ -3095,29 +3181,127 @@ function BrandsManager() {
                   </tr>
                 </thead>
                 <tbody>
-                  {data.brands.map((b, i) => (
-                    <tr key={b.handle} className={`border-b border-[var(--line)] last:border-b-0 ${i % 2 === 0 ? 'bg-transparent' : 'bg-[var(--bg-alt)]/40'}`}>
-                      <td className="py-2 px-3 font-mono text-[var(--brand)] font-semibold">@{b.handle}</td>
-                      <td className="py-2 px-2 font-semibold">{b.name}</td>
-                      <td className="py-2 px-2 text-[var(--text-2)]">{b.category || '—'}</td>
-                      <td className="py-2 px-2 text-[var(--text-2)]">{b.region || '—'}</td>
-                      <td className="py-2 px-2">
-                        <select
-                          value={b.tier}
-                          onChange={e => updateTier(b.handle, e.target.value)}
-                          className={`bg-transparent border border-[var(--line)] rounded px-1.5 py-0.5 text-[10px] font-semibold ${b.tier === 'fast' ? 'text-emerald-500' : b.tier === 'mid' ? 'text-amber-500' : 'text-blue-500'}`}
-                        >
-                          <option value="fast">fast</option>
-                          <option value="mid">mid</option>
-                          <option value="full">full</option>
-                        </select>
-                      </td>
-                      <td className="py-2 px-2 text-[10px] text-[var(--text-3)]">{b.last_scraped_at ? rel(b.last_scraped_at) : 'never'}</td>
-                      <td className="py-2 px-3 text-right">
-                        <button onClick={() => deactivate(b.handle)} className="text-red-400 text-[10px] font-semibold hover:underline">Remove</button>
-                      </td>
-                    </tr>
-                  ))}
+                  {data.brands.map((b, i) => {
+                    const expanded = expandHandle === b.handle;
+                    return (
+                      <>
+                        <tr key={b.handle} className={`border-b border-[var(--line)] ${i % 2 === 0 ? 'bg-transparent' : 'bg-[var(--bg-alt)]/40'}`}>
+                          <td className="py-2 px-3">
+                            <button onClick={() => setExpandHandle(expanded ? null : b.handle)} className="font-mono text-[var(--brand)] font-semibold hover:underline inline-flex items-center gap-1">
+                              <span className="text-[9px]">{expanded ? '▼' : '▶'}</span> @{b.handle}
+                            </button>
+                          </td>
+                          <td className="py-2 px-2 font-semibold">{b.name}</td>
+                          <td className="py-2 px-2 text-[var(--text-2)]">{b.category || '—'}</td>
+                          <td className="py-2 px-2 text-[var(--text-2)]">{b.region || '—'}</td>
+                          <td className="py-2 px-2">
+                            <select value={b.tier} onChange={e => updateTier(b.handle, e.target.value)}
+                              className={`bg-transparent border border-[var(--line)] rounded px-1.5 py-0.5 text-[10px] font-semibold ${b.tier === 'fast' ? 'text-emerald-500' : b.tier === 'mid' ? 'text-amber-500' : 'text-blue-500'}`}>
+                              <option value="fast">fast</option>
+                              <option value="mid">mid</option>
+                              <option value="full">full</option>
+                            </select>
+                          </td>
+                          <td className="py-2 px-2 text-[10px] text-[var(--text-3)]">{b.last_scraped_at ? rel(b.last_scraped_at) : 'never'}</td>
+                          <td className="py-2 px-3 text-right whitespace-nowrap">
+                            <button onClick={() => openEdit(b)} className="text-[var(--text-2)] text-[10px] font-semibold hover:text-[var(--brand)] mr-2">Edit</button>
+                            <button onClick={() => deactivate(b.handle)} className="text-red-400 text-[10px] font-semibold hover:underline">Remove</button>
+                          </td>
+                        </tr>
+                        {expanded && (
+                          <tr className="border-b border-[var(--line)] bg-[var(--bg-alt)]/30">
+                            <td colSpan={7} className="p-4">
+                              <div className="grid sm:grid-cols-2 gap-4">
+                                {/* Social links */}
+                                <div>
+                                  <div className="text-[10px] uppercase tracking-wider text-[var(--text-3)] font-bold mb-2">Social + Web</div>
+                                  <ul className="space-y-1 text-[11px]">
+                                    {[
+                                      { label: 'Instagram', url: b.instagram_url, emoji: '📷' },
+                                      { label: 'Facebook', url: b.facebook_url, emoji: '👥' },
+                                      { label: 'X / Twitter', url: b.twitter_url, emoji: '𝕏' },
+                                      { label: 'TikTok', url: b.tiktok_url, emoji: '🎵' },
+                                      { label: 'YouTube', url: b.youtube_url, emoji: '▶' },
+                                      { label: 'LinkedIn', url: b.linkedin_url, emoji: '💼' },
+                                      { label: 'Website', url: b.website, emoji: '🌐' },
+                                    ].map(s => (
+                                      <li key={s.label} className="flex items-center gap-2">
+                                        <span className="w-4 text-center">{s.emoji}</span>
+                                        <span className="text-[var(--text-3)] w-20">{s.label}</span>
+                                        {s.url ? (
+                                          <a href={s.url} target="_blank" rel="noopener noreferrer" className="text-[var(--brand)] hover:underline truncate">{s.url.replace(/^https?:\/\/(www\.)?/, '')}</a>
+                                        ) : <span className="text-[var(--text-3)]">—</span>}
+                                      </li>
+                                    ))}
+                                  </ul>
+                                </div>
+                                {/* Meta */}
+                                <div>
+                                  <div className="text-[10px] uppercase tracking-wider text-[var(--text-3)] font-bold mb-2">Company</div>
+                                  <dl className="space-y-1 text-[11px]">
+                                    <div className="flex gap-2"><dt className="text-[var(--text-3)] w-20">Country</dt><dd>{b.country || '—'}</dd></div>
+                                    <div className="flex gap-2"><dt className="text-[var(--text-3)] w-20">HQ city</dt><dd>{b.hq_city || '—'}</dd></div>
+                                    <div className="flex gap-2"><dt className="text-[var(--text-3)] w-20">Founded</dt><dd>{b.founded_year || '—'}</dd></div>
+                                    <div className="flex gap-2"><dt className="text-[var(--text-3)] w-20">Employees</dt><dd>{b.employee_count ? b.employee_count.toLocaleString() : '—'}</dd></div>
+                                    <div className="flex gap-2"><dt className="text-[var(--text-3)] w-20">Price</dt><dd>{b.price_range || '—'}</dd></div>
+                                    <div className="flex gap-2"><dt className="text-[var(--text-3)] w-20">Source</dt><dd>{b.source}</dd></div>
+                                  </dl>
+                                  {b.notes && <p className="text-[10px] text-[var(--text-2)] mt-2 leading-snug">{b.notes}</p>}
+                                </div>
+                              </div>
+
+                              {/* People */}
+                              <div className="mt-4">
+                                <div className="flex items-center justify-between mb-2">
+                                  <div className="text-[10px] uppercase tracking-wider text-[var(--text-3)] font-bold">
+                                    People {b.people && b.people.length > 0 ? `(${b.people.length})` : ''}
+                                    {b.people_updated_at && <span className="ml-2 text-[var(--text-3)] normal-case font-normal">· {rel(b.people_updated_at)}</span>}
+                                  </div>
+                                  <button
+                                    onClick={() => scanPeople(b.handle)}
+                                    disabled={scanningPeople === b.handle || !b.linkedin_url}
+                                    className="text-[10px] font-semibold px-2 py-1 bg-[var(--brand)] text-white rounded disabled:opacity-40"
+                                    title={!b.linkedin_url ? 'Add a LinkedIn URL first' : 'Scan LinkedIn for this company\'s people'}
+                                  >
+                                    {scanningPeople === b.handle ? 'Scanning…' : '🔍 Scan LinkedIn people'}
+                                  </button>
+                                </div>
+                                {!b.linkedin_url && (
+                                  <p className="text-[10px] text-[var(--text-3)]">Add a LinkedIn company URL in Edit to enable people scraping.</p>
+                                )}
+                                {b.people && b.people.length > 0 && (
+                                  <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-2">
+                                    {b.people.slice(0, 12).map((p, pi) => (
+                                      <a key={pi} href={p.linkedin_url || '#'} target="_blank" rel="noopener noreferrer"
+                                        className={`flex items-center gap-2 p-2 bg-[var(--surface)] border border-[var(--line)] rounded-lg ${p.linkedin_url ? 'hover:border-[var(--brand)]' : ''}`}>
+                                        {p.photo_url ? (
+                                          <img src={p.photo_url} alt="" className="w-8 h-8 rounded-full object-cover flex-shrink-0 bg-[var(--bg-alt)]" onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }} />
+                                        ) : (
+                                          <div className="w-8 h-8 rounded-full bg-gradient-to-br from-[var(--brand)] to-purple-500 flex items-center justify-center text-white text-[11px] font-bold flex-shrink-0">{p.name.charAt(0)}</div>
+                                        )}
+                                        <div className="min-w-0">
+                                          <div className="text-[11px] font-semibold truncate">{p.name}</div>
+                                          <div className="text-[10px] text-[var(--text-3)] truncate">{p.title}</div>
+                                        </div>
+                                      </a>
+                                    ))}
+                                  </div>
+                                )}
+                              </div>
+
+                              {/* Details JSON */}
+                              {b.details && Object.keys(b.details).length > 0 && (
+                                <div className="mt-4">
+                                  <div className="text-[10px] uppercase tracking-wider text-[var(--text-3)] font-bold mb-1">Details JSON</div>
+                                  <pre className="text-[10px] bg-[var(--bg)] border border-[var(--line)] rounded-lg p-2 overflow-x-auto">{JSON.stringify(b.details, null, 2)}</pre>
+                                </div>
+                              )}
+                            </td>
+                          </tr>
+                        )}
+                      </>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
@@ -3133,6 +3317,155 @@ function BrandsManager() {
           )}
         </>
       )}
+
+      {/* ── Add / Edit Brand Dialog ── */}
+      {editOpen && editBrand && (
+        <BrandEditDialog
+          initial={editBrand}
+          onCancel={() => setEditOpen(false)}
+          onSave={saveBrand}
+        />
+      )}
+    </div>
+  );
+}
+
+/* ── Brand Add/Edit Dialog ── */
+function BrandEditDialog({
+  initial, onCancel, onSave,
+}: {
+  initial: TrackedBrand;
+  onCancel: () => void;
+  onSave: (b: TrackedBrand) => void;
+}) {
+  const [b, setB] = useState<TrackedBrand>(initial);
+  const [detailsJson, setDetailsJson] = useState<string>(JSON.stringify(initial.details || {}, null, 2));
+  const [jsonErr, setJsonErr] = useState('');
+  const isNew = !initial.handle;
+
+  const set = <K extends keyof TrackedBrand>(k: K, v: TrackedBrand[K]) => setB(prev => ({ ...prev, [k]: v }));
+
+  const submit = () => {
+    if (!b.handle.trim()) { alert('Handle is required'); return; }
+    let details: Record<string, unknown> = {};
+    try { details = detailsJson.trim() ? JSON.parse(detailsJson) : {}; setJsonErr(''); }
+    catch (e) { setJsonErr(e instanceof Error ? e.message : 'Invalid JSON'); return; }
+    onSave({ ...b, details });
+  };
+
+  const Field = ({ label, value, onChange, placeholder, type = 'text' }: {
+    label: string; value: string | number | null; onChange: (v: string) => void; placeholder?: string; type?: string;
+  }) => (
+    <label className="block">
+      <div className="text-[10px] uppercase tracking-wider text-[var(--text-3)] font-bold mb-1">{label}</div>
+      <input
+        type={type}
+        value={value || ''}
+        onChange={e => onChange(e.target.value)}
+        placeholder={placeholder}
+        className="w-full bg-[var(--bg-alt)] rounded-lg px-3 py-1.5 text-[12px] outline-none border border-transparent focus:border-[var(--brand)]"
+      />
+    </label>
+  );
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4" onClick={onCancel}>
+      <div className="bg-[var(--surface)] max-w-3xl w-full max-h-[90vh] rounded-2xl overflow-hidden flex flex-col" onClick={e => e.stopPropagation()}>
+        <div className="p-4 border-b border-[var(--line)] flex items-center justify-between">
+          <div>
+            <div className="text-[16px] font-bold">{isNew ? 'Add brand' : `Edit @${b.handle}`}</div>
+            <div className="text-[11px] text-[var(--text-3)]">Full brand profile — socials, metadata, people</div>
+          </div>
+          <button onClick={onCancel} className="text-[var(--text-3)] text-[20px] leading-none px-2">×</button>
+        </div>
+
+        <div className="flex-1 overflow-y-auto p-4 space-y-4">
+          {/* Core identity */}
+          <div>
+            <div className="text-[11px] uppercase tracking-wider font-bold text-[var(--text-2)] mb-2">Identity</div>
+            <div className="grid sm:grid-cols-2 gap-3">
+              <Field label="Instagram handle *" value={b.handle} onChange={v => set('handle', v.toLowerCase().replace(/[^a-z0-9._-]/g, ''))} placeholder="rayban" />
+              <Field label="Display name" value={b.name} onChange={v => set('name', v)} placeholder="Ray-Ban" />
+              <Field label="Category" value={b.category} onChange={v => set('category', v || null)} placeholder="Luxury / D2C / Sports…" />
+              <Field label="Region" value={b.region} onChange={v => set('region', v || null)} placeholder="Europe / North America…" />
+              <Field label="Price range" value={b.price_range} onChange={v => set('price_range', v || null)} placeholder="$ / $$ / $$$ / $$$$" />
+              <Field label="Subcategory" value={b.subcategory} onChange={v => set('subcategory', v || null)} placeholder="Sunglasses / Optical / Both" />
+              <Field label="Country" value={b.country} onChange={v => set('country', v || null)} placeholder="Italy" />
+              <Field label="HQ city" value={b.hq_city} onChange={v => set('hq_city', v || null)} placeholder="Milan" />
+              <Field label="Founded year" value={b.founded_year} onChange={v => set('founded_year', v ? parseInt(v) : null)} type="number" placeholder="1937" />
+              <Field label="Employees" value={b.employee_count} onChange={v => set('employee_count', v ? parseInt(v) : null)} type="number" placeholder="5000" />
+            </div>
+          </div>
+
+          {/* Cron tier */}
+          <div>
+            <div className="text-[11px] uppercase tracking-wider font-bold text-[var(--text-2)] mb-2">Scrape tier</div>
+            <div className="flex gap-2">
+              {(['fast', 'mid', 'full'] as const).map(t => (
+                <button key={t} onClick={() => set('tier', t)} type="button"
+                  className={`px-3 py-1.5 rounded-lg text-[11px] font-semibold ${b.tier === t ? 'bg-[var(--brand)] text-white' : 'bg-[var(--bg-alt)] text-[var(--text-2)]'}`}>
+                  {t === 'fast' ? 'Fast (hourly)' : t === 'mid' ? 'Mid (6h)' : 'Full (daily)'}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Social URLs */}
+          <div>
+            <div className="text-[11px] uppercase tracking-wider font-bold text-[var(--text-2)] mb-2">Social + Web links</div>
+            <div className="grid sm:grid-cols-2 gap-3">
+              <Field label="📷 Instagram" value={b.instagram_url} onChange={v => set('instagram_url', v || null)} placeholder="https://instagram.com/rayban" />
+              <Field label="👥 Facebook" value={b.facebook_url} onChange={v => set('facebook_url', v || null)} placeholder="https://facebook.com/rayban" />
+              <Field label="𝕏 X / Twitter" value={b.twitter_url} onChange={v => set('twitter_url', v || null)} placeholder="https://x.com/ray_ban" />
+              <Field label="🎵 TikTok" value={b.tiktok_url} onChange={v => set('tiktok_url', v || null)} placeholder="https://tiktok.com/@rayban" />
+              <Field label="▶ YouTube" value={b.youtube_url} onChange={v => set('youtube_url', v || null)} placeholder="https://youtube.com/@rayban" />
+              <Field label="💼 LinkedIn" value={b.linkedin_url} onChange={v => set('linkedin_url', v || null)} placeholder="https://linkedin.com/company/ray-ban" />
+              <Field label="🌐 Website" value={b.website} onChange={v => set('website', v || null)} placeholder="https://ray-ban.com" />
+              <Field label="🖼 Logo URL" value={b.logo_url} onChange={v => set('logo_url', v || null)} placeholder="https://..." />
+            </div>
+          </div>
+
+          {/* Notes */}
+          <div>
+            <label className="block">
+              <div className="text-[10px] uppercase tracking-wider text-[var(--text-3)] font-bold mb-1">Notes</div>
+              <textarea
+                value={b.notes || ''}
+                onChange={e => set('notes', e.target.value || null)}
+                placeholder="Anything worth remembering — acquisition history, key products, brand positioning"
+                className="w-full bg-[var(--bg-alt)] rounded-lg px-3 py-2 text-[12px] outline-none min-h-[70px] resize-y"
+              />
+            </label>
+          </div>
+
+          {/* Details JSON */}
+          <div>
+            <label className="block">
+              <div className="text-[10px] uppercase tracking-wider text-[var(--text-3)] font-bold mb-1">Details JSON (free-form)</div>
+              <textarea
+                value={detailsJson}
+                onChange={e => setDetailsJson(e.target.value)}
+                placeholder={'{\n  "parent_company": "EssilorLuxottica",\n  "collections": ["Aviator","Wayfarer","Clubmaster"]\n}'}
+                className="w-full bg-[var(--bg)] border border-[var(--line)] rounded-lg px-3 py-2 text-[11px] outline-none font-mono min-h-[120px] resize-y"
+              />
+              {jsonErr && <div className="text-[10px] text-red-400 mt-1">{jsonErr}</div>}
+            </label>
+          </div>
+        </div>
+
+        <div className="p-4 border-t border-[var(--line)] flex items-center justify-between gap-2">
+          <label className="flex items-center gap-2 text-[11px] text-[var(--text-2)]">
+            <input type="checkbox" checked={b.active} onChange={e => set('active', e.target.checked)} />
+            Active (cron scrapes this brand)
+          </label>
+          <div className="flex gap-2">
+            <button onClick={onCancel} className="px-3 py-1.5 text-[12px] font-semibold bg-[var(--bg-alt)] rounded-lg">Cancel</button>
+            <button onClick={submit} className="px-4 py-1.5 text-[12px] font-semibold bg-[var(--brand)] text-white rounded-lg">
+              {isNew ? 'Add brand' : 'Save changes'}
+            </button>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
