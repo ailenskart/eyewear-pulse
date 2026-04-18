@@ -3022,13 +3022,50 @@ function BrandsManager() {
         </div>
       </div>
 
-      {/* Add single brand + open bulk uploader */}
-      <div className="flex gap-2 mb-4">
+      {/* Add single brand + bulk upload + download + update */}
+      <div className="flex gap-2 mb-4 flex-wrap">
         <button onClick={openNew} className="px-3 py-2 bg-[var(--brand)] text-white text-[12px] font-semibold rounded-lg flex items-center gap-1.5">
           <span className="text-[14px]">+</span> Add brand
         </button>
         <button onClick={() => setUploadOpen(v => !v)} className="px-3 py-2 bg-[var(--bg-alt)] text-[var(--text-2)] text-[12px] font-semibold rounded-lg">
-          {uploadOpen ? 'Hide bulk upload' : 'Bulk upload (CSV / JSON / TXT)'}
+          {uploadOpen ? 'Hide bulk upload' : 'Bulk upload'}
+        </button>
+        <button
+          onClick={async () => {
+            try {
+              const res = await fetch('/api/brands/tracked?limit=5000&active=0');
+              const j = await res.json();
+              const brands = j.brands || [];
+              if (brands.length === 0) { alert('No brands to export.'); return; }
+              const headers = ['handle','name','category','region','price_range','subcategory','country','hq_city','tier','website','instagram_url','facebook_url','twitter_url','tiktok_url','youtube_url','linkedin_url','logo_url','founded_year','employee_count','notes','active','source','last_scraped_at','added_at'];
+              const csvRows = [headers.join(',')];
+              for (const b of brands as TrackedBrand[]) {
+                csvRows.push(headers.map(h => {
+                  const v = (b as unknown as Record<string, unknown>)[h];
+                  if (v === null || v === undefined) return '';
+                  const s = String(v);
+                  return s.includes(',') || s.includes('"') || s.includes('\n') ? `"${s.replace(/"/g, '""')}"` : s;
+                }).join(','));
+              }
+              const blob = new Blob([csvRows.join('\n')], { type: 'text/csv' });
+              const url = URL.createObjectURL(blob);
+              const a = document.createElement('a');
+              a.href = url; a.download = `lenzy-brands-${new Date().toISOString().slice(0,10)}.csv`;
+              a.click(); URL.revokeObjectURL(url);
+            } catch { alert('Download failed'); }
+          }}
+          className="px-3 py-2 bg-[var(--bg-alt)] text-[var(--text-2)] text-[12px] font-semibold rounded-lg flex items-center gap-1.5"
+        >
+          <svg width="12" height="12" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
+          Download CSV
+        </button>
+        <button
+          onClick={() => { setUploadOpen(true); }}
+          className="px-3 py-2 bg-[var(--bg-alt)] text-[var(--text-2)] text-[12px] font-semibold rounded-lg flex items-center gap-1.5"
+          title="Upload a CSV to update existing brands — matching handles get overwritten"
+        >
+          <svg width="12" height="12" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M17 8l-5-5-5 5M12 3v12"/></svg>
+          Update existing
         </button>
       </div>
 
