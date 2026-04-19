@@ -1,3 +1,4 @@
+import { Suspense } from 'react';
 import { BrandDetailClient } from '@/features/brands/BrandDetailClient';
 import { Shell } from '@/components/layout/Shell';
 
@@ -9,7 +10,9 @@ export default async function BrandPage({ params }: { params: Promise<{ id: stri
   }
   return (
     <Shell>
-      <BrandDetailClient brandId={numericId} />
+      <Suspense fallback={<div className="p-6 text-[var(--ink-muted)]">Loading…</div>}>
+        <BrandDetailClient brandId={numericId} />
+      </Suspense>
     </Shell>
   );
 }

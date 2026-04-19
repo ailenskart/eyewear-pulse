@@ -244,16 +244,60 @@ export function toFeedPost(r: IgPostDbRow): Post {
   };
 }
 
-/* ─── Batched upsert ─── */
+/* ─── Batched upsert into brand_content (unified polymorphic table) ─── */
 
 export async function upsertPosts(rows: IgPostDbRow[]): Promise<{ inserted: number; error?: string }> {
   if (rows.length === 0) return { inserted: 0 };
   const client = supabaseServer();
+
+  // Map IgPostDbRow → brand_content row with type='ig_post'.
+  // brand_id lookup via handle happens in batches to avoid N+1.
+  const handles = Array.from(new Set(rows.map(r => r.brand_handle).filter(Boolean)));
+  const { data: brandMap } = await client
+    .from('tracked_brands')
+    .select('id, handle')
+    .in('handle', handles);
+  const idByHandle = new Map<string, number>();
+  for (const b of (brandMap || []) as Array<{ id: number; handle: string }>) {
+    idByHandle.set(b.handle, b.id);
+  }
+
+  const contentRows = rows.map(r => ({
+    brand_id: idByHandle.get(r.brand_handle) || null,
+    brand_handle: r.brand_handle,
+    type: 'ig_post',
+    source: 'apify',
+    source_ref: r.id,
+    caption: r.caption,
+    url: r.post_url,
+    image_url: r.image_url,
+    blob_url: r.blob_url,
+    video_url: r.video_url,
+    likes: r.likes || 0,
+    comments: r.comments || 0,
+    engagement: r.engagement || 0,
+    hashtags: r.hashtags || [],
+    posted_at: r.posted_at,
+    data: {
+      post_type: r.post_type,
+      is_video: r.is_video,
+      carousel_slides: r.carousel_slides,
+      video_blob_url: r.video_blob_url,
+      brand_name: r.brand_name,
+      brand_category: r.brand_category,
+      brand_region: r.brand_region,
+      mentions: r.mentions,
+    },
+  }));
+
   const BATCH = 500;
   let inserted = 0;
-  for (let i = 0; i < rows.length; i += BATCH) {
-    const slice = rows.slice(i, i + BATCH);
-    const { error } = await client.from('ig_posts').upsert(slice, { onConflict: 'id', ignoreDuplicates: false });
+  for (let i = 0; i < contentRows.length; i += BATCH) {
+    const slice = contentRows.slice(i, i + BATCH);
+    const { error } = await client.from('brand_content').upsert(slice, {
+      onConflict: 'brand_id,type,source,source_ref',
+      ignoreDuplicates: false,
+    });
     if (error) return { inserted, error: error.message };
     inserted += slice.length;
   }

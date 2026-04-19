@@ -202,10 +202,11 @@ async function uploadPostMedia(post: RawScrapedPost): Promise<void> {
 async function fetchExistingIds(handles: string[]): Promise<Set<string>> {
   const client = supabaseServer();
   const { data } = await client
-    .from('ig_posts')
-    .select('id')
+    .from('brand_content')
+    .select('source_ref')
+    .eq('type', 'ig_post')
     .in('brand_handle', handles.map(h => h.toLowerCase()));
-  return new Set((data || []).map((r: { id: string }) => r.id));
+  return new Set((data || []).map((r: { source_ref: string }) => r.source_ref).filter(Boolean));
 }
 
 /* ─── Main handler ─── */
