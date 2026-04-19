@@ -49,6 +49,9 @@ export function AdminPage() {
           <h1 className="text-[22px] font-semibold tracking-tight">Admin</h1>
           <p className="text-[12px] text-[var(--ink-muted)] mt-0.5">System health, data quality, cron monitoring</p>
         </div>
+        <a href="/admin/review" className="text-[12px] font-semibold text-[var(--accent)] hover:underline">
+          Review queue →
+        </a>
       </div>
 
       <div className="flex gap-1 mb-5">
