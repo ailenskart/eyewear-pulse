@@ -1,6 +1,6 @@
 # Lenzy Rebuild Status
 
-**Last updated:** Phase 1 + early Phase 3 shipped. Autonomous overnight run.
+**Last updated:** Phases 1–3 shipped, Phase 4 vision pipeline scaffolded. Autonomous overnight run.
 
 ## What shipped tonight
 
@@ -93,15 +93,21 @@
 ### Deleted
 - [x] `src/app/[[...slug]]/page.tsx` (4,770-line monolith) — all extracted into `features/` + routed properly
 
-## What's next (Phase 4 · Vision moat)
+### Phase 4 · Vision moat (SCAFFOLDED)
+- [x] `src/lib/vision/detect.ts` — Gemini Vision eyewear detector (structured JSON, 3-model fallback)
+- [x] `src/lib/auth/session.ts` — Supabase session + role guards + email allowlist
+- [x] `POST /api/v1/attribute` — unbranded photo → text embed → pgvector match → optional persist @ ≥ 0.75 confidence
+- [x] `GET/POST /api/v1/review-queue` — list + approve/reject for 0.5–0.75 bucket
+- [x] `/admin/review` — Review Queue UI (approve candidate brand from top-3, approve as-is, reject)
+- [x] `GET /api/v1/brands` — Zod-validated brands list with content counts
+- [x] `GET /api/v1/content` — Zod-validated content feed
+- [x] `POST/PUT /api/v1/brands/create` — Zod-validated upsert for tracked_brands
 
-See `BACKLOG.md`. The moat work:
-1. Install OpenCLIP wrapper for image embeddings
-2. Image-embedding backfill on 52k product images (~$30–60 one-time)
-3. Eyewear-detection pipeline (Gemini Vision → crop → embed → pgvector match)
-4. Review Queue for 0.5–0.75 confidence matches
-5. Monthly backtest harness
-6. New scrapers: Reddit, Pinterest, IG hashtags
+Still pending for Phase 4 production:
+1. OpenCLIP image embeddings (needs `OPENAI_API_KEY`)
+2. 52k-image backfill cron (~$30–60 one-time)
+3. Reddit / Pinterest / IG hashtag scrapers
+4. Monthly backtest harness
 
 ## What needs user input
 
