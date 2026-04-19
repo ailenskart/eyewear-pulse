@@ -1,5 +1,60 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { GoogleGenAI } from '@google/genai';
+import { supabaseServer } from '@/lib/supabase';
+
+/**
+ * Log a reimagine generation into brand_content with parent_id
+ * pointing to the source post (if we can identify it from imageUrl).
+ */
+async function logReimagine(opts: {
+  brandName: string;
+  imageUrl: string;           // source image URL
+  generatedImages: Array<{ url: string; model: string; type: string }>;
+  creativeBrief: string;
+  imagePrompt: string;
+  productImageUrl: string | null;
+}): Promise<void> {
+  try {
+    const client = supabaseServer();
+
+    // Find the brand by name (case-insensitive) or handle
+    const { data: brand } = await client
+      .from('tracked_brands')
+      .select('id,handle,name')
+      .or(`name.ilike.${opts.brandName},handle.eq.${opts.brandName.toLowerCase()}`)
+      .limit(1)
+      .maybeSingle();
+
+    // Find the source post in brand_content (by matching image_url/blob_url)
+    let parentId: number | null = null;
+    const { data: sourcePost } = await client
+      .from('brand_content')
+      .select('id')
+      .or(`image_url.eq.${opts.imageUrl},blob_url.eq.${opts.imageUrl}`)
+      .limit(1)
+      .maybeSingle();
+    if (sourcePost) parentId = (sourcePost as { id: number }).id;
+
+    // Insert one brand_content row per generated image
+    for (const g of opts.generatedImages) {
+      if (!g.url) continue;
+      await client.from('brand_content').insert({
+        brand_id: brand ? (brand as { id: number }).id : null,
+        brand_handle: brand ? (brand as { handle: string }).handle : opts.brandName.toLowerCase(),
+        type: 'reimagine',
+        parent_id: parentId,
+        title: `${opts.brandName} — ${g.model}`,
+        description: opts.creativeBrief?.substring(0, 1000) || null,
+        image_url: g.url,
+        url: opts.productImageUrl || null,
+        source: 'reimagine',
+        data: { model: g.model, kind: g.type, image_prompt: opts.imagePrompt?.substring(0, 500) },
+      });
+    }
+  } catch (e) {
+    console.warn('[logReimagine]', e instanceof Error ? e.message : e);
+  }
+}
 
 const d = (s: string) => Buffer.from(s, 'base64').toString();
 const GEMINI_KEY = process.env.GEMINI_API_KEY || d('QUl6YVN5RDZyUl9lVUF2TWxoUnJZRHF3RU9JQ25ja1doUlZrN1JF');
@@ -482,6 +537,16 @@ export async function POST(request: NextRequest) {
         warning: `Replicate failed: ${errorDetail}. Using free fallback.`,
       });
     }
+
+    // Log this reimagine into brand_content (fire-and-forget)
+    logReimagine({
+      brandName: brand,
+      imageUrl,
+      generatedImages: editedImages,
+      creativeBrief: briefText,
+      imagePrompt: editDirection,
+      productImageUrl,
+    });
 
     return NextResponse.json({
       originalAnalysis: imageAnalysis,

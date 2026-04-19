@@ -2,22 +2,14 @@ import { NextRequest, NextResponse } from 'next/server';
 import { supabaseServer } from '@/lib/supabase';
 
 /**
- * Unified brand export — download one or all brands with ALL
- * linked data in a single payload.
+ * Unified brand export — downloads tracked_brands + all linked
+ * brand_content rows in one payload.
  *
- * Returns:
- *   - brand profile (full tracked_brands row)
- *   - products[]      (from products table, by brand_id)
- *   - ig_posts[]      (from ig_posts table, by brand_id)
- *   - celeb_photos[]  (from celeb_photos, by brand_id)
- *   - people[]        (from directory_people, where brand_id in brand_ids)
- *
- * Usage:
  *   GET /api/brands/export?brand_id=37           one brand
  *   GET /api/brands/export?handle=warbyparker    by handle
  *   GET /api/brands/export                       all brands summary
- *   GET /api/brands/export?format=csv            CSV flat export (summary)
- *   GET /api/brands/export?brand_id=37&format=csv  CSV for one brand
+ *   GET /api/brands/export?format=csv            CSV
+ *   GET /api/brands/export?type=ig_post          filter content by type
  */
 
 export const maxDuration = 30;
@@ -27,10 +19,7 @@ export async function GET(request: NextRequest) {
   const brandIdParam = searchParams.get('brand_id');
   const handleParam = searchParams.get('handle');
   const format = searchParams.get('format') || 'json';
-  const includeProducts = searchParams.get('products') !== '0';
-  const includePosts = searchParams.get('posts') !== '0';
-  const includeCelebs = searchParams.get('celebs') !== '0';
-  const includePeople = searchParams.get('people') !== '0';
+  const typeFilter = searchParams.get('type');
 
   const client = supabaseServer();
 
@@ -40,62 +29,66 @@ export async function GET(request: NextRequest) {
     if (brandIdParam) brandQuery = brandQuery.eq('id', parseInt(brandIdParam));
     else if (handleParam) brandQuery = brandQuery.eq('handle', handleParam.toLowerCase());
     const { data: brand } = await brandQuery.maybeSingle();
-
     if (!brand) return NextResponse.json({ error: 'Brand not found' }, { status: 404 });
     const bid = (brand as { id: number }).id;
 
-    // Fetch all linked data in parallel
-    const [productsRes, postsRes, celebsRes, peopleRes] = await Promise.all([
-      includeProducts
-        ? client.from('products').select('id,name,price,compare_price,currency,product_type,product_url,image_url,is_active,first_seen_at,last_seen_at').eq('brand_id', bid).order('first_seen_at', { ascending: false }).limit(1000)
-        : Promise.resolve({ data: null }),
-      includePosts
-        ? client.from('ig_posts').select('id,caption,likes,comments,engagement,post_type,post_url,image_url,blob_url,is_video,hashtags,posted_at').eq('brand_id', bid).order('posted_at', { ascending: false }).limit(500)
-        : Promise.resolve({ data: null }),
-      includeCelebs
-        ? client.from('celeb_photos').select('id,celeb_name,celeb_slug,image_url,blob_url,page_url,eyewear_type,source,detected_at,likes').eq('brand_id', bid).order('detected_at', { ascending: false }).limit(200)
-        : Promise.resolve({ data: null }),
-      includePeople
-        ? client.from('directory_people').select('id,name,title,department,seniority,company_current,linkedin_url,photo_url,email,location,tenure,brand_ids,brand_handles').contains('brand_ids', [bid])
-        : Promise.resolve({ data: null }),
-    ]);
+    let contentQuery = client.from('brand_content').select('*').eq('brand_id', bid).eq('is_active', true);
+    if (typeFilter) contentQuery = contentQuery.eq('type', typeFilter);
+    const { data: content } = await contentQuery.order('posted_at', { ascending: false, nullsFirst: false }).limit(5000);
 
-    const payload = {
-      brand,
-      products: productsRes.data || [],
-      ig_posts: postsRes.data || [],
-      celeb_photos: celebsRes.data || [],
-      people: peopleRes.data || [],
-      counts: {
-        products: (productsRes.data || []).length,
-        ig_posts: (postsRes.data || []).length,
-        celeb_photos: (celebsRes.data || []).length,
-        people: (peopleRes.data || []).length,
-      },
-      exported_at: new Date().toISOString(),
-    };
-
-    if (format === 'csv') {
-      return buildCsvResponse(payload);
+    const rows = (content || []) as Array<{ type: string }>;
+    const byType: Record<string, typeof rows> = {};
+    for (const r of rows) {
+      if (!byType[r.type]) byType[r.type] = [];
+      byType[r.type].push(r);
     }
+    const counts: Record<string, number> = {};
+    for (const t of Object.keys(byType)) counts[t] = byType[t].length;
+
+    const payload = { brand, content: rows, by_type: byType, counts, exported_at: new Date().toISOString() };
+
+    if (format === 'csv') return buildDeepCsv(brand as Record<string, unknown>, rows as unknown as Array<Record<string, unknown>>);
     return NextResponse.json(payload);
   }
 
-  // ── All brands summary export ──
-  const { data: summary } = await client
-    .from('brand_summary')
-    .select('*')
+  // ── All brands summary ──
+  const { data: brands } = await client
+    .from('tracked_brands')
+    .select('id,handle,name,category,region,country,iso_code,website,instagram_url,facebook_url,twitter_url,linkedin_url,youtube_url,tiktok_url,parent_company,ownership_type,is_public,stock_ticker,price_range,employee_count,store_count,ceo_name,active,tier')
     .order('id', { ascending: true });
 
-  if (format === 'csv') {
-    return buildSummaryCsv(summary || []);
+  const { data: countsRaw } = await client
+    .from('brand_content')
+    .select('brand_id,type')
+    .eq('is_active', true)
+    .limit(50000);
+
+  // Aggregate in-memory: brand_id → { type: count }
+  const agg = new Map<number, Record<string, number>>();
+  for (const r of (countsRaw || []) as Array<{ brand_id: number; type: string }>) {
+    if (!r.brand_id) continue;
+    if (!agg.has(r.brand_id)) agg.set(r.brand_id, {});
+    const m = agg.get(r.brand_id)!;
+    m[r.type] = (m[r.type] || 0) + 1;
   }
 
-  return NextResponse.json({
-    brands: summary || [],
-    total: (summary || []).length,
-    exported_at: new Date().toISOString(),
+  const enriched = (brands || []).map(b => {
+    const c = agg.get((b as { id: number }).id) || {};
+    return {
+      ...(b as Record<string, unknown>),
+      ig_posts: c.ig_post || 0,
+      products: c.product || 0,
+      celeb_photos: c.celeb_photo || 0,
+      people: c.person || 0,
+      reimagines: c.reimagine || 0,
+      youtube: c.youtube || 0,
+      tiktok: c.tiktok || 0,
+      total_content: Object.values(c).reduce((s, n) => s + n, 0),
+    };
   });
+
+  if (format === 'csv') return buildSummaryCsv(enriched);
+  return NextResponse.json({ brands: enriched, total: enriched.length, exported_at: new Date().toISOString() });
 }
 
 /* ─── CSV builders ─── */
@@ -105,18 +98,16 @@ function esc(v: unknown): string {
   let s: string;
   if (Array.isArray(v)) s = v.join(';');
   else if (typeof v === 'boolean') s = v ? 'yes' : 'no';
+  else if (typeof v === 'object') s = JSON.stringify(v);
   else s = String(v);
   return s.includes(',') || s.includes('"') || s.includes('\n') ? `"${s.replace(/"/g, '""')}"` : s;
 }
 
 function buildSummaryCsv(brands: Array<Record<string, unknown>>): NextResponse {
-  const headers = ['id','handle','name','category','region','country','iso_code','website','instagram_url','facebook_url','twitter_url','linkedin_url','youtube_url','tiktok_url','parent_company','ownership_type','is_public','stock_ticker','price_range','employee_count','store_count','ceo_name','active','tier','ig_posts_count','products_count','celeb_photos_count','people_count'];
+  const headers = ['id','handle','name','category','region','country','iso_code','website','instagram_url','facebook_url','twitter_url','linkedin_url','youtube_url','tiktok_url','parent_company','ownership_type','is_public','stock_ticker','price_range','employee_count','store_count','ceo_name','active','tier','ig_posts','products','celeb_photos','people','reimagines','youtube','tiktok','total_content'];
   const rows = [headers.join(',')];
-  for (const b of brands) {
-    rows.push(headers.map(h => esc(b[h])).join(','));
-  }
-  const csv = rows.join('\n');
-  return new NextResponse(csv, {
+  for (const b of brands) rows.push(headers.map(h => esc(b[h])).join(','));
+  return new NextResponse(rows.join('\n'), {
     headers: {
       'Content-Type': 'text/csv',
       'Content-Disposition': `attachment; filename="lenzy-brands-full-${new Date().toISOString().slice(0,10)}.csv"`,
@@ -124,65 +115,27 @@ function buildSummaryCsv(brands: Array<Record<string, unknown>>): NextResponse {
   });
 }
 
-function buildCsvResponse(payload: {
-  brand: Record<string, unknown>;
-  products: Array<Record<string, unknown>>;
-  ig_posts: Array<Record<string, unknown>>;
-  celeb_photos: Array<Record<string, unknown>>;
-  people: Array<Record<string, unknown>>;
-}): NextResponse {
-  const b = payload.brand;
-  const handle = String(b.handle || 'brand');
-
-  // Multi-sheet CSV: one block per entity type, separated by blank lines + header
+function buildDeepCsv(brand: Record<string, unknown>, content: Array<Record<string, unknown>>): NextResponse {
+  const handle = String(brand.handle || 'brand');
   const lines: string[] = [];
 
-  // Brand profile
+  // Brand profile block
   lines.push('=== BRAND PROFILE ===');
-  const brandKeys = Object.keys(b).filter(k => !['details','people'].includes(k));
+  const brandKeys = Object.keys(brand).filter(k => !['details','people'].includes(k));
   lines.push(brandKeys.join(','));
-  lines.push(brandKeys.map(k => esc(b[k])).join(','));
+  lines.push(brandKeys.map(k => esc(brand[k])).join(','));
   lines.push('');
 
-  // Products
-  if (payload.products.length > 0) {
-    lines.push(`=== PRODUCTS (${payload.products.length}) ===`);
-    const ph = ['id','name','price','compare_price','currency','product_type','product_url','image_url','is_active','first_seen_at','last_seen_at'];
-    lines.push(ph.join(','));
-    for (const p of payload.products) lines.push(ph.map(k => esc(p[k])).join(','));
-    lines.push('');
-  }
-
-  // Instagram posts
-  if (payload.ig_posts.length > 0) {
-    lines.push(`=== INSTAGRAM POSTS (${payload.ig_posts.length}) ===`);
-    const ih = ['id','caption','likes','comments','engagement','post_type','post_url','image_url','is_video','posted_at'];
-    lines.push(ih.join(','));
-    for (const p of payload.ig_posts) lines.push(ih.map(k => esc(p[k])).join(','));
-    lines.push('');
-  }
-
-  // Celebrity photos
-  if (payload.celeb_photos.length > 0) {
-    lines.push(`=== CELEBRITY PHOTOS (${payload.celeb_photos.length}) ===`);
-    const ch = ['id','celeb_name','celeb_slug','eyewear_type','source','page_url','image_url','detected_at','likes'];
-    lines.push(ch.join(','));
-    for (const c of payload.celeb_photos) lines.push(ch.map(k => esc(c[k])).join(','));
-    lines.push('');
-  }
-
-  // People
-  if (payload.people.length > 0) {
-    lines.push(`=== PEOPLE (${payload.people.length}) ===`);
-    const peh = ['id','name','title','department','seniority','company_current','linkedin_url','email','location','tenure','brand_ids'];
-    lines.push(peh.join(','));
-    for (const p of payload.people) lines.push(peh.map(k => esc(p[k])).join(','));
-  }
+  // Content block (all types in one flat table)
+  lines.push(`=== CONTENT (${content.length} rows) ===`);
+  const contentKeys = ['id','type','parent_id','title','caption','description','url','image_url','blob_url','video_url','likes','comments','views','shares','engagement','price','compare_price','currency','person_name','person_title','linkedin_url','email','location','department','seniority','posted_at','detected_at','tags','hashtags','product_type','eyewear_type','source','source_ref'];
+  lines.push(contentKeys.join(','));
+  for (const c of content) lines.push(contentKeys.map(k => esc(c[k])).join(','));
 
   return new NextResponse(lines.join('\n'), {
     headers: {
       'Content-Type': 'text/csv',
-      'Content-Disposition': `attachment; filename="lenzy-${handle}-full-export-${new Date().toISOString().slice(0,10)}.csv"`,
+      'Content-Disposition': `attachment; filename="lenzy-${handle}-full-${new Date().toISOString().slice(0,10)}.csv"`,
     },
   });
 }
