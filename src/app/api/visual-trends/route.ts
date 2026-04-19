@@ -39,8 +39,7 @@ import { ALL_POSTS } from '@/lib/feed';
 
 export const maxDuration = 60;
 
-const d = (s: string) => Buffer.from(s, 'base64').toString();
-const GEMINI_KEY = process.env.GEMINI_API_KEY || d('QUl6YVN5RDZyUl9lVUF2TWxoUnJZRHF3RU9JQ25ja1doUlZrN1JF');
+const GEMINI_KEY = process.env.GEMINI_API_KEY || '';
 
 /* ─── Types ─── */
 

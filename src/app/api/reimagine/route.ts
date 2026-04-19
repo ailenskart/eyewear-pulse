@@ -142,9 +142,8 @@ async function logReimagine(opts: {
   return results;
 }
 
-const d = (s: string) => Buffer.from(s, 'base64').toString();
-const GEMINI_KEY = process.env.GEMINI_API_KEY || d('QUl6YVN5RDZyUl9lVUF2TWxoUnJZRHF3RU9JQ25ja1doUlZrN1JF');
-const REPLICATE_TOKEN = process.env.REPLICATE_API_TOKEN || d('cjhfNFNrN2p4UFVtbTg0djhLU28wOHZiQ0dSaEdkVmpmajN1T3YzZg==');
+const GEMINI_KEY = process.env.GEMINI_API_KEY || '';
+const REPLICATE_TOKEN = process.env.REPLICATE_API_TOKEN || '';
 
 /**
  * Call Replicate HTTP API directly — no SDK, fully in control.

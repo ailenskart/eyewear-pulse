@@ -2,8 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { GoogleGenAI } from '@google/genai';
 import { ALL_POSTS, FEED_STATS } from '@/lib/feed';
 
-const d = (s: string) => Buffer.from(s, 'base64').toString();
-const GEMINI_KEY = process.env.GEMINI_API_KEY || d('QUl6YVN5RDZyUl9lVUF2TWxoUnJZRHF3RU9JQ25ja1doUlZrN1JF');
+const GEMINI_KEY = process.env.GEMINI_API_KEY || '';
 
 export async function POST(request: NextRequest) {
   if (!GEMINI_KEY) {
