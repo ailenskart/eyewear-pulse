@@ -38,7 +38,15 @@ export async function GET(request: NextRequest) {
   }
 
   let q = client.from('directory_people').select('*', { count: 'exact' });
-  if (brand) q = q.contains('brand_handles', [brand.toLowerCase()]);
+  if (brand) {
+    // Accept either a handle (string) or a numeric id
+    const n = parseInt(brand);
+    if (Number.isFinite(n) && !isNaN(n)) {
+      q = q.contains('brand_ids', [n]);
+    } else {
+      q = q.contains('brand_handles', [brand.toLowerCase()]);
+    }
+  }
   if (department && department !== 'All') q = q.eq('department', department);
   if (seniority && seniority !== 'All') q = q.eq('seniority', seniority);
   if (company) q = q.ilike('company_current', `%${company}%`);
@@ -92,6 +100,25 @@ export async function POST(request: NextRequest) {
     brandHandles = (body.brand_handles as unknown[]).map(h => String(h).trim().toLowerCase()).filter(Boolean);
   }
 
+  let brandIds: number[] = [];
+  if (typeof body.brand_ids === 'string') {
+    brandIds = body.brand_ids.split(/[,;|]/).map(s => parseInt(s.trim())).filter(n => Number.isFinite(n));
+  } else if (Array.isArray(body.brand_ids)) {
+    brandIds = (body.brand_ids as unknown[]).map(n => parseInt(String(n))).filter(n => Number.isFinite(n));
+  }
+
+  // If only one of handles/ids was provided, auto-resolve the other from tracked_brands
+  const clientForResolve = supabaseServer();
+  if (brandHandles.length > 0 && brandIds.length === 0) {
+    const { data: resolved } = await clientForResolve
+      .from('tracked_brands').select('id,handle').in('handle', brandHandles);
+    brandIds = (resolved || []).map((r: { id: number }) => r.id);
+  } else if (brandIds.length > 0 && brandHandles.length === 0) {
+    const { data: resolved } = await clientForResolve
+      .from('tracked_brands').select('id,handle').in('id', brandIds);
+    brandHandles = (resolved || []).map((r: { handle: string }) => r.handle);
+  }
+
   let previousCompanies: string[] | null = null;
   if (typeof body.previous_companies === 'string') {
     previousCompanies = body.previous_companies.split(/[,;|]/).map(c => c.trim()).filter(Boolean);
@@ -118,6 +145,7 @@ export async function POST(request: NextRequest) {
     location: body.location ? String(body.location).trim() : null,
     company_current: body.company_current ? String(body.company_current).trim() : null,
     brand_handles: brandHandles,
+    brand_ids: brandIds,
     previous_companies: previousCompanies,
     tenure: body.tenure ? String(body.tenure).trim() : null,
     bio: body.bio ? String(body.bio).trim() : null,
@@ -163,22 +191,43 @@ export async function PATCH(request: NextRequest) {
 
   const editable = [
     'name', 'title', 'department', 'seniority', 'linkedin_url', 'photo_url',
-    'email', 'phone', 'location', 'company_current', 'brand_handles',
+    'email', 'phone', 'location', 'company_current', 'brand_handles', 'brand_ids',
     'previous_companies', 'tenure', 'bio', 'tags', 'source',
   ];
   const updates: Record<string, unknown> = { updated_at: new Date().toISOString() };
   for (const k of editable) {
     if (k in body) {
       let val = body[k];
-      // Normalize arrays from comma strings
       if (['brand_handles', 'previous_companies', 'tags'].includes(k) && typeof val === 'string') {
         val = (val as string).split(/[,;|]/).map(s => s.trim()).filter(Boolean);
+      }
+      if (k === 'brand_ids' && typeof val === 'string') {
+        val = (val as string).split(/[,;|]/).map(s => parseInt(s.trim())).filter(n => Number.isFinite(n));
+      }
+      if (k === 'brand_ids' && Array.isArray(val)) {
+        val = (val as unknown[]).map(n => parseInt(String(n))).filter(n => Number.isFinite(n));
       }
       if (k === 'brand_handles' && Array.isArray(val)) {
         val = (val as unknown[]).map(h => String(h).trim().toLowerCase()).filter(Boolean);
       }
       updates[k] = val;
     }
+  }
+
+  // Auto-resolve the other side if only one was sent
+  const clientForResolve = supabaseServer();
+  if ('brand_handles' in updates && !('brand_ids' in updates)) {
+    const handles = updates.brand_handles as string[];
+    if (handles.length > 0) {
+      const { data } = await clientForResolve.from('tracked_brands').select('id').in('handle', handles);
+      updates.brand_ids = (data || []).map((r: { id: number }) => r.id);
+    } else updates.brand_ids = [];
+  } else if ('brand_ids' in updates && !('brand_handles' in updates)) {
+    const ids = updates.brand_ids as number[];
+    if (ids.length > 0) {
+      const { data } = await clientForResolve.from('tracked_brands').select('handle').in('id', ids);
+      updates.brand_handles = (data || []).map((r: { handle: string }) => r.handle);
+    } else updates.brand_handles = [];
   }
 
   const client = supabaseServer();

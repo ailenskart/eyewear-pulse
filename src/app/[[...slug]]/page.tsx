@@ -2720,7 +2720,7 @@ function Celebrities() {
 
 /* ═══ Sources — Unified intelligence hub (Shopify + Trends + Reddit + Google Ads) ═══ */
 
-type SourceTab = 'brands' | 'people' | 'shopify' | 'trends' | 'reddit' | 'google-ads' | 'youtube' | 'brave' | 'tiktok' | 'amazon' | 'linkedin';
+type SourceTab = 'brands' | 'people' | 'product-catalog' | 'shopify' | 'trends' | 'reddit' | 'google-ads' | 'youtube' | 'brave' | 'tiktok' | 'amazon' | 'linkedin';
 
 interface ShopifyStore { handle: string; domain: string; name: string }
 interface ShopifyProd { id: number; title: string; image: string; price: string; comparePrice: string | null; available: boolean; createdAt: string; url: string; variantCount: number; soldOut: boolean }
@@ -2741,6 +2741,7 @@ function Sources() {
         {[
           { k: 'brands', l: 'Brands', icon: '📋' },
           { k: 'people', l: 'People', icon: '👤' },
+          { k: 'product-catalog', l: 'Products', icon: '🛒' },
           { k: 'shopify', l: 'Shopify', icon: '🛍️' },
           { k: 'amazon', l: 'Amazon', icon: '📦' },
           { k: 'trends', l: 'Trends', icon: '📈' },
@@ -2763,6 +2764,7 @@ function Sources() {
 
       {sub === 'brands' && <BrandsManager />}
       {sub === 'people' && <PeopleDirectory />}
+      {sub === 'product-catalog' && <ProductCatalog />}
       {sub === 'shopify' && <ShopifySource />}
       {sub === 'amazon' && <AmazonSource />}
       {sub === 'trends' && <TrendsSource />}
@@ -2788,6 +2790,7 @@ interface BrandPerson {
 }
 
 interface TrackedBrand {
+  id: number;
   handle: string;
   name: string;
   category: string | null;
@@ -2970,7 +2973,7 @@ function BrandsManager() {
 
   const openNew = () => {
     setEditBrand({
-      handle: '', name: '', category: null, region: null, price_range: null,
+      id: 0, handle: '', name: '', category: null, region: null, price_range: null,
       subcategory: null, country: null, source_country: null, tier: 'full', active: true, source: 'manual',
       posts_scraped: 0, posts_count: 0, products_count: 0, last_scraped_at: null, added_at: new Date().toISOString(),
       website: null, notes: null,
@@ -3266,6 +3269,7 @@ function BrandsManager() {
               <table className="w-full text-[11px]">
                 <thead className="sticky top-0 bg-[var(--surface)] border-b border-[var(--line)] z-10">
                   <tr className="text-[var(--text-3)] uppercase tracking-wider">
+                    <th className="text-left py-2 px-2 font-bold">ID</th>
                     <th className="text-left py-2 px-3 font-bold">Handle</th>
                     <th className="text-left py-2 px-2 font-bold">Name</th>
                     <th className="text-left py-2 px-2 font-bold">Category</th>
@@ -3283,6 +3287,7 @@ function BrandsManager() {
                     return (
                       <>
                         <tr key={b.handle} className={`border-b border-[var(--line)] ${i % 2 === 0 ? 'bg-transparent' : 'bg-[var(--bg-alt)]/40'}`}>
+                          <td className="py-2 px-2 font-mono text-[var(--brand)] text-[10px] font-semibold">#{b.id}</td>
                           <td className="py-2 px-3">
                             <button onClick={() => setExpandHandle(expanded ? null : b.handle)} className="font-mono text-[var(--brand)] font-semibold hover:underline inline-flex items-center gap-1">
                               <span className="text-[9px]">{expanded ? '▼' : '▶'}</span> @{b.handle}
@@ -3309,7 +3314,7 @@ function BrandsManager() {
                         </tr>
                         {expanded && (
                           <tr className="border-b border-[var(--line)] bg-[var(--bg-alt)]/30">
-                            <td colSpan={9} className="p-4">
+                            <td colSpan={10} className="p-4">
                               {/* Top bar: completeness + tags + description */}
                               <div className="flex items-start gap-3 mb-3 flex-wrap">
                                 {b.completeness_pct !== null && (
@@ -3682,6 +3687,247 @@ function BrandEditDialog({
   );
 }
 
+/* ═══ Product Catalog — scraped products linked to brand IDs ═══ */
+
+interface CatalogProduct {
+  id: number;
+  brand: string;
+  brand_id: number | null;
+  brand_handle: string | null;
+  name: string;
+  price: number | null;
+  compare_price: number | null;
+  currency: string | null;
+  image_url: string | null;
+  blob_url: string | null;
+  product_type: string | null;
+  product_url: string | null;
+  is_active: boolean;
+  first_seen_at: string | null;
+  last_seen_at: string | null;
+}
+
+interface TopBrandFacet {
+  brand_id: number;
+  brand: string;
+  brand_handle: string;
+  count: number;
+}
+
+interface ProductsResponse {
+  products: CatalogProduct[];
+  total: number;
+  page: number;
+  totalPages: number;
+  brand: { id: number; handle: string; name: string; category: string | null; region: string | null; price_range: string | null; website: string | null; logo_url: string | null; instagram_url: string | null } | null;
+  topBrands: TopBrandFacet[];
+}
+
+function ProductCatalog() {
+  const [data, setData] = useState<ProductsResponse | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [brandId, setBrandId] = useState<number | null>(null);
+  const [search, setSearch] = useState('');
+  const [sortBy, setSortBy] = useState<'recent' | 'price_asc' | 'price_desc' | 'name'>('recent');
+  const [page, setPage] = useState(1);
+  const [mode, setMode] = useState<'grid' | 'list'>('grid');
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    const p = new URLSearchParams({ page: String(page), limit: '60', sortBy });
+    if (brandId) p.set('brand_id', String(brandId));
+    if (search.trim()) p.set('search', search.trim());
+    try {
+      const res = await fetch(`/api/products/list?${p}`);
+      setData(await res.json());
+    } catch { /* silent */ }
+    setLoading(false);
+  }, [page, brandId, search, sortBy]);
+
+  useEffect(() => { load(); }, [load]);
+
+  const downloadCsv = async () => {
+    const p = new URLSearchParams({ limit: '5000', sortBy });
+    if (brandId) p.set('brand_id', String(brandId));
+    if (search.trim()) p.set('search', search.trim());
+    const res = await fetch(`/api/products/list?${p}`);
+    const j = await res.json();
+    const products = j.products || [];
+    if (products.length === 0) { alert('No products to export.'); return; }
+    const h = ['id','brand_id','brand_handle','brand','name','price','compare_price','currency','product_type','product_url','image_url','is_active','first_seen_at','last_seen_at'];
+    const rows = [h.join(',')];
+    for (const pr of products as CatalogProduct[]) {
+      rows.push(h.map(k => {
+        const v = (pr as unknown as Record<string, unknown>)[k];
+        if (v === null || v === undefined) return '';
+        const s = String(v);
+        return s.includes(',') || s.includes('"') || s.includes('\n') ? `"${s.replace(/"/g, '""')}"` : s;
+      }).join(','));
+    }
+    const blob = new Blob([rows.join('\n')], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    const slug = data?.brand ? `-${data.brand.handle}` : '';
+    a.download = `lenzy-products${slug}-${new Date().toISOString().slice(0,10)}.csv`;
+    a.click(); URL.revokeObjectURL(url);
+  };
+
+  return (
+    <div>
+      {/* Brand picker + filters */}
+      {!brandId && data && (
+        <>
+          <div className="mb-4">
+            <div className="text-[11px] uppercase tracking-wider font-bold text-[var(--text-2)] mb-2">Pick a brand to see their catalog</div>
+            <div className="flex flex-wrap gap-1.5">
+              {data.topBrands.map(tb => (
+                <button key={tb.brand_id} onClick={() => { setBrandId(tb.brand_id); setPage(1); }}
+                  className="px-2.5 py-1 bg-[var(--surface)] border border-[var(--line)] hover:border-[var(--brand)] rounded-lg text-[11px] font-semibold transition-colors flex items-center gap-1.5">
+                  <span className="text-[var(--brand)] font-mono">#{tb.brand_id}</span>
+                  <span>{tb.brand}</span>
+                  <span className="text-[9px] text-[var(--text-3)]">({tb.count.toLocaleString()})</span>
+                </button>
+              ))}
+            </div>
+          </div>
+          <div className="text-[10px] text-[var(--text-3)] mb-3">
+            {data.total.toLocaleString()} total products · {data.topBrands.length} brands with catalog data
+          </div>
+        </>
+      )}
+
+      {/* Selected brand header */}
+      {brandId && data?.brand && (
+        <div className="bg-[var(--surface)] border border-[var(--line)] rounded-xl p-4 mb-4 flex items-center gap-3">
+          {data.brand.logo_url ? (
+            <img src={data.brand.logo_url} alt="" className="w-12 h-12 rounded-lg object-cover bg-[var(--bg-alt)] flex-shrink-0" onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }} />
+          ) : (
+            <div className="w-12 h-12 rounded-lg bg-gradient-to-br from-[var(--brand)] to-purple-500 flex items-center justify-center text-white text-[18px] font-bold flex-shrink-0">{data.brand.name.charAt(0)}</div>
+          )}
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="text-[10px] px-1.5 py-0.5 bg-[var(--brand)]/10 text-[var(--brand)] rounded font-mono font-semibold">#{data.brand.id}</span>
+              <div className="text-[16px] font-bold">{data.brand.name}</div>
+              <span className="text-[10px] text-[var(--text-3)]">@{data.brand.handle}</span>
+            </div>
+            <div className="text-[11px] text-[var(--text-3)] mt-0.5">
+              {[data.brand.category, data.brand.region, data.brand.price_range].filter(Boolean).join(' · ')}
+              {data.brand.website && <a href={data.brand.website} target="_blank" rel="noopener noreferrer" className="text-[var(--brand)] ml-2 hover:underline">website ↗</a>}
+              {data.brand.instagram_url && <a href={data.brand.instagram_url} target="_blank" rel="noopener noreferrer" className="text-[var(--brand)] ml-2 hover:underline">Instagram ↗</a>}
+            </div>
+            <div className="text-[10px] text-[var(--text-2)] mt-0.5 font-semibold">{data.total.toLocaleString()} products</div>
+          </div>
+          <button onClick={() => { setBrandId(null); setPage(1); }} className="px-2.5 py-1.5 bg-[var(--bg-alt)] text-[11px] font-semibold rounded-lg">× Change brand</button>
+        </div>
+      )}
+
+      {/* Controls */}
+      <div className="flex gap-2 mb-3 flex-wrap items-center">
+        <input type="text" value={search} onChange={e => { setSearch(e.target.value); setPage(1); }}
+          placeholder="Search product names, types…"
+          className="flex-1 min-w-[200px] bg-[var(--bg-alt)] rounded-lg px-3 py-1.5 text-[12px] outline-none" />
+        <select value={sortBy} onChange={e => { setSortBy(e.target.value as 'recent' | 'price_asc' | 'price_desc' | 'name'); setPage(1); }} className="bg-[var(--bg-alt)] rounded-lg px-2 py-1.5 text-[11px] outline-none">
+          <option value="recent">Most recent</option>
+          <option value="price_asc">Price: low → high</option>
+          <option value="price_desc">Price: high → low</option>
+          <option value="name">Name A-Z</option>
+        </select>
+        <div className="flex bg-[var(--bg-alt)] rounded-md p-[2px]">
+          <button onClick={() => setMode('grid')} className={`px-2 py-0.5 rounded text-[11px] ${mode === 'grid' ? 'bg-[var(--surface)] shadow-sm' : ''}`}>Grid</button>
+          <button onClick={() => setMode('list')} className={`px-2 py-0.5 rounded text-[11px] ${mode === 'list' ? 'bg-[var(--surface)] shadow-sm' : ''}`}>List</button>
+        </div>
+        <button onClick={downloadCsv} className="px-2.5 py-1.5 bg-[var(--bg-alt)] text-[var(--text-2)] text-[11px] font-semibold rounded-lg flex items-center gap-1.5">
+          <svg width="12" height="12" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
+          CSV
+        </button>
+      </div>
+
+      {loading && !data && <div className="flex items-center justify-center py-16 text-[12px] text-[var(--text-3)]"><div className="w-4 h-4 border-2 border-[var(--brand)] border-t-transparent rounded-full animate-spin mr-2" />Loading catalog…</div>}
+
+      {data && data.products.length === 0 && !loading && (
+        <div className="bg-[var(--bg-alt)] rounded-xl p-8 text-center text-[var(--text-3)] text-[12px]">
+          {brandId ? 'No products found for this brand. Run the Shopify scraper or upload a product feed.' : 'No products in catalog yet.'}
+        </div>
+      )}
+
+      {/* Grid */}
+      {data && data.products.length > 0 && mode === 'grid' && (
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-2 pb-4">
+          {data.products.map(p => (
+            <a key={p.id} href={p.product_url || '#'} target="_blank" rel="noopener noreferrer"
+              className="bg-[var(--surface)] border border-[var(--line)] rounded-lg overflow-hidden hover:border-[var(--brand)] transition-colors">
+              <div className="aspect-square bg-[var(--bg-alt)] overflow-hidden">
+                {p.blob_url || p.image_url ? (
+                  <img src={p.blob_url || p.image_url || ''} alt={p.name} className="w-full h-full object-cover" loading="lazy"
+                    onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }} />
+                ) : (
+                  <div className="w-full h-full flex items-center justify-center text-3xl">👓</div>
+                )}
+              </div>
+              <div className="p-2">
+                {!brandId && (
+                  <div className="text-[9px] text-[var(--brand)] font-mono mb-0.5">#{p.brand_id ?? '—'} · {p.brand}</div>
+                )}
+                <div className="text-[11px] font-semibold line-clamp-2 leading-tight">{p.name}</div>
+                <div className="flex items-center gap-1.5 mt-1">
+                  {p.price != null && <span className="text-[11px] font-bold">{p.currency === 'USD' ? '$' : p.currency === 'EUR' ? '€' : p.currency === 'GBP' ? '£' : p.currency === 'INR' ? '₹' : ''}{Number(p.price).toLocaleString()}</span>}
+                  {p.compare_price && p.price && Number(p.compare_price) > Number(p.price) && (
+                    <span className="text-[10px] text-[var(--text-3)] line-through">{Number(p.compare_price).toLocaleString()}</span>
+                  )}
+                </div>
+                {p.product_type && <div className="text-[9px] text-[var(--text-3)] mt-0.5">{p.product_type}</div>}
+              </div>
+            </a>
+          ))}
+        </div>
+      )}
+
+      {/* List */}
+      {data && data.products.length > 0 && mode === 'list' && (
+        <div className="bg-[var(--surface)] border border-[var(--line)] rounded-xl overflow-hidden">
+          <div className="max-h-[70vh] overflow-y-auto">
+            <table className="w-full text-[11px]">
+              <thead className="sticky top-0 bg-[var(--surface)] border-b border-[var(--line)] z-10">
+                <tr className="text-[var(--text-3)] uppercase tracking-wider">
+                  <th className="text-left py-2 px-2 font-bold">ID</th>
+                  <th className="text-left py-2 px-2 font-bold">Brand</th>
+                  <th className="text-left py-2 px-2 font-bold">Name</th>
+                  <th className="text-left py-2 px-2 font-bold">Type</th>
+                  <th className="text-right py-2 px-2 font-bold">Price</th>
+                  <th className="text-left py-2 px-2 font-bold">Seen</th>
+                  <th className="text-right py-2 px-2 font-bold">Link</th>
+                </tr>
+              </thead>
+              <tbody>
+                {data.products.map((p, i) => (
+                  <tr key={p.id} className={`border-b border-[var(--line)] last:border-b-0 ${i % 2 === 0 ? '' : 'bg-[var(--bg-alt)]/40'}`}>
+                    <td className="py-2 px-2 font-mono text-[var(--brand)]">#{p.brand_id ?? '—'}</td>
+                    <td className="py-2 px-2 font-semibold">{p.brand}</td>
+                    <td className="py-2 px-2">{p.name}</td>
+                    <td className="py-2 px-2 text-[var(--text-3)]">{p.product_type || '—'}</td>
+                    <td className="py-2 px-2 text-right font-mono">{p.price != null ? `${p.currency === 'USD' ? '$' : p.currency === 'EUR' ? '€' : p.currency === 'GBP' ? '£' : p.currency === 'INR' ? '₹' : ''}${Number(p.price).toLocaleString()}` : '—'}</td>
+                    <td className="py-2 px-2 text-[10px] text-[var(--text-3)]">{p.last_seen_at ? rel(p.last_seen_at) : '—'}</td>
+                    <td className="py-2 px-2 text-right">{p.product_url ? <a href={p.product_url} target="_blank" rel="noopener noreferrer" className="text-[var(--brand)] hover:underline">open ↗</a> : '—'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {data && data.totalPages > 1 && (
+        <div className="flex items-center justify-center gap-3 mt-3 pb-3">
+          <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1} className="px-3 py-1 text-[11px] bg-[var(--bg-alt)] rounded-lg disabled:opacity-30">Prev</button>
+          <span className="text-[11px] text-[var(--text-3)]">{page}/{data.totalPages} · {data.total.toLocaleString()} products</span>
+          <button onClick={() => setPage(p => Math.min(data.totalPages, p + 1))} disabled={page === data.totalPages} className="px-3 py-1 text-[11px] bg-[var(--bg-alt)] rounded-lg disabled:opacity-30">Next</button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 /* ═══ People Directory — standalone industry people mapping ═══ */
 
 interface DirectoryPerson {
@@ -3697,6 +3943,7 @@ interface DirectoryPerson {
   location: string | null;
   company_current: string | null;
   brand_handles: string[];
+  brand_ids: number[];
   previous_companies: string[] | null;
   tenure: string | null;
   bio: string | null;
@@ -3757,12 +4004,19 @@ function PeopleDirectory() {
     if (!form.name.trim()) return;
     setFormSaving(true);
     try {
-      const body: Record<string, unknown> = { ...form };
-      if (editPerson) body.id = editPerson.id;
+      // Auto-route: if brand_handles is all numeric, send it as brand_ids instead
+      const bodyInput: Record<string, unknown> = { ...form };
+      if (editPerson) bodyInput.id = editPerson.id;
+      const parts = String(form.brand_handles || '').split(/[,;|]/).map(p => p.trim()).filter(Boolean);
+      const allNumeric = parts.length > 0 && parts.every(p => /^\d+$/.test(p));
+      if (allNumeric) {
+        bodyInput.brand_ids = parts.map(p => parseInt(p));
+        delete bodyInput.brand_handles;
+      }
       const res = await fetch('/api/people', {
         method: editPerson ? 'PATCH' : 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
+        body: JSON.stringify(bodyInput),
       });
       const j = await res.json();
       if (j.error) alert(j.error);
@@ -3945,13 +4199,19 @@ function PeopleDirectory() {
                   {p.location && <><span>·</span><span>{p.location}</span></>}
                   {p.tenure && <><span>·</span><span>{p.tenure}</span></>}
                 </div>
-                {p.brand_handles.length > 0 && (
+                {(p.brand_ids && p.brand_ids.length > 0) || p.brand_handles.length > 0 ? (
                   <div className="flex gap-1 mt-1.5 flex-wrap">
-                    {p.brand_handles.map(h => (
+                    {(p.brand_ids && p.brand_ids.length > 0 ? p.brand_ids : []).map((id, i) => (
+                      <span key={`id-${id}`} title={p.brand_handles[i] ? `@${p.brand_handles[i]}` : undefined}
+                        className="text-[9px] px-1.5 py-0.5 bg-[var(--brand)]/10 text-[var(--brand)] rounded font-mono font-semibold">
+                        #{id}{p.brand_handles[i] ? ` · ${p.brand_handles[i]}` : ''}
+                      </span>
+                    ))}
+                    {(!p.brand_ids || p.brand_ids.length === 0) && p.brand_handles.map(h => (
                       <span key={h} className="text-[9px] px-1.5 py-0.5 bg-[var(--brand)]/10 text-[var(--brand)] rounded font-mono font-semibold">@{h}</span>
                     ))}
                   </div>
-                )}
+                ) : null}
                 {p.tags && p.tags.length > 0 && (
                   <div className="flex gap-1 mt-1 flex-wrap">
                     {p.tags.map(t => <span key={t} className="text-[9px] px-1.5 py-0.5 bg-[var(--bg-alt)] rounded text-[var(--text-3)]">#{t}</span>)}
@@ -4000,7 +4260,7 @@ function PeopleDirectory() {
                 <Field label="Phone" value={form.phone} onChange={v => setForm(f => ({ ...f, phone: v }))} placeholder="+39 ..." />
                 <Field label="Tenure" value={form.tenure} onChange={v => setForm(f => ({ ...f, tenure: v }))} placeholder="8 years" />
               </div>
-              <Field label="Linked brands (comma-separated handles)" value={form.brand_handles} onChange={v => setForm(f => ({ ...f, brand_handles: v }))} placeholder="rayban, oakley, persol, oliverpeoples" />
+              <Field label="Linked brands (handles or IDs, comma-separated)" value={form.brand_handles} onChange={v => setForm(f => ({ ...f, brand_handles: v }))} placeholder="rayban, oakley, persol — or — 142, 219, 318" />
               <Field label="Previous companies (comma-separated)" value={form.previous_companies} onChange={v => setForm(f => ({ ...f, previous_companies: v }))} placeholder="Luxottica, McKinsey" />
               <Field label="Tags (comma-separated)" value={form.tags} onChange={v => setForm(f => ({ ...f, tags: v }))} placeholder="leadership, strategy, acquisition" />
               <label className="block">
