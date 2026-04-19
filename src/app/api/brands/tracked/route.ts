@@ -50,34 +50,23 @@ export async function GET(request: NextRequest) {
   const { data, count, error } = await q;
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
-  // ── Enrich with posts_count + products_count ──
-  const rows = (data || []) as Array<{ handle: string; name: string; [key: string]: unknown }>;
-  const handles = rows.map(r => r.handle);
-  const names = rows.map(r => r.name).filter(Boolean);
+  // ── Enrich with content counts from brand_content (unified table) ──
+  const rows = (data || []) as Array<{ id: number; handle: string; name: string; [key: string]: unknown }>;
+  const brandIds = rows.map(r => r.id).filter(Boolean);
 
-  // Post counts per brand_handle
-  const postCounts = new Map<string, number>();
-  if (handles.length > 0) {
-    // Supabase doesn't expose GROUP BY directly — pull minimal rows and count in JS.
-    const { data: postRows } = await client
-      .from('ig_posts')
-      .select('brand_handle')
-      .in('brand_handle', handles);
-    for (const r of (postRows || []) as Array<{ brand_handle: string }>) {
-      postCounts.set(r.brand_handle, (postCounts.get(r.brand_handle) || 0) + 1);
-    }
-  }
-
-  // Product counts per brand name (products.brand holds the display name)
-  const productCounts = new Map<string, number>();
-  if (names.length > 0) {
-    const { data: productRows } = await client
-      .from('products')
-      .select('brand')
-      .in('brand', names);
-    for (const r of (productRows || []) as Array<{ brand: string }>) {
-      const key = (r.brand || '').toLowerCase();
-      productCounts.set(key, (productCounts.get(key) || 0) + 1);
+  // One query pulls every content row's (brand_id, type) for the page of brands.
+  // We aggregate in JS into a per-brand, per-type breakdown.
+  const contentCounts = new Map<number, Record<string, number>>();
+  if (brandIds.length > 0) {
+    const { data: contentRows } = await client
+      .from('brand_content')
+      .select('brand_id,type')
+      .in('brand_id', brandIds)
+      .eq('is_active', true);
+    for (const r of (contentRows || []) as Array<{ brand_id: number; type: string }>) {
+      if (!contentCounts.has(r.brand_id)) contentCounts.set(r.brand_id, {});
+      const m = contentCounts.get(r.brand_id)!;
+      m[r.type] = (m[r.type] || 0) + 1;
     }
   }
 
@@ -101,12 +90,25 @@ export async function GET(request: NextRequest) {
     return Math.round((filled / COMPLETENESS_FIELDS.length) * 100);
   };
 
-  const enriched = rows.map(r => ({
-    ...r,
-    posts_count: postCounts.get(r.handle) || 0,
-    products_count: productCounts.get((r.name || '').toLowerCase()) || 0,
-    completeness_pct: computeCompleteness(r),
-  }));
+  const enriched = rows.map(r => {
+    const cc = contentCounts.get(r.id) || {};
+    const totalContent = Object.values(cc).reduce((s, n) => s + n, 0);
+    return {
+      ...r,
+      // Per-type counts from brand_content
+      posts_count:        cc.ig_post || 0,
+      products_count:     cc.product || 0,
+      people_count:       cc.person || 0,
+      celeb_photos_count: cc.celeb_photo || 0,
+      website_links_count: cc.website_link || 0,
+      reimagines_count:   cc.reimagine || 0,
+      youtube_count:      cc.youtube || 0,
+      tiktok_count:       cc.tiktok || 0,
+      total_content:      totalContent,
+      content_breakdown:  cc,
+      completeness_pct:   computeCompleteness(r),
+    };
+  });
 
   // Upload history
   const { data: uploads } = await client

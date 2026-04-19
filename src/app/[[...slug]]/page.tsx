@@ -2805,6 +2805,14 @@ interface TrackedBrand {
   posts_scraped: number;
   posts_count: number;
   products_count: number;
+  people_count: number;
+  celeb_photos_count: number;
+  website_links_count: number;
+  reimagines_count: number;
+  youtube_count: number;
+  tiktok_count: number;
+  total_content: number;
+  content_breakdown: Record<string, number>;
   last_scraped_at: string | null;
   added_at: string;
   website: string | null;
@@ -2975,7 +2983,11 @@ function BrandsManager() {
     setEditBrand({
       id: 0, handle: '', name: '', category: null, region: null, price_range: null,
       subcategory: null, country: null, source_country: null, tier: 'full', active: true, source: 'manual',
-      posts_scraped: 0, posts_count: 0, products_count: 0, last_scraped_at: null, added_at: new Date().toISOString(),
+      posts_scraped: 0, posts_count: 0, products_count: 0,
+      people_count: 0, celeb_photos_count: 0, website_links_count: 0,
+      reimagines_count: 0, youtube_count: 0, tiktok_count: 0,
+      total_content: 0, content_breakdown: {},
+      last_scraped_at: null, added_at: new Date().toISOString(),
       website: null, notes: null,
       instagram_url: null, facebook_url: null, twitter_url: null,
       tiktok_url: null, youtube_url: null, linkedin_url: null,
@@ -3284,6 +3296,7 @@ function BrandsManager() {
                     <th className="text-left py-2 px-2 font-bold">Category</th>
                     <th className="text-left py-2 px-2 font-bold">Region</th>
                     <th className="text-left py-2 px-2 font-bold">Tier</th>
+                    <th className="text-right py-2 px-2 font-bold" title="All brand_content rows">Content</th>
                     <th className="text-right py-2 px-2 font-bold">Posts</th>
                     <th className="text-right py-2 px-2 font-bold">Products</th>
                     <th className="text-left py-2 px-2 font-bold">Last scrape</th>
@@ -3313,6 +3326,7 @@ function BrandsManager() {
                               <option value="full">full</option>
                             </select>
                           </td>
+                          <td className={`py-2 px-2 text-right font-mono text-[11px] font-bold ${b.total_content > 0 ? 'text-[var(--brand)]' : 'text-[var(--text-3)]'}`}>{(b.total_content || 0).toLocaleString()}</td>
                           <td className={`py-2 px-2 text-right font-mono text-[11px] ${b.posts_count > 0 ? 'text-[var(--text)]' : 'text-[var(--text-3)]'}`}>{b.posts_count || 0}</td>
                           <td className={`py-2 px-2 text-right font-mono text-[11px] ${b.products_count > 0 ? 'text-[var(--text)]' : 'text-[var(--text-3)]'}`}>{b.products_count || 0}</td>
                           <td className="py-2 px-2 text-[10px] text-[var(--text-3)]">{b.last_scraped_at ? rel(b.last_scraped_at) : 'never'}</td>
@@ -3324,7 +3338,7 @@ function BrandsManager() {
                         </tr>
                         {expanded && (
                           <tr className="border-b border-[var(--line)] bg-[var(--bg-alt)]/30">
-                            <td colSpan={10} className="p-4">
+                            <td colSpan={11} className="p-4">
                               {/* Top bar: completeness + tags + description */}
                               <div className="flex items-start gap-3 mb-3 flex-wrap">
                                 {b.completeness_pct !== null && (
@@ -3399,6 +3413,32 @@ function BrandsManager() {
                                   </dl>
                                   {b.notes && <p className="text-[10px] text-[var(--text-2)] mt-2 leading-snug">{b.notes}</p>}
                                 </div>
+                              </div>
+
+                              {/* Content breakdown — everything linked in brand_content */}
+                              <div className="mt-4">
+                                <div className="flex items-center justify-between mb-2">
+                                  <div className="text-[10px] uppercase tracking-wider text-[var(--text-3)] font-bold">
+                                    Content linked ({(b.total_content || 0).toLocaleString()} rows)
+                                  </div>
+                                  <div className="flex gap-2">
+                                    <a href={`/api/content?brand_id=${b.id}&limit=500`} target="_blank" rel="noopener noreferrer" className="text-[10px] font-semibold text-[var(--text-2)] hover:text-[var(--brand)]">View JSON</a>
+                                    <a href={`/api/brands/export?brand_id=${b.id}&format=csv`} download className="text-[10px] font-semibold text-emerald-400 hover:underline">Download CSV</a>
+                                  </div>
+                                </div>
+                                {b.content_breakdown && Object.keys(b.content_breakdown).length > 0 ? (
+                                  <div className="flex flex-wrap gap-1.5 mb-2">
+                                    {Object.entries(b.content_breakdown).sort((a, b) => b[1] - a[1]).map(([t, c]) => (
+                                      <a key={t} href={`/api/content?brand_id=${b.id}&type=${t}&limit=500`} target="_blank" rel="noopener noreferrer"
+                                        className="inline-flex items-center gap-1.5 px-2 py-0.5 bg-[var(--bg-alt)] border border-[var(--line)] rounded text-[10px] hover:border-[var(--brand)]">
+                                        <span className="text-[var(--text-2)]">{t}</span>
+                                        <span className="font-mono font-bold text-[var(--brand)]">{c.toLocaleString()}</span>
+                                      </a>
+                                    ))}
+                                  </div>
+                                ) : (
+                                  <div className="text-[10px] text-[var(--text-3)] mb-2">No content linked yet.</div>
+                                )}
                               </div>
 
                               {/* People */}
