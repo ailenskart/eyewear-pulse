@@ -3128,6 +3128,15 @@ function BrandsManager() {
           <svg width="12" height="12" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M3 6h18M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/></svg>
           Clean fakes
         </button>
+        <a
+          href="/api/brands/export?format=csv"
+          download
+          className="px-3 py-2 bg-emerald-500/15 text-emerald-400 text-[12px] font-semibold rounded-lg flex items-center gap-1.5 hover:bg-emerald-500/25"
+          title="Full export: all brands + products, posts, celebs, people counts as one CSV"
+        >
+          <svg width="12" height="12" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
+          Full export (all data)
+        </a>
       </div>
 
       {peopleError && (
@@ -3308,6 +3317,7 @@ function BrandsManager() {
                           <td className={`py-2 px-2 text-right font-mono text-[11px] ${b.products_count > 0 ? 'text-[var(--text)]' : 'text-[var(--text-3)]'}`}>{b.products_count || 0}</td>
                           <td className="py-2 px-2 text-[10px] text-[var(--text-3)]">{b.last_scraped_at ? rel(b.last_scraped_at) : 'never'}</td>
                           <td className="py-2 px-3 text-right whitespace-nowrap">
+                            <a href={`/api/brands/export?brand_id=${b.id}&format=csv`} download className="text-emerald-400 text-[10px] font-semibold hover:underline mr-2" title="Export brand + all linked data">Export</a>
                             <button onClick={() => openEdit(b)} className="text-[var(--text-2)] text-[10px] font-semibold hover:text-[var(--brand)] mr-2">Edit</button>
                             <button onClick={() => deactivate(b.handle)} className="text-red-400 text-[10px] font-semibold hover:underline">Remove</button>
                           </td>
