@@ -1,0 +1,41 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$comment": "Apply with: node -e \"const fs=require('fs'); const v=JSON.parse(fs.readFileSync('vercel.json','utf8')); const p=JSON.parse(fs.readFileSync('vercel.json.patch','utf8')); v.crons=[...v.crons||[],...p.crons]; fs.writeFileSync('vercel.json',JSON.stringify(v,null,2));\"",
+  "crons": [
+    {
+      "path": "/api/cron/celeb-scan",
+      "schedule": "0 */6 * * *",
+      "$comment": "Every 6 hours. Scans due celebrity IG handles via Apify."
+    },
+    {
+      "path": "/api/cron/vision-detect",
+      "schedule": "0 */2 * * *",
+      "$comment": "Every 2 hours. Runs Gemini Vision on unprocessed brand_content rows."
+    },
+    {
+      "path": "/api/cron/crop-and-blob",
+      "schedule": "30 1,3,5,7,9,11,13,15,17,19,21,23 * * *",
+      "$comment": "Every 2 hours offset by 30 minutes. Crops eyewear regions and uploads to Vercel Blob."
+    },
+    {
+      "path": "/api/cron/embed-crops",
+      "schedule": "0 */2 * * *",
+      "$comment": "Every 2 hours. Generates OpenCLIP embeddings for crops via Replicate."
+    },
+    {
+      "path": "/api/cron/match-products",
+      "schedule": "0 */2 * * *",
+      "$comment": "Every 2 hours. pgvector cosine match + attribution scoring."
+    },
+    {
+      "path": "/api/cron/price-snapshot",
+      "schedule": "0 4 * * *",
+      "$comment": "Daily at 04:00 UTC. Snapshots product prices from brand sitemaps."
+    },
+    {
+      "path": "/api/cron/trends-weekly",
+      "schedule": "0 2 * * 1",
+      "$comment": "Every Monday at 02:00 UTC. Aggregates weekly trend data (shape/color/material deltas)."
+    }
+  ]
+}
