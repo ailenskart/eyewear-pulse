@@ -25,6 +25,7 @@
     "replicate": "^1.4.0",
     "tailwindcss": "^4.2.2",
     "together-ai": "^0.39.0",
-    "typescript": "^6.0.2"
+    "typescript": "^6.0.2",
+    "xlsx": "^0.18.5"
   }
 }
