@@ -2718,39 +2718,34 @@ function Celebrities() {
   );
 }
 
-/* ═══ Sources — Unified intelligence hub (Shopify + Trends + Reddit + Google Ads) ═══ */
+/* ═══ Intel Hub — Brands · People · Products · Content ═══ */
 
-type SourceTab = 'brands' | 'people' | 'product-catalog' | 'shopify' | 'trends' | 'reddit' | 'google-ads' | 'youtube' | 'brave' | 'tiktok' | 'amazon' | 'linkedin';
-
-interface ShopifyStore { handle: string; domain: string; name: string }
-interface ShopifyProd { id: number; title: string; image: string; price: string; comparePrice: string | null; available: boolean; createdAt: string; url: string; variantCount: number; soldOut: boolean }
-interface ShopifyStats { totalProducts: number; totalActive: number; totalVariants: number; avgPrice: number; minPrice: number; maxPrice: number; newThisWeek: number; topTypes: Array<{ name: string; count: number }>; topTags: Array<{ name: string; count: number }> }
+type SourceTab = 'brands' | 'people' | 'product-catalog' | 'content';
 
 function Sources() {
   const [sub, setSub] = useState<SourceTab>('brands');
 
   return (
     <div className="py-4">
-      <div className="mb-4">
-        <h2 className="text-[20px] font-bold tracking-tight">Intelligence Sources</h2>
-        <p className="text-[11px] text-[var(--text-3)] mt-0.5">Live data from every corner of the eyewear market</p>
+      <div className="mb-4 flex items-start justify-between gap-3 flex-wrap">
+        <div>
+          <h2 className="text-[20px] font-bold tracking-tight">Intelligence Hub</h2>
+          <p className="text-[11px] text-[var(--text-3)] mt-0.5">Brands, people, products, and every link — one unified catalog.</p>
+        </div>
+        <a href="/api/brands/export?format=csv" download
+          className="px-3 py-1.5 bg-emerald-500/15 text-emerald-400 text-[11px] font-semibold rounded-lg hover:bg-emerald-500/25 flex items-center gap-1.5">
+          <svg width="11" height="11" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
+          Download full export
+        </a>
       </div>
 
-      {/* Sub-tabs */}
+      {/* Sub-tabs — only the core brand-centric views */}
       <div className="flex gap-2 mb-4 overflow-x-auto" style={{ scrollbarWidth: 'none' }}>
         {[
-          { k: 'brands', l: 'Brands', icon: '📋' },
-          { k: 'people', l: 'People', icon: '👤' },
+          { k: 'brands',          l: 'Brands',   icon: '📋' },
+          { k: 'people',          l: 'People',   icon: '👤' },
           { k: 'product-catalog', l: 'Products', icon: '🛒' },
-          { k: 'shopify', l: 'Shopify', icon: '🛍️' },
-          { k: 'amazon', l: 'Amazon', icon: '📦' },
-          { k: 'trends', l: 'Trends', icon: '📈' },
-          { k: 'reddit', l: 'Reddit', icon: '💬' },
-          { k: 'youtube', l: 'YouTube', icon: '📺' },
-          { k: 'tiktok', l: 'TikTok', icon: '🎵' },
-          { k: 'linkedin', l: 'LinkedIn', icon: '💼' },
-          { k: 'brave', l: 'Web', icon: '🔍' },
-          { k: 'google-ads', l: 'Google Ads', icon: '🎯' },
+          { k: 'content',         l: 'Content',  icon: '🔗' },
         ].map(t => (
           <button
             key={t.k}
@@ -2762,18 +2757,173 @@ function Sources() {
         ))}
       </div>
 
-      {sub === 'brands' && <BrandsManager />}
-      {sub === 'people' && <PeopleDirectory />}
+      {sub === 'brands'          && <BrandsManager />}
+      {sub === 'people'          && <PeopleDirectory />}
       {sub === 'product-catalog' && <ProductCatalog />}
-      {sub === 'shopify' && <ShopifySource />}
-      {sub === 'amazon' && <AmazonSource />}
-      {sub === 'trends' && <TrendsSource />}
-      {sub === 'reddit' && <RedditSource />}
-      {sub === 'youtube' && <YouTubeSource />}
-      {sub === 'tiktok' && <TikTokSource />}
-      {sub === 'linkedin' && <LinkedInSource />}
-      {sub === 'brave' && <BraveSource />}
-      {sub === 'google-ads' && <GoogleAdsSource />}
+      {sub === 'content'         && <ContentDirectory />}
+    </div>
+  );
+}
+
+/* ═══ Content Directory — unified view of brand_content ═══ */
+
+interface BrandContentRow {
+  id: number;
+  brand_id: number | null;
+  brand_handle: string | null;
+  type: string;
+  parent_id: number | null;
+  title: string | null;
+  caption: string | null;
+  description: string | null;
+  url: string | null;
+  image_url: string | null;
+  blob_url: string | null;
+  person_name: string | null;
+  person_title: string | null;
+  linkedin_url: string | null;
+  likes: number;
+  price: number | null;
+  currency: string | null;
+  posted_at: string | null;
+  detected_at: string;
+  data: Record<string, unknown> | null;
+  source: string | null;
+}
+
+interface ContentResponse {
+  content: BrandContentRow[];
+  total: number;
+  page: number;
+  totalPages: number;
+  typeBreakdown: Array<{ name: string; count: number }>;
+}
+
+function ContentDirectory() {
+  const [data, setData] = useState<ContentResponse | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [type, setType] = useState('');
+  const [brandId, setBrandId] = useState('');
+  const [search, setSearch] = useState('');
+  const [page, setPage] = useState(1);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    const p = new URLSearchParams({ page: String(page), limit: '50' });
+    if (type) p.set('type', type);
+    if (brandId.trim()) p.set('brand_id', brandId.trim());
+    if (search.trim()) p.set('search', search.trim());
+    try {
+      const res = await fetch(`/api/content?${p}`);
+      setData(await res.json());
+    } catch { /* silent */ }
+    setLoading(false);
+  }, [page, type, brandId, search]);
+
+  useEffect(() => { load(); }, [load]);
+
+  return (
+    <div>
+      {/* Summary */}
+      <div className="flex flex-wrap items-center gap-3 mb-4 text-[11px]">
+        <div className="text-[var(--text-3)]">
+          <span className="font-bold text-[var(--text)] text-[14px]">{(data?.total || 0).toLocaleString()}</span> total content rows
+        </div>
+        {data?.typeBreakdown && data.typeBreakdown.length > 0 && (
+          <div className="flex gap-1 flex-wrap">
+            {data.typeBreakdown.map(t => (
+              <button key={t.name} onClick={() => { setType(t.name === type ? '' : t.name); setPage(1); }}
+                className={`px-2 py-0.5 rounded border text-[10px] font-semibold ${type === t.name ? 'bg-[var(--brand)] text-white border-[var(--brand)]' : 'bg-[var(--bg-alt)] border-[var(--line)] text-[var(--text-2)] hover:border-[var(--brand)]'}`}>
+                {t.name} · <span className="font-mono">{t.count.toLocaleString()}</span>
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Filters */}
+      <div className="flex gap-2 mb-3 flex-wrap">
+        <input type="text" value={search} onChange={e => { setSearch(e.target.value); setPage(1); }} placeholder="Search content — caption, title, description, person name…"
+          className="flex-1 min-w-[220px] bg-[var(--bg-alt)] rounded-lg px-3 py-1.5 text-[12px] outline-none" />
+        <input type="text" value={brandId} onChange={e => { setBrandId(e.target.value); setPage(1); }} placeholder="Brand ID"
+          className="w-24 bg-[var(--bg-alt)] rounded-lg px-3 py-1.5 text-[12px] outline-none" />
+        <select value={type} onChange={e => { setType(e.target.value); setPage(1); }} className="bg-[var(--bg-alt)] rounded-lg px-2 py-1.5 text-[11px] outline-none">
+          <option value="">All types</option>
+          {data?.typeBreakdown.map(t => <option key={t.name} value={t.name}>{t.name}</option>)}
+        </select>
+      </div>
+
+      {loading && !data && (
+        <div className="flex items-center justify-center py-16 text-[12px] text-[var(--text-3)]">
+          <div className="w-4 h-4 border-2 border-[var(--brand)] border-t-transparent rounded-full animate-spin mr-2" />Loading…
+        </div>
+      )}
+
+      {data && data.content.length === 0 && !loading && (
+        <div className="bg-[var(--bg-alt)] rounded-xl p-8 text-center text-[var(--text-3)] text-[12px]">No content matching these filters.</div>
+      )}
+
+      {/* Content rows */}
+      {data && data.content.length > 0 && (
+        <div className="bg-[var(--surface)] border border-[var(--line)] rounded-xl overflow-hidden">
+          <div className="max-h-[70vh] overflow-y-auto">
+            <table className="w-full text-[11px]">
+              <thead className="sticky top-0 bg-[var(--surface)] border-b border-[var(--line)] z-10">
+                <tr className="text-[var(--text-3)] uppercase tracking-wider">
+                  <th className="text-left py-2 px-2 font-bold">ID</th>
+                  <th className="text-left py-2 px-2 font-bold">Brand</th>
+                  <th className="text-left py-2 px-2 font-bold">Type</th>
+                  <th className="text-left py-2 px-2 font-bold">Title / Who</th>
+                  <th className="text-left py-2 px-2 font-bold">URL / Extra</th>
+                  <th className="text-right py-2 px-2 font-bold">Metric</th>
+                  <th className="text-left py-2 px-2 font-bold">When</th>
+                </tr>
+              </thead>
+              <tbody>
+                {data.content.map((c, i) => (
+                  <tr key={c.id} className={`border-b border-[var(--line)] last:border-b-0 ${i % 2 === 0 ? '' : 'bg-[var(--bg-alt)]/40'}`}>
+                    <td className="py-2 px-2 font-mono text-[10px] text-[var(--text-3)]">#{c.id}</td>
+                    <td className="py-2 px-2 font-mono text-[10px] text-[var(--brand)] whitespace-nowrap">
+                      {c.brand_id ? `#${c.brand_id}` : '—'}
+                      {c.brand_handle && <span className="ml-1 text-[var(--text-3)]">{c.brand_handle}</span>}
+                    </td>
+                    <td className="py-2 px-2 text-[10px]">
+                      <span className="px-1.5 py-0.5 bg-[var(--bg-alt)] rounded font-semibold">{c.type}</span>
+                    </td>
+                    <td className="py-2 px-2 max-w-[280px] truncate">
+                      {c.person_name || c.title || c.caption?.substring(0, 80) || (c.data?.label as string) || '—'}
+                      {c.person_title && <span className="text-[var(--text-3)] block text-[10px]">{c.person_title}</span>}
+                    </td>
+                    <td className="py-2 px-2 max-w-[280px] truncate">
+                      {c.url ? (
+                        <a href={c.url} target="_blank" rel="noopener noreferrer" className="text-[var(--brand)] hover:underline truncate block">
+                          {c.url.replace(/^https?:\/\/(www\.)?/, '').substring(0, 50)}
+                        </a>
+                      ) : <span className="text-[var(--text-3)]">—</span>}
+                    </td>
+                    <td className="py-2 px-2 text-right font-mono text-[10px]">
+                      {c.price != null ? `${c.currency === 'USD' ? '$' : c.currency === 'EUR' ? '€' : c.currency === 'GBP' ? '£' : c.currency === 'INR' ? '₹' : ''}${Number(c.price).toLocaleString()}` :
+                       c.likes > 0 ? `♥ ${c.likes.toLocaleString()}` : '—'}
+                    </td>
+                    <td className="py-2 px-2 text-[10px] text-[var(--text-3)] whitespace-nowrap">
+                      {c.posted_at ? rel(c.posted_at) : c.detected_at ? rel(c.detected_at) : '—'}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* Pagination */}
+      {data && data.totalPages > 1 && (
+        <div className="flex items-center justify-center gap-3 mt-3 pb-3">
+          <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1} className="px-3 py-1 text-[11px] bg-[var(--bg-alt)] rounded-lg disabled:opacity-30">Prev</button>
+          <span className="text-[11px] text-[var(--text-3)]">{page}/{data.totalPages} · {data.total.toLocaleString()} rows</span>
+          <button onClick={() => setPage(p => Math.min(data.totalPages, p + 1))} disabled={page === data.totalPages} className="px-3 py-1 text-[11px] bg-[var(--bg-alt)] rounded-lg disabled:opacity-30">Next</button>
+        </div>
+      )}
     </div>
   );
 }
@@ -4328,943 +4478,6 @@ function PeopleDirectory() {
           </div>
         </div>
       )}
-    </div>
-  );
-}
-
-/* ── Shopify storefront scraper ── */
-function ShopifySource() {
-  const [stores, setStores] = useState<ShopifyStore[]>([]);
-  const [store, setStore] = useState<string>('warbyparker.com');
-  const [customStore, setCustomStore] = useState('');
-  const [products, setProducts] = useState<ShopifyProd[]>([]);
-  const [stats, setStats] = useState<ShopifyStats | null>(null);
-  const [recent, setRecent] = useState<ShopifyProd[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [err, setErr] = useState('');
-
-  useEffect(() => {
-    fetch('/api/shopify?list=1').then(r => r.json()).then(d => setStores(d.stores || []));
-  }, []);
-
-  const load = useCallback(async (targetDomain: string) => {
-    if (!targetDomain) return;
-    setLoading(true);
-    setErr('');
-    try {
-      const res = await fetch(`/api/shopify?store=${encodeURIComponent(targetDomain)}&limit=50`);
-      const data = await res.json();
-      if (data.error) {
-        setErr(data.error);
-        setProducts([]);
-        setStats(null);
-        setRecent([]);
-      } else {
-        setProducts(data.products || []);
-        setStats(data.stats || null);
-        setRecent(data.recentlyAdded || []);
-      }
-    } catch (e) {
-      setErr(e instanceof Error ? e.message : 'Fetch failed');
-    }
-    setLoading(false);
-  }, []);
-
-  useEffect(() => { load(store); }, [store, load]);
-
-  return (
-    <div>
-      {/* Store picker */}
-      <div className="bg-[var(--surface)] border border-[var(--line)] rounded-xl p-3 mb-4">
-        <div className="flex gap-2 mb-2">
-          <input
-            type="text" value={customStore} onChange={e => setCustomStore(e.target.value)}
-            placeholder="Enter any Shopify store domain…"
-            className="flex-1 min-w-0 bg-[var(--bg-alt)] rounded-lg px-3 py-2 text-[12px] outline-none"
-            onKeyDown={e => { if (e.key === 'Enter' && customStore.trim()) { setStore(customStore.trim()); setCustomStore(''); } }}
-          />
-          <button
-            onClick={() => { if (customStore.trim()) { setStore(customStore.trim()); setCustomStore(''); } }}
-            className="px-3 py-2 bg-[var(--brand)] text-white text-[11px] font-semibold rounded-lg"
-          >
-            Scan
-          </button>
-        </div>
-        <div className="flex gap-1.5 overflow-x-auto" style={{ scrollbarWidth: 'none' }}>
-          {stores.map(s => (
-            <button
-              key={s.handle}
-              onClick={() => setStore(s.domain)}
-              className={`px-2.5 py-1 rounded-full text-[11px] font-medium whitespace-nowrap flex-shrink-0 ${store === s.domain ? 'bg-[var(--text)] text-[var(--bg)]' : 'bg-[var(--bg-alt)] text-[var(--text-2)]'}`}
-            >
-              {s.name}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {loading && <div className="flex items-center justify-center py-12 text-[var(--text-3)] text-[12px]"><div className="w-4 h-4 border-2 border-[var(--brand)] border-t-transparent rounded-full animate-spin mr-2" />Scanning {store}…</div>}
-
-      {err && <div className="bg-red-500/10 border border-red-500/30 text-red-400 rounded-xl p-3 text-[12px] mb-4">{err}</div>}
-
-      {stats && !loading && (
-        <>
-          {/* Stats row */}
-          <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 mb-4">
-            <StatTile label="Products" value={String(stats.totalProducts)} />
-            <StatTile label="Active" value={String(stats.totalActive)} />
-            <StatTile label="Variants" value={String(stats.totalVariants)} />
-            <StatTile label="Avg price" value={`$${stats.avgPrice}`} accent />
-            <StatTile label="New this week" value={String(stats.newThisWeek)} accent={stats.newThisWeek > 0} />
-          </div>
-
-          {/* New this week */}
-          {recent.length > 0 && (
-            <div className="mb-4">
-              <div className="text-[11px] uppercase tracking-wider font-bold text-[var(--brand)] mb-2">🔥 New this week</div>
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                {recent.map(p => (
-                  <a key={p.id} href={p.url} target="_blank" rel="noopener noreferrer" className="bg-[var(--surface)] border border-[var(--brand)] rounded-xl overflow-hidden">
-                    <div className="aspect-square bg-white"><img src={p.image} alt={p.title} className="w-full h-full object-contain p-2" loading="lazy" onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }} /></div>
-                    <div className="p-2">
-                      <div className="text-[11px] font-semibold line-clamp-1">{p.title}</div>
-                      <div className="text-[11px] text-[var(--brand)] font-bold">${p.price}</div>
-                    </div>
-                  </a>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Top tags */}
-          {stats.topTags.length > 0 && (
-            <div className="mb-4">
-              <div className="text-[11px] uppercase tracking-wider font-bold text-[var(--text-3)] mb-2">Top tags</div>
-              <div className="flex flex-wrap gap-1.5">
-                {stats.topTags.map(t => (
-                  <span key={t.name} className="text-[11px] px-2 py-1 bg-[var(--bg-alt)] rounded-full">{t.name} <span className="text-[var(--text-3)]">{t.count}</span></span>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Product grid */}
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
-            {products.map(p => (
-              <a key={p.id} href={p.url} target="_blank" rel="noopener noreferrer" className="bg-[var(--surface)] border border-[var(--line)] rounded-xl overflow-hidden">
-                <div className="aspect-square bg-white relative">
-                  <img src={p.image} alt={p.title} className="w-full h-full object-contain p-3" loading="lazy" onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }} />
-                  {p.soldOut && <div className="absolute top-2 left-2 bg-black/80 text-white text-[9px] uppercase font-bold tracking-wider px-1.5 py-0.5 rounded">Sold out</div>}
-                </div>
-                <div className="p-2.5">
-                  <div className="text-[11px] font-semibold line-clamp-2 leading-snug">{p.title}</div>
-                  <div className="flex items-baseline gap-1.5 mt-1">
-                    <span className="text-[13px] font-bold">${p.price}</span>
-                    {p.comparePrice && Number(p.comparePrice) > 0 && <span className="text-[10px] text-[var(--text-3)] line-through">${p.comparePrice}</span>}
-                  </div>
-                  <div className="text-[9px] text-[var(--text-3)] mt-0.5">{p.variantCount} variant{p.variantCount !== 1 ? 's' : ''}</div>
-                </div>
-              </a>
-            ))}
-          </div>
-        </>
-      )}
-    </div>
-  );
-}
-
-function StatTile({ label, value, accent }: { label: string; value: string; accent?: boolean }) {
-  return (
-    <div className="bg-[var(--surface)] border border-[var(--line)] rounded-xl p-3">
-      <div className="text-[9px] uppercase tracking-wider text-[var(--text-3)] font-bold">{label}</div>
-      <div className={`text-[16px] font-bold ${accent ? 'text-[var(--brand)]' : ''}`}>{value}</div>
-    </div>
-  );
-}
-
-/* ── Google Trends ── */
-function TrendsSource() {
-  const [q, setQ] = useState('sunglasses,eyeglasses,ray-ban');
-  const [geo, setGeo] = useState(''); // empty = Worldwide
-  const [timeframe, setTimeframe] = useState('today 3-m');
-  const [data, setData] = useState<{ relatedQueries?: unknown; relatedTopics?: unknown; timeline?: unknown; error?: string; hint?: string } | null>(null);
-  const [loading, setLoading] = useState(false);
-
-  const load = useCallback(async () => {
-    setLoading(true);
-    try {
-      const res = await fetch(`/api/trends?q=${encodeURIComponent(q)}&geo=${geo}&timeframe=${encodeURIComponent(timeframe)}`);
-      setData(await res.json());
-    } catch (e) {
-      setData({ error: e instanceof Error ? e.message : 'Fetch failed' });
-    }
-    setLoading(false);
-  }, [q, geo, timeframe]);
-
-  useEffect(() => { load(); }, [load]);
-
-  // Related queries structure varies — extract rising + top
-  const extractRanked = (widget: unknown): Array<{ query: string; value: number | string }> => {
-    try {
-      const w = widget as { default?: { rankedList?: Array<{ rankedKeyword?: Array<{ query?: string; topic?: { title: string }; value?: number; formattedValue?: string }> }> } };
-      const list = w?.default?.rankedList?.[0]?.rankedKeyword || [];
-      return list.slice(0, 20).map(k => ({ query: k.query || k.topic?.title || '?', value: k.formattedValue || k.value || '' }));
-    } catch { return []; }
-  };
-
-  const top = data ? extractRanked(data.relatedQueries) : [];
-  const topics = data ? extractRanked(data.relatedTopics) : [];
-
-  return (
-    <div>
-      <div className="bg-[var(--surface)] border border-[var(--line)] rounded-xl p-3 mb-4 space-y-2">
-        <input
-          type="text" value={q} onChange={e => setQ(e.target.value)}
-          placeholder="comma-separated terms — e.g. ray-ban,oakley,lenskart"
-          className="w-full bg-[var(--bg-alt)] rounded-lg px-3 py-2 text-[12px] outline-none"
-          onKeyDown={e => { if (e.key === 'Enter') load(); }}
-        />
-        <div className="flex gap-2">
-          <select value={geo} onChange={e => setGeo(e.target.value)} className="bg-[var(--bg-alt)] rounded-lg px-2 py-2 text-[11px] outline-none">
-            <option value="">Worldwide</option>
-            <option value="IN">🇮🇳 India</option>
-            <option value="US">🇺🇸 USA</option>
-            <option value="GB">🇬🇧 UK</option>
-            <option value="AE">🇦🇪 UAE</option>
-            <option value="SG">🇸🇬 SG</option>
-            <option value="AU">🇦🇺 AU</option>
-            <option value="CA">🇨🇦 CA</option>
-          </select>
-          <select value={timeframe} onChange={e => setTimeframe(e.target.value)} className="bg-[var(--bg-alt)] rounded-lg px-2 py-2 text-[11px] outline-none flex-1">
-            <option value="now 1-d">Past 24h</option>
-            <option value="now 7-d">Past 7 days</option>
-            <option value="today 1-m">Past month</option>
-            <option value="today 3-m">Past 3 months</option>
-            <option value="today 12-m">Past year</option>
-            <option value="today 5-y">Past 5 years</option>
-          </select>
-          <button onClick={load} disabled={loading} className="px-4 py-2 bg-[var(--brand)] text-white text-[12px] font-semibold rounded-lg disabled:opacity-50">{loading ? '…' : 'Search'}</button>
-        </div>
-      </div>
-
-      {data?.error && <div className="bg-red-500/10 border border-red-500/30 text-red-400 rounded-xl p-3 text-[12px] mb-4">{data.error}{data.hint && ` — ${data.hint}`}</div>}
-
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-        {/* Related queries */}
-        <div className="bg-[var(--surface)] border border-[var(--line)] rounded-xl p-4">
-          <div className="text-[11px] uppercase tracking-wider font-bold text-[var(--brand)] mb-2">🔥 Related queries</div>
-          {top.length === 0 ? (
-            <div className="text-[11px] text-[var(--text-3)]">No data</div>
-          ) : (
-            <div className="space-y-1.5">
-              {top.map((k, i) => (
-                <div key={i} className="flex items-center justify-between text-[12px]">
-                  <span className="truncate">{k.query}</span>
-                  <span className="text-[var(--text-3)] flex-shrink-0 ml-2">{String(k.value)}</span>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-
-        {/* Related topics */}
-        <div className="bg-[var(--surface)] border border-[var(--line)] rounded-xl p-4">
-          <div className="text-[11px] uppercase tracking-wider font-bold text-[var(--brand)] mb-2">📈 Related topics</div>
-          {topics.length === 0 ? (
-            <div className="text-[11px] text-[var(--text-3)]">No data</div>
-          ) : (
-            <div className="space-y-1.5">
-              {topics.map((k, i) => (
-                <div key={i} className="flex items-center justify-between text-[12px]">
-                  <span className="truncate">{k.query}</span>
-                  <span className="text-[var(--text-3)] flex-shrink-0 ml-2">{String(k.value)}</span>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-/* ── Reddit mentions ── */
-interface RedditResultPost { id: string; title: string; snippet: string; subreddit: string; author: string; score: number; upvoteRatio: number; comments: number; createdAt: string; permalink: string; thumbnail: string }
-function RedditSource() {
-  const [q, setQ] = useState('lenskart');
-  const [sub, setSub] = useState('');
-  const [sort, setSort] = useState('relevance');
-  const [time, setTime] = useState('month');
-  const [posts, setPosts] = useState<RedditResultPost[]>([]);
-  const [stats, setStats] = useState<{ totalScore: number; totalComments: number; avgUpvoteRatio: number; subBreakdown: Array<{ name: string; count: number }> } | null>(null);
-  const [loading, setLoading] = useState(false);
-
-  const load = useCallback(async () => {
-    if (!q.trim()) return;
-    setLoading(true);
-    try {
-      const p = new URLSearchParams({ q, sort, time, limit: '30' });
-      if (sub) p.set('sub', sub);
-      const res = await fetch(`/api/reddit?${p}`);
-      const data = await res.json();
-      setPosts(data.posts || []);
-      setStats(data.stats || null);
-    } catch {}
-    setLoading(false);
-  }, [q, sub, sort, time]);
-
-  useEffect(() => { load(); }, [load]);
-
-  return (
-    <div>
-      <div className="bg-[var(--surface)] border border-[var(--line)] rounded-xl p-3 mb-4 space-y-2">
-        <div className="flex gap-2">
-          <input type="text" value={q} onChange={e => setQ(e.target.value)} placeholder="Brand or topic" className="flex-1 min-w-0 bg-[var(--bg-alt)] rounded-lg px-3 py-2 text-[12px] outline-none" onKeyDown={e => { if (e.key === 'Enter') load(); }} />
-          <input type="text" value={sub} onChange={e => setSub(e.target.value)} placeholder="subreddit (opt)" className="w-32 bg-[var(--bg-alt)] rounded-lg px-3 py-2 text-[12px] outline-none" />
-          <button onClick={load} disabled={loading} className="px-4 py-2 bg-[var(--brand)] text-white text-[12px] font-semibold rounded-lg disabled:opacity-50">{loading ? '…' : 'Search'}</button>
-        </div>
-        <div className="flex gap-2">
-          <select value={sort} onChange={e => setSort(e.target.value)} className="flex-1 bg-[var(--bg-alt)] rounded-lg px-2 py-1.5 text-[11px] outline-none">
-            <option value="relevance">Relevance</option>
-            <option value="hot">Hot</option>
-            <option value="top">Top</option>
-            <option value="new">New</option>
-            <option value="comments">Most comments</option>
-          </select>
-          <select value={time} onChange={e => setTime(e.target.value)} className="flex-1 bg-[var(--bg-alt)] rounded-lg px-2 py-1.5 text-[11px] outline-none">
-            <option value="day">24h</option>
-            <option value="week">Week</option>
-            <option value="month">Month</option>
-            <option value="year">Year</option>
-            <option value="all">All time</option>
-          </select>
-        </div>
-      </div>
-
-      {stats && (
-        <div className="grid grid-cols-3 gap-2 mb-4">
-          <StatTile label="Total upvotes" value={n(stats.totalScore)} accent />
-          <StatTile label="Comments" value={n(stats.totalComments)} />
-          <StatTile label="Upvote ratio" value={`${Math.round(stats.avgUpvoteRatio * 100)}%`} />
-        </div>
-      )}
-
-      {stats && stats.subBreakdown.length > 0 && (
-        <div className="mb-4">
-          <div className="text-[11px] uppercase tracking-wider font-bold text-[var(--text-3)] mb-2">Posts by subreddit</div>
-          <div className="flex flex-wrap gap-1.5">
-            {stats.subBreakdown.map(s => (
-              <span key={s.name} className="text-[11px] px-2 py-1 bg-[var(--bg-alt)] rounded-full">r/{s.name} <span className="text-[var(--brand)] font-semibold">{s.count}</span></span>
-            ))}
-          </div>
-        </div>
-      )}
-
-      <div className="space-y-2">
-        {posts.map(p => (
-          <a key={p.id} href={p.permalink} target="_blank" rel="noopener noreferrer" className="block bg-[var(--surface)] border border-[var(--line)] rounded-xl p-3 hover:border-[var(--brand)]">
-            <div className="flex gap-3">
-              {p.thumbnail && <img src={p.thumbnail} alt="" className="w-16 h-16 rounded object-cover flex-shrink-0 bg-[var(--bg-alt)]" onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }} />}
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2 mb-1 text-[10px] text-[var(--text-3)]">
-                  <span className="font-semibold">r/{p.subreddit}</span>
-                  <span>·</span>
-                  <span>u/{p.author}</span>
-                  <span>·</span>
-                  <span>{new Date(p.createdAt).toLocaleDateString()}</span>
-                </div>
-                <div className="text-[12px] font-semibold line-clamp-2">{p.title}</div>
-                {p.snippet && <p className="text-[11px] text-[var(--text-2)] line-clamp-2 mt-1">{p.snippet}</p>}
-                <div className="flex gap-3 mt-1.5 text-[11px] text-[var(--text-3)]">
-                  <span>↑ {n(p.score)}</span>
-                  <span>💬 {n(p.comments)}</span>
-                  <span>{Math.round(p.upvoteRatio * 100)}% upvoted</span>
-                </div>
-              </div>
-            </div>
-          </a>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-/* ── Google Ads Transparency ── */
-/* ── Amazon (via Apify) ── */
-interface AmazonProduct { asin?: string; title?: string; url?: string; image?: string; price?: number | string; currency?: string; rating?: number; reviews?: number; prime?: boolean; sponsored?: boolean; brand?: string }
-
-function AmazonSource() {
-  const [q, setQ] = useState('sunglasses');
-  const [country, setCountry] = useState('com');
-  const [products, setProducts] = useState<AmazonProduct[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [err, setErr] = useState('');
-  const [needsSetup, setNeedsSetup] = useState(false);
-  const [setupSteps, setSetupSteps] = useState<string[]>([]);
-
-  const load = useCallback(async () => {
-    if (!q.trim()) return;
-    setLoading(true); setErr(''); setProducts([]);
-    try {
-      const res = await fetch(`/api/amazon?q=${encodeURIComponent(q)}&country=${country}&limit=30`);
-      const data = await res.json();
-      if (data.needsSetup) {
-        setNeedsSetup(true);
-        setSetupSteps(data.setupInstructions?.steps || []);
-      } else if (data.error) {
-        setErr(data.error);
-      } else {
-        setNeedsSetup(false);
-        setProducts(data.products || []);
-      }
-    } catch (e) {
-      setErr(e instanceof Error ? e.message : 'Fetch failed');
-    }
-    setLoading(false);
-  }, [q, country]);
-
-  useEffect(() => { load(); }, [load]);
-
-  return (
-    <div>
-      <div className="bg-[var(--surface)] border border-[var(--line)] rounded-xl p-3 mb-4 flex gap-2">
-        <input type="text" value={q} onChange={e => setQ(e.target.value)} placeholder="Product or keyword…" className="flex-1 min-w-0 bg-[var(--bg-alt)] rounded-lg px-3 py-2 text-[12px] outline-none" onKeyDown={e => { if (e.key === 'Enter') load(); }} />
-        <select value={country} onChange={e => setCountry(e.target.value)} className="bg-[var(--bg-alt)] rounded-lg px-2 py-2 text-[11px] outline-none">
-          <option value="com">🇺🇸 .com</option>
-          <option value="in">🇮🇳 .in</option>
-          <option value="co.uk">🇬🇧 .co.uk</option>
-          <option value="ca">🇨🇦 .ca</option>
-          <option value="com.au">🇦🇺 .com.au</option>
-          <option value="de">🇩🇪 .de</option>
-          <option value="fr">🇫🇷 .fr</option>
-        </select>
-        <button onClick={load} disabled={loading} className="px-4 py-2 bg-[var(--brand)] text-white text-[12px] font-semibold rounded-lg disabled:opacity-50">{loading ? '…' : 'Search'}</button>
-      </div>
-
-      {needsSetup && (
-        <div className="bg-[var(--surface)] border border-[var(--brand)] rounded-xl p-4 mb-4">
-          <div className="text-[14px] font-semibold mb-2">Apify required for Amazon intelligence</div>
-          <p className="text-[11px] text-[var(--text-2)] leading-relaxed mb-2">Amazon blocks direct scraping — we use the Apify junglee/Amazon-crawler actor which costs ~$0.75 / 1000 products.</p>
-          <ol className="space-y-2 text-[12px] text-[var(--text-2)] list-decimal list-inside">
-            {setupSteps.map((s, i) => <li key={i}>{s}</li>)}
-          </ol>
-          <a href="https://console.apify.com/account/integrations" target="_blank" rel="noopener noreferrer" className="inline-block mt-3 px-3 py-2 bg-[var(--brand)] text-white text-[11px] font-semibold rounded-lg">Open Apify Console →</a>
-        </div>
-      )}
-
-      {err && !needsSetup && <div className="bg-red-500/10 border border-red-500/30 text-red-400 rounded-xl p-3 text-[12px] mb-4">{err}</div>}
-
-      {products.length > 0 && (
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
-          {products.map((p, i) => (
-            <a key={p.asin || i} href={p.url || '#'} target="_blank" rel="noopener noreferrer" className="bg-[var(--surface)] border border-[var(--line)] rounded-xl overflow-hidden">
-              <div className="aspect-square bg-white relative">
-                {p.image && <img src={p.image} alt={p.title} className="w-full h-full object-contain p-3" loading="lazy" onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }} />}
-                {p.prime && <div className="absolute top-2 right-2 bg-blue-500 text-white text-[9px] uppercase font-bold px-1.5 py-0.5 rounded">Prime</div>}
-                {p.sponsored && <div className="absolute top-2 left-2 bg-yellow-500/90 text-black text-[9px] uppercase font-bold px-1.5 py-0.5 rounded">Sponsored</div>}
-              </div>
-              <div className="p-3">
-                {p.brand && <div className="text-[10px] text-[var(--text-3)] font-semibold truncate">{p.brand}</div>}
-                <div className="text-[11px] font-semibold line-clamp-2 leading-snug">{p.title}</div>
-                <div className="flex items-center gap-2 mt-1">
-                  <span className="text-[13px] font-bold">{p.currency || '$'}{typeof p.price === 'number' ? p.price.toFixed(2) : p.price || '—'}</span>
-                </div>
-                {p.rating !== undefined && (
-                  <div className="flex items-center gap-1 mt-1 text-[10px] text-[var(--text-3)]">
-                    <span className="text-yellow-500">★</span>
-                    <span>{p.rating.toFixed(1)}</span>
-                    {p.reviews !== undefined && <span>({n(p.reviews)})</span>}
-                  </div>
-                )}
-              </div>
-            </a>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
-
-/* ── LinkedIn (via Apify) ── */
-interface LIJob { id?: string; title?: string; company?: string; location?: string; url?: string; postedAt?: string; salary?: string; employmentType?: string; seniorityLevel?: string; description?: string; applicants?: number }
-interface LICompany { name?: string; tagline?: string; description?: string; website?: string; industry?: string; size?: number | string; headquarters?: string; founded?: number; specialties?: string[]; logo?: string; followers?: number; url?: string }
-
-function LinkedInSource() {
-  const [mode, setMode] = useState<'jobs' | 'company'>('jobs');
-  const [q, setQ] = useState('eyewear designer');
-  const [location, setLocation] = useState('Worldwide');
-  const [companySlug, setCompanySlug] = useState('lenskart');
-  const [jobs, setJobs] = useState<LIJob[]>([]);
-  const [company, setCompany] = useState<LICompany | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [err, setErr] = useState('');
-  const [needsSetup, setNeedsSetup] = useState(false);
-  const [setupSteps, setSetupSteps] = useState<string[]>([]);
-
-  const load = useCallback(async () => {
-    setLoading(true); setErr(''); setJobs([]); setCompany(null);
-    try {
-      const url = mode === 'jobs'
-        ? `/api/linkedin?mode=jobs&q=${encodeURIComponent(q)}&location=${encodeURIComponent(location)}&limit=25`
-        : `/api/linkedin?mode=company&company=${encodeURIComponent(companySlug)}`;
-      const res = await fetch(url);
-      const data = await res.json();
-      if (data.needsSetup) {
-        setNeedsSetup(true);
-        setSetupSteps(data.setupInstructions?.steps || []);
-      } else if (data.error) {
-        setErr(data.error);
-      } else {
-        setNeedsSetup(false);
-        if (mode === 'jobs') setJobs(data.jobs || []);
-        else setCompany(data.company);
-      }
-    } catch (e) {
-      setErr(e instanceof Error ? e.message : 'Fetch failed');
-    }
-    setLoading(false);
-  }, [mode, q, location, companySlug]);
-
-  useEffect(() => { load(); }, [load]);
-
-  return (
-    <div>
-      <div className="bg-[var(--surface)] border border-[var(--line)] rounded-xl p-3 mb-4 space-y-2">
-        <div className="flex gap-2">
-          <select value={mode} onChange={e => setMode(e.target.value as 'jobs' | 'company')} className="bg-[var(--bg-alt)] rounded-lg px-2 py-2 text-[11px] outline-none">
-            <option value="jobs">Jobs</option>
-            <option value="company">Company</option>
-          </select>
-          {mode === 'jobs' ? (
-            <>
-              <input type="text" value={q} onChange={e => setQ(e.target.value)} placeholder="Job title…" className="flex-1 min-w-0 bg-[var(--bg-alt)] rounded-lg px-3 py-2 text-[12px] outline-none" onKeyDown={e => { if (e.key === 'Enter') load(); }} />
-              <input type="text" value={location} onChange={e => setLocation(e.target.value)} placeholder="Location" className="w-28 bg-[var(--bg-alt)] rounded-lg px-3 py-2 text-[12px] outline-none" onKeyDown={e => { if (e.key === 'Enter') load(); }} />
-            </>
-          ) : (
-            <input type="text" value={companySlug} onChange={e => setCompanySlug(e.target.value)} placeholder="company slug (e.g. lenskart)" className="flex-1 min-w-0 bg-[var(--bg-alt)] rounded-lg px-3 py-2 text-[12px] outline-none" onKeyDown={e => { if (e.key === 'Enter') load(); }} />
-          )}
-          <button onClick={load} disabled={loading} className="px-4 py-2 bg-[var(--brand)] text-white text-[12px] font-semibold rounded-lg disabled:opacity-50">{loading ? '…' : 'Search'}</button>
-        </div>
-      </div>
-
-      {needsSetup && (
-        <div className="bg-[var(--surface)] border border-[var(--brand)] rounded-xl p-4 mb-4">
-          <div className="text-[14px] font-semibold mb-2">Apify required for LinkedIn intelligence</div>
-          <p className="text-[11px] text-[var(--text-2)] leading-relaxed mb-2">LinkedIn actively blocks scrapers — Apify runs distributed browser sessions that work reliably. Costs ~$1 / 1000 results.</p>
-          <ol className="space-y-2 text-[12px] text-[var(--text-2)] list-decimal list-inside">
-            {setupSteps.map((s, i) => <li key={i}>{s}</li>)}
-          </ol>
-          <a href="https://console.apify.com/account/integrations" target="_blank" rel="noopener noreferrer" className="inline-block mt-3 px-3 py-2 bg-[var(--brand)] text-white text-[11px] font-semibold rounded-lg">Open Apify Console →</a>
-        </div>
-      )}
-
-      {err && !needsSetup && <div className="bg-red-500/10 border border-red-500/30 text-red-400 rounded-xl p-3 text-[12px] mb-4">{err}</div>}
-
-      {mode === 'jobs' && jobs.length > 0 && (
-        <div className="space-y-2">
-          {jobs.map((j, i) => (
-            <a key={j.id || i} href={j.url || '#'} target="_blank" rel="noopener noreferrer" className="block bg-[var(--surface)] border border-[var(--line)] rounded-xl p-3 hover:border-[var(--brand)]">
-              <div className="flex items-start justify-between gap-3">
-                <div className="min-w-0 flex-1">
-                  <div className="text-[13px] font-semibold line-clamp-1">{j.title}</div>
-                  <div className="text-[11px] text-[var(--text-2)] mt-0.5">{j.company} · {j.location}</div>
-                  {j.description && <p className="text-[11px] text-[var(--text-3)] line-clamp-2 mt-1.5 leading-snug">{j.description}</p>}
-                  <div className="flex flex-wrap gap-1.5 mt-2">
-                    {j.employmentType && <span className="text-[9px] px-1.5 py-0.5 bg-[var(--bg-alt)] rounded">{j.employmentType}</span>}
-                    {j.seniorityLevel && <span className="text-[9px] px-1.5 py-0.5 bg-[var(--bg-alt)] rounded">{j.seniorityLevel}</span>}
-                    {j.salary && <span className="text-[9px] px-1.5 py-0.5 bg-[var(--brand)]/10 text-[var(--brand)] rounded font-semibold">{j.salary}</span>}
-                  </div>
-                </div>
-                {j.postedAt && <span className="text-[9px] text-[var(--text-3)] flex-shrink-0">{j.postedAt}</span>}
-              </div>
-            </a>
-          ))}
-        </div>
-      )}
-
-      {mode === 'company' && company && (
-        <div className="bg-[var(--surface)] border border-[var(--line)] rounded-xl p-5">
-          <div className="flex items-start gap-4">
-            {company.logo && <img src={company.logo} alt={company.name} className="w-16 h-16 rounded object-contain bg-white flex-shrink-0" />}
-            <div className="flex-1 min-w-0">
-              <h3 className="text-[18px] font-bold">{company.name}</h3>
-              {company.tagline && <p className="text-[12px] text-[var(--text-2)] mt-0.5">{company.tagline}</p>}
-              <div className="flex flex-wrap gap-3 mt-2 text-[11px] text-[var(--text-3)]">
-                {company.industry && <span>{company.industry}</span>}
-                {company.headquarters && <span>· {company.headquarters}</span>}
-                {company.founded && <span>· Founded {company.founded}</span>}
-              </div>
-            </div>
-          </div>
-          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 mt-4">
-            {company.size !== undefined && <StatTile label="Employees" value={typeof company.size === 'number' ? n(company.size) : String(company.size)} />}
-            {company.followers !== undefined && <StatTile label="Followers" value={n(company.followers)} accent />}
-            {company.website && <div className="bg-[var(--surface)] border border-[var(--line)] rounded-xl p-3"><div className="text-[9px] uppercase tracking-wider text-[var(--text-3)] font-bold">Website</div><a href={company.website} target="_blank" rel="noopener noreferrer" className="text-[11px] font-semibold text-[var(--brand)] truncate block">{company.website.replace(/^https?:\/\//, '')}</a></div>}
-          </div>
-          {company.description && <p className="text-[11px] text-[var(--text-2)] leading-relaxed mt-4">{company.description}</p>}
-          {company.specialties && company.specialties.length > 0 && (
-            <div className="flex flex-wrap gap-1.5 mt-3">
-              {company.specialties.map(s => <span key={s} className="text-[10px] px-2 py-0.5 bg-[var(--bg-alt)] rounded-full">{s}</span>)}
-            </div>
-          )}
-        </div>
-      )}
-    </div>
-  );
-}
-
-function GoogleAdsSource() {
-  const [advertiser, setAdvertiser] = useState('Lenskart');
-  const [region, setRegion] = useState('IN');
-  const [data, setData] = useState<{ advertiserId?: string; advertiserName?: string; profileUrl?: string; note?: string; error?: string } | null>(null);
-  const [loading, setLoading] = useState(false);
-
-  const load = async () => {
-    if (!advertiser.trim()) return;
-    setLoading(true);
-    try {
-      const res = await fetch(`/api/google-ads?advertiser=${encodeURIComponent(advertiser)}&region=${region}`);
-      setData(await res.json());
-    } catch (e) {
-      setData({ error: e instanceof Error ? e.message : 'Fetch failed' });
-    }
-    setLoading(false);
-  };
-
-  return (
-    <div>
-      <div className="bg-[var(--surface)] border border-[var(--line)] rounded-xl p-3 mb-4 flex gap-2">
-        <input type="text" value={advertiser} onChange={e => setAdvertiser(e.target.value)} placeholder="Advertiser name" className="flex-1 min-w-0 bg-[var(--bg-alt)] rounded-lg px-3 py-2 text-[12px] outline-none" onKeyDown={e => { if (e.key === 'Enter') load(); }} />
-        <select value={region} onChange={e => setRegion(e.target.value)} className="bg-[var(--bg-alt)] rounded-lg px-2 text-[11px] outline-none">
-          <option value="IN">🇮🇳</option><option value="US">🇺🇸</option><option value="GB">🇬🇧</option><option value="AE">🇦🇪</option>
-        </select>
-        <button onClick={load} disabled={loading} className="px-4 py-2 bg-[var(--brand)] text-white text-[12px] font-semibold rounded-lg disabled:opacity-50">{loading ? '…' : 'Find'}</button>
-      </div>
-
-      {data?.error && <div className="bg-red-500/10 border border-red-500/30 text-red-400 rounded-xl p-3 text-[12px] mb-4">{data.error}</div>}
-
-      {data && !data.error && (
-        <div className="bg-[var(--surface)] border border-[var(--line)] rounded-xl p-4">
-          {data.advertiserId ? (
-            <>
-              <div className="text-[13px] font-semibold">{data.advertiserName}</div>
-              <div className="text-[11px] text-[var(--text-3)] mt-0.5">Advertiser ID: {data.advertiserId}</div>
-              <a href={data.profileUrl} target="_blank" rel="noopener noreferrer" className="inline-block mt-3 px-3 py-2 bg-[var(--brand)] text-white text-[11px] font-semibold rounded-lg">
-                View all ads on Google →
-              </a>
-            </>
-          ) : (
-            <div className="text-[12px] text-[var(--text-2)]">{data.note || 'No advertiser found.'}</div>
-          )}
-          <p className="text-[10px] text-[var(--text-3)] mt-3 leading-relaxed">
-            Google Ads Transparency Center is a JavaScript-heavy SPA — full ad creatives require deeper protobuf parsing of their batchexecute RPC. For now we surface the advertiser profile page which opens directly in Google&apos;s UI with every ad they&apos;re running.
-          </p>
-        </div>
-      )}
-    </div>
-  );
-}
-
-/* ── YouTube ── */
-interface YTVideo { id: string; title: string; channelTitle?: string; channelId?: string; thumbnail: string; publishedAt: string; views: number; likes: number; comments: number; url: string }
-interface YTChannel { id: string; title: string; thumbnail: string; subscribers: number; videoCount: number; viewCount: number; url: string; country?: string }
-
-function YouTubeSource() {
-  const [q, setQ] = useState('lenskart');
-  const [mode, setMode] = useState<'video' | 'channel'>('video');
-  const [videos, setVideos] = useState<YTVideo[]>([]);
-  const [channels, setChannels] = useState<YTChannel[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [err, setErr] = useState('');
-  const [needsSetup, setNeedsSetup] = useState(false);
-  const [setupSteps, setSetupSteps] = useState<string[]>([]);
-
-  const load = useCallback(async () => {
-    if (!q.trim()) return;
-    setLoading(true); setErr(''); setVideos([]); setChannels([]);
-    try {
-      const res = await fetch(`/api/youtube?q=${encodeURIComponent(q)}&type=${mode}&limit=20`);
-      const data = await res.json();
-      if (data.needsSetup) {
-        setNeedsSetup(true);
-        setSetupSteps(data.setupInstructions?.steps || []);
-      } else if (data.error) {
-        setErr(data.error);
-      } else {
-        setNeedsSetup(false);
-        if (mode === 'channel') setChannels(data.channels || []);
-        else setVideos(data.videos || []);
-      }
-    } catch (e) {
-      setErr(e instanceof Error ? e.message : 'Fetch failed');
-    }
-    setLoading(false);
-  }, [q, mode]);
-
-  useEffect(() => { load(); }, [load]);
-
-  return (
-    <div>
-      <div className="bg-[var(--surface)] border border-[var(--line)] rounded-xl p-3 mb-4 flex gap-2">
-        <input type="text" value={q} onChange={e => setQ(e.target.value)} placeholder="Brand or topic…" className="flex-1 min-w-0 bg-[var(--bg-alt)] rounded-lg px-3 py-2 text-[12px] outline-none" onKeyDown={e => { if (e.key === 'Enter') load(); }} />
-        <select value={mode} onChange={e => setMode(e.target.value as 'video' | 'channel')} className="bg-[var(--bg-alt)] rounded-lg px-2 py-2 text-[11px] outline-none">
-          <option value="video">Videos</option>
-          <option value="channel">Channels</option>
-        </select>
-        <button onClick={load} disabled={loading} className="px-4 py-2 bg-[var(--brand)] text-white text-[12px] font-semibold rounded-lg disabled:opacity-50">{loading ? '…' : 'Search'}</button>
-      </div>
-
-      {needsSetup && (
-        <div className="bg-[var(--surface)] border border-[var(--brand)] rounded-xl p-4 mb-4">
-          <div className="text-[14px] font-semibold mb-2">Connect YouTube Data API</div>
-          <ol className="space-y-2 text-[12px] text-[var(--text-2)] list-decimal list-inside">
-            {setupSteps.map((s, i) => <li key={i}>{s}</li>)}
-          </ol>
-          <a href="https://console.cloud.google.com/" target="_blank" rel="noopener noreferrer" className="inline-block mt-3 px-3 py-2 bg-[var(--brand)] text-white text-[11px] font-semibold rounded-lg">Open Google Cloud Console →</a>
-        </div>
-      )}
-
-      {err && !needsSetup && <div className="bg-red-500/10 border border-red-500/30 text-red-400 rounded-xl p-3 text-[12px] mb-4">{err}</div>}
-
-      {mode === 'video' && videos.length > 0 && (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-          {videos.map(v => (
-            <a key={v.id} href={v.url} target="_blank" rel="noopener noreferrer" className="bg-[var(--surface)] border border-[var(--line)] rounded-xl overflow-hidden">
-              <div className="aspect-video bg-[var(--bg-alt)]"><img src={v.thumbnail} alt={v.title} className="w-full h-full object-cover" loading="lazy" onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }} /></div>
-              <div className="p-3">
-                <div className="text-[11px] text-[var(--text-3)] truncate mb-0.5">{v.channelTitle}</div>
-                <div className="text-[12px] font-semibold line-clamp-2 leading-snug">{v.title}</div>
-                <div className="flex gap-3 mt-2 text-[10px] text-[var(--text-3)]">
-                  <span>{n(v.views)} views</span>
-                  <span>{n(v.likes)} likes</span>
-                  <span>{n(v.comments)} 💬</span>
-                </div>
-              </div>
-            </a>
-          ))}
-        </div>
-      )}
-
-      {mode === 'channel' && channels.length > 0 && (
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          {channels.map(c => (
-            <a key={c.id} href={c.url} target="_blank" rel="noopener noreferrer" className="bg-[var(--surface)] border border-[var(--line)] rounded-xl p-4 flex gap-3">
-              {c.thumbnail && <img src={c.thumbnail} alt={c.title} className="w-16 h-16 rounded-full flex-shrink-0" />}
-              <div className="flex-1 min-w-0">
-                <div className="text-[14px] font-semibold truncate">{c.title}</div>
-                {c.country && <div className="text-[10px] text-[var(--text-3)]">{c.country}</div>}
-                <div className="flex gap-3 mt-2 text-[11px]">
-                  <div><span className="font-bold">{n(c.subscribers)}</span> <span className="text-[var(--text-3)]">subs</span></div>
-                  <div><span className="font-bold">{n(c.videoCount)}</span> <span className="text-[var(--text-3)]">videos</span></div>
-                  <div><span className="font-bold">{n(c.viewCount)}</span> <span className="text-[var(--text-3)]">views</span></div>
-                </div>
-              </div>
-            </a>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
-
-/* ── TikTok trending ── */
-interface TTAd { id: string; brand: string; caption: string; cover: string; videoUrl?: string; duration?: number; likes?: number; views?: number; ctr?: number; country?: string; sourceUrl: string }
-interface TTHashtag { name: string; views?: number; rank?: number; rankDiff?: number }
-
-function TikTokSource() {
-  const [mode, setMode] = useState<'ads' | 'hashtags'>('ads');
-  const [region, setRegion] = useState('US'); // TikTok requires a single region — US has broadest catalog
-  const [period, setPeriod] = useState('7');
-  const [ads, setAds] = useState<TTAd[]>([]);
-  const [hashtags, setHashtags] = useState<TTHashtag[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [err, setErr] = useState('');
-
-  const load = useCallback(async () => {
-    setLoading(true); setErr(''); setAds([]); setHashtags([]);
-    try {
-      const res = await fetch(`/api/tiktok?mode=${mode}&region=${region}&period=${period}&limit=30`);
-      const data = await res.json();
-      if (data.error) {
-        setErr(`${data.error}${data.hint ? ` — ${data.hint}` : ''}`);
-      } else {
-        if (mode === 'ads') setAds(data.ads || []);
-        else setHashtags(data.hashtags || []);
-      }
-    } catch (e) {
-      setErr(e instanceof Error ? e.message : 'Fetch failed');
-    }
-    setLoading(false);
-  }, [mode, region, period]);
-
-  useEffect(() => { load(); }, [load]);
-
-  return (
-    <div>
-      <div className="bg-[var(--surface)] border border-[var(--line)] rounded-xl p-3 mb-4 flex gap-2">
-        <select value={mode} onChange={e => setMode(e.target.value as 'ads' | 'hashtags')} className="bg-[var(--bg-alt)] rounded-lg px-2 py-2 text-[11px] outline-none">
-          <option value="ads">Top ads</option>
-          <option value="hashtags">Trending hashtags</option>
-        </select>
-        <select value={region} onChange={e => setRegion(e.target.value)} className="bg-[var(--bg-alt)] rounded-lg px-2 py-2 text-[11px] outline-none">
-          <option value="IN">🇮🇳 India</option>
-          <option value="US">🇺🇸 USA</option>
-          <option value="GB">🇬🇧 UK</option>
-          <option value="AE">🇦🇪 UAE</option>
-          <option value="SG">🇸🇬 SG</option>
-          <option value="ID">🇮🇩 ID</option>
-          <option value="JP">🇯🇵 JP</option>
-        </select>
-        <select value={period} onChange={e => setPeriod(e.target.value)} className="bg-[var(--bg-alt)] rounded-lg px-2 py-2 text-[11px] outline-none flex-1">
-          <option value="7">Past 7 days</option>
-          <option value="30">Past 30 days</option>
-          <option value="120">Past 120 days</option>
-        </select>
-        <button onClick={load} disabled={loading} className="px-4 py-2 bg-[var(--brand)] text-white text-[12px] font-semibold rounded-lg disabled:opacity-50">{loading ? '…' : 'Refresh'}</button>
-      </div>
-
-      {err && <div className="bg-red-500/10 border border-red-500/30 text-red-400 rounded-xl p-3 text-[12px] mb-4">{err}</div>}
-
-      {mode === 'ads' && ads.length > 0 && (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-          {ads.map(ad => (
-            <a key={ad.id} href={ad.sourceUrl} target="_blank" rel="noopener noreferrer" className="bg-[var(--surface)] border border-[var(--line)] rounded-xl overflow-hidden">
-              <div className="aspect-[9/16] bg-[var(--bg-alt)] relative">
-                {ad.cover && <img src={ad.cover} alt={ad.caption} className="w-full h-full object-cover" loading="lazy" onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }} />}
-                {ad.ctr && <div className="absolute top-2 right-2 bg-[var(--brand)] text-white text-[9px] uppercase tracking-wider font-bold px-1.5 py-0.5 rounded">CTR {(ad.ctr * 100).toFixed(1)}%</div>}
-              </div>
-              <div className="p-3">
-                <div className="text-[11px] font-semibold truncate mb-0.5">{ad.brand}</div>
-                <p className="text-[11px] text-[var(--text-2)] line-clamp-2 leading-snug">{ad.caption}</p>
-                <div className="flex gap-3 mt-2 text-[10px] text-[var(--text-3)]">
-                  {ad.likes !== undefined && <span>♥ {n(ad.likes)}</span>}
-                  {ad.views !== undefined && <span>👁 {n(ad.views)}</span>}
-                  {ad.duration && <span>{ad.duration}s</span>}
-                </div>
-              </div>
-            </a>
-          ))}
-        </div>
-      )}
-
-      {mode === 'hashtags' && hashtags.length > 0 && (
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2">
-          {hashtags.map(h => (
-            <div key={h.name} className="bg-[var(--surface)] border border-[var(--line)] rounded-xl p-3">
-              <div className="flex items-center justify-between mb-1">
-                <span className="text-[10px] text-[var(--text-3)]">#{h.rank}</span>
-                {h.rankDiff !== undefined && h.rankDiff !== 0 && (
-                  <span className={`text-[10px] font-bold ${h.rankDiff > 0 ? 'text-green-500' : 'text-red-500'}`}>
-                    {h.rankDiff > 0 ? '↑' : '↓'}{Math.abs(h.rankDiff)}
-                  </span>
-                )}
-              </div>
-              <div className="text-[13px] font-bold truncate">#{h.name}</div>
-              {h.views !== undefined && <div className="text-[10px] text-[var(--text-3)] mt-0.5">{n(h.views)} posts</div>}
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
-
-/* ── Brave Search ── */
-interface BraveResult { title: string; url: string; description: string; age?: string; source?: string; thumbnail?: string }
-function BraveSource() {
-  const [q, setQ] = useState('eyewear trends');
-  const [mode, setMode] = useState<'web' | 'news'>('web');
-  const [country, setCountry] = useState('ALL');
-  const [freshness, setFreshness] = useState('');
-  const [results, setResults] = useState<BraveResult[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [err, setErr] = useState('');
-  const [needsSetup, setNeedsSetup] = useState(false);
-  const [setupSteps, setSetupSteps] = useState<string[]>([]);
-
-  const load = useCallback(async () => {
-    if (!q.trim()) return;
-    setLoading(true); setErr(''); setResults([]);
-    try {
-      const p = new URLSearchParams({ q, mode, country });
-      if (freshness) p.set('freshness', freshness);
-      const res = await fetch(`/api/brave?${p}`);
-      const data = await res.json();
-      if (data.needsSetup) {
-        setNeedsSetup(true);
-        setSetupSteps(data.setupInstructions?.steps || []);
-      } else if (data.error) {
-        setErr(data.error);
-      } else {
-        setNeedsSetup(false);
-        setResults(data.results || []);
-      }
-    } catch (e) {
-      setErr(e instanceof Error ? e.message : 'Fetch failed');
-    }
-    setLoading(false);
-  }, [q, mode, country, freshness]);
-
-  useEffect(() => { load(); }, [load]);
-
-  return (
-    <div>
-      <div className="bg-[var(--surface)] border border-[var(--line)] rounded-xl p-3 mb-4 space-y-2">
-        <div className="flex gap-2">
-          <input type="text" value={q} onChange={e => setQ(e.target.value)} placeholder="Search term…" className="flex-1 min-w-0 bg-[var(--bg-alt)] rounded-lg px-3 py-2 text-[12px] outline-none" onKeyDown={e => { if (e.key === 'Enter') load(); }} />
-          <button onClick={load} disabled={loading} className="px-4 py-2 bg-[var(--brand)] text-white text-[12px] font-semibold rounded-lg disabled:opacity-50">{loading ? '…' : 'Search'}</button>
-        </div>
-        <div className="flex gap-2">
-          <select value={mode} onChange={e => setMode(e.target.value as 'web' | 'news')} className="bg-[var(--bg-alt)] rounded-lg px-2 py-1.5 text-[11px] outline-none">
-            <option value="web">Web</option>
-            <option value="news">News</option>
-          </select>
-          <select value={country} onChange={e => setCountry(e.target.value)} className="bg-[var(--bg-alt)] rounded-lg px-2 py-1.5 text-[11px] outline-none">
-            <option value="ALL">🌐 All</option>
-            <option value="IN">🇮🇳 IN</option>
-            <option value="US">🇺🇸 US</option>
-            <option value="GB">🇬🇧 UK</option>
-            <option value="AE">🇦🇪 AE</option>
-          </select>
-          <select value={freshness} onChange={e => setFreshness(e.target.value)} className="flex-1 bg-[var(--bg-alt)] rounded-lg px-2 py-1.5 text-[11px] outline-none">
-            <option value="">Any time</option>
-            <option value="pd">Past day</option>
-            <option value="pw">Past week</option>
-            <option value="pm">Past month</option>
-            <option value="py">Past year</option>
-          </select>
-        </div>
-      </div>
-
-      {needsSetup && (
-        <div className="bg-[var(--surface)] border border-[var(--brand)] rounded-xl p-4 mb-4">
-          <div className="text-[14px] font-semibold mb-2">Connect Brave Search API</div>
-          <ol className="space-y-2 text-[12px] text-[var(--text-2)] list-decimal list-inside">
-            {setupSteps.map((s, i) => <li key={i}>{s}</li>)}
-          </ol>
-          <a href="https://api.search.brave.com/app/dashboard" target="_blank" rel="noopener noreferrer" className="inline-block mt-3 px-3 py-2 bg-[var(--brand)] text-white text-[11px] font-semibold rounded-lg">Open Brave API Dashboard →</a>
-        </div>
-      )}
-
-      {err && !needsSetup && <div className="bg-red-500/10 border border-red-500/30 text-red-400 rounded-xl p-3 text-[12px] mb-4">{err}</div>}
-
-      <div className="space-y-2">
-        {results.map((r, i) => (
-          <a key={i} href={r.url} target="_blank" rel="noopener noreferrer" className="block bg-[var(--surface)] border border-[var(--line)] rounded-xl p-3 hover:border-[var(--brand)]">
-            <div className="flex gap-3">
-              {r.thumbnail && <img src={r.thumbnail} alt="" className="w-16 h-16 rounded object-cover flex-shrink-0 bg-[var(--bg-alt)]" onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }} />}
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2 mb-1 text-[10px] text-[var(--text-3)]">
-                  {r.source && <span className="font-semibold truncate">{r.source}</span>}
-                  {r.age && <><span>·</span><span>{r.age}</span></>}
-                </div>
-                <div className="text-[13px] font-semibold line-clamp-2" dangerouslySetInnerHTML={{ __html: r.title }} />
-                <p className="text-[11px] text-[var(--text-2)] line-clamp-2 mt-1" dangerouslySetInnerHTML={{ __html: r.description }} />
-              </div>
-            </div>
-          </a>
-        ))}
-      </div>
     </div>
   );
 }
