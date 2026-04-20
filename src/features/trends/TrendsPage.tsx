@@ -42,6 +42,9 @@ const REGIONS: Array<{ k: string; label: string }> = [
   { k: 'Europe', label: 'EU' },
   { k: 'Asia Pacific', label: 'APAC' },
   { k: 'South Asia', label: 'SA' },
+  { k: 'Middle East', label: 'ME' },
+  { k: 'Africa', label: 'AF' },
+  { k: 'Latin America', label: 'LATAM' },
 ];
 
 export function TrendsPage() {
@@ -64,7 +67,7 @@ export function TrendsPage() {
         <div>
           <h1 className="text-[22px] font-semibold tracking-tight">Trends</h1>
           <p className="text-[12px] text-[var(--ink-muted)] mt-0.5">
-            Gemini Vision weekly analysis · shape, color, material, style shifts
+            Gemini Vision analysis · shape, color, material, style shifts (last 30 days)
           </p>
         </div>
         <Button size="sm" variant="secondary" onClick={() => load(true)} loading={loading}>Regenerate</Button>

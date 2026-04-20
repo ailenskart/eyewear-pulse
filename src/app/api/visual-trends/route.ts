@@ -1,54 +1,36 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { GoogleGenAI } from '@google/genai';
-import { ALL_POSTS } from '@/lib/feed';
+import { createClient } from '@supabase/supabase-js';
 
 /**
  * Visual Trends — Gemini Vision-powered trend extraction.
  *
- * Built in direct response to Emma's feedback from the Lenskart
- * Singapore team:
- *
- *   "Would be great if tool can identify common trends and a
- *    weekly must do based on changes. Also something like most
- *    shared/liked shapes/colours, cut view by region."
- *
- * What it does:
- *   1. Pull top-engaging posts from the last 7 days (optionally
- *      filtered by region).
- *   2. Run Gemini Vision on batches of 8 images to extract the
- *      structured visual attributes of the eyewear in each post:
- *        { shape, color, material, lensType, style }
- *   3. Aggregate attribute frequencies weighted by engagement
- *      (likes + comments * 5).
- *   4. Diff vs the prior 7 days to compute deltas.
- *   5. Hand the deltas to Gemini text for a "Weekly Must-Do"
- *      synthesis — actionable recommendations for Lenskart's
- *      merchandising/creative team.
- *
- * Regions: ALL / North America / Europe / South Asia / Asia
- *
- * Heavy cache (12h per region) — Gemini Vision is expensive and
- * the underlying feed only refreshes once a day via cron anyway.
+ * Reads from Supabase brand_content (type=ig_post) instead of static JSON.
+ * Default window widened to 30 days to capture existing data.
  *
  * Usage:
- *   GET /api/visual-trends                      (global, last 7d)
+ *   GET /api/visual-trends                      (global, last 30d)
  *   GET /api/visual-trends?region=Europe
  *   GET /api/visual-trends?refresh=1             (skip cache)
- *   GET /api/visual-trends?limit=40&window=7     (analyze 40 posts)
+ *   GET /api/visual-trends?limit=40&window=30
  */
 
 export const maxDuration = 60;
 
 const GEMINI_KEY = process.env.GEMINI_API_KEY || '';
+const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
+const SUPABASE_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
+
+const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 
 /* ─── Types ─── */
 
 interface VisualAttrs {
-  shape?: string;     // aviator, cat-eye, round, square, rectangle, oval, wayfarer, oversized, geometric, rimless
-  color?: string;     // black, tortoise, gold, silver, clear, brown, red, blue, white, pastel, multicolor
-  material?: string;  // acetate, metal, titanium, mixed, plastic, wood, rimless
-  lensType?: string;  // clear, dark, mirrored, gradient, colored, polarized, photochromic
-  style?: string;     // classic, retro, minimal, statement, sporty, luxury, streetwear
+  shape?: string;
+  color?: string;
+  material?: string;
+  lensType?: string;
+  style?: string;
 }
 
 interface PostWithVision {
@@ -65,17 +47,17 @@ interface PostWithVision {
   engagement: number;
   postedAt: string;
   postUrl: string;
-  weight: number; // likes + comments*5
+  weight: number;
   attrs?: VisualAttrs;
 }
 
 interface RankedAttr {
   value: string;
-  count: number;            // total posts with this attr in window
-  weightedCount: number;    // sum of engagement weights
-  priorCount: number;       // count in prior window
-  delta: number;            // count - priorCount
-  deltaPct: number;         // pct change vs prior
+  count: number;
+  weightedCount: number;
+  priorCount: number;
+  delta: number;
+  deltaPct: number;
   topExample?: {
     brand: string;
     handle: string;
@@ -116,46 +98,93 @@ interface VisualTrendsResult {
 
 /* ─── Cache ─── */
 
-// Per-post vision results live essentially forever (images don't change).
 const VISION_CACHE = new Map<string, VisualAttrs>();
-
-// Aggregated result cache per region.
 const RESULT_CACHE = new Map<string, { payload: VisualTrendsResult; expiresAt: number }>();
 const RESULT_TTL_MS = 12 * 60 * 60 * 1000;
 
-/* ─── Post selection ─── */
+/* ─── Post selection from Supabase ─── */
 
-function topPostsInWindow(
+async function topPostsInWindow(
   windowStartMs: number,
   windowEndMs: number,
   region: string,
   limit: number,
-): PostWithVision[] {
+): Promise<PostWithVision[]> {
+  const startISO = new Date(windowStartMs).toISOString();
+  const endISO = new Date(windowEndMs).toISOString();
+
+  let query = supabase
+    .from('brand_content')
+    .select('id, brand_id, brand_handle, posted_at, data, blob_url')
+    .eq('type', 'ig_post')
+    .gte('posted_at', startISO)
+    .lt('posted_at', endISO)
+    .order('posted_at', { ascending: false })
+    .limit(limit * 3); // fetch extra to filter
+
+  const { data: rows, error } = await query;
+  if (error || !rows) return [];
+
+  // Get brand info for region/category filtering
+  const handles = [...new Set(rows.map(r => r.brand_handle).filter(Boolean))];
+  const brandMap = new Map<string, { name: string; category: string; region: string }>();
+
+  if (handles.length > 0) {
+    const { data: brands } = await supabase
+      .from('tracked_brands')
+      .select('handle, display_name, category, region')
+      .in('handle', handles.slice(0, 500));
+    if (brands) {
+      for (const b of brands) {
+        brandMap.set(b.handle, {
+          name: b.display_name || b.handle,
+          category: b.category || 'Independent',
+          region: b.region || 'Global',
+        });
+      }
+    }
+  }
+
   const regionFilter = (region === 'ALL' || !region)
     ? () => true
-    : (p: typeof ALL_POSTS[number]) => p.brand.region.toLowerCase().includes(region.toLowerCase());
+    : (r: string) => r.toLowerCase().includes(region.toLowerCase());
 
-  return ALL_POSTS
-    .filter(p => {
-      const t = new Date(p.postedAt).getTime();
-      return t >= windowStartMs && t < windowEndMs && regionFilter(p);
-    })
-    .map(p => ({
-      id: p.id,
-      brand: p.brand.name,
-      handle: p.brand.handle,
-      region: p.brand.region,
-      category: p.brand.category,
-      caption: p.caption,
-      imageUrl: p.imageUrl,
-      rawImageUrl: p.rawImageUrl || p.imageUrl,
-      likes: p.likes,
-      comments: p.comments,
-      engagement: p.engagement,
-      postedAt: p.postedAt,
-      postUrl: p.postUrl,
-      weight: p.likes + p.comments * 5,
-    }))
+  const posts: PostWithVision[] = [];
+  for (const row of rows) {
+    const d = row.data || {};
+    const handle = row.brand_handle || '';
+    const brand = brandMap.get(handle) || { name: handle, category: 'Independent', region: 'Global' };
+
+    if (!regionFilter(brand.region)) continue;
+
+    const likes = Math.max(0, d.likes_count || d.likesCount || 0);
+    const comments = Math.max(0, d.comments_count || d.commentsCount || 0);
+    const rawUrl = row.blob_url || d.blob_url || d.display_url || d.image_url || '';
+    const imageUrl = rawUrl.includes('cdninstagram.com')
+      ? `/api/img?url=${encodeURIComponent(rawUrl)}`
+      : rawUrl;
+
+    if (!imageUrl) continue;
+
+    posts.push({
+      id: row.id,
+      brand: brand.name,
+      handle,
+      region: brand.region,
+      category: brand.category,
+      caption: d.caption || '',
+      imageUrl,
+      rawImageUrl: rawUrl,
+      likes,
+      comments,
+      engagement: likes > 0 ? parseFloat(((likes + comments) / Math.max(likes * 10, 1) * 100).toFixed(2)) : 0,
+      postedAt: row.posted_at || '',
+      postUrl: d.post_url || d.url || `https://www.instagram.com/p/${d.shortcode || ''}/`,
+      weight: likes + comments * 5,
+    });
+  }
+
+  return posts
     .sort((a, b) => b.weight - a.weight)
     .slice(0, limit);
 }
@@ -166,14 +195,12 @@ async function analyzeBatch(
   ai: GoogleGenAI,
   posts: PostWithVision[],
 ): Promise<void> {
-  // Skip any post we already have in-memory cache for.
   const uncached = posts.filter(p => !VISION_CACHE.has(p.id));
   if (uncached.length === 0) {
     for (const p of posts) p.attrs = VISION_CACHE.get(p.id);
     return;
   }
 
-  // Download images.
   const loaded = await Promise.all(uncached.map(async p => {
     try {
       const res = await fetch(p.rawImageUrl, {
@@ -190,7 +217,6 @@ async function analyzeBatch(
   }));
   const valid = loaded.filter((x): x is NonNullable<typeof x> => x !== null);
   if (valid.length === 0) {
-    // Mark as empty so we don't retry this batch forever.
     for (const p of uncached) VISION_CACHE.set(p.id, {});
     return;
   }
@@ -257,7 +283,6 @@ Rules:
     }
   }
 
-  // Attach cached results to the posts we were asked about.
   for (const p of posts) p.attrs = VISION_CACHE.get(p.id) || {};
 }
 
@@ -291,10 +316,10 @@ function aggregate(
     priorCounts.set(v, (priorCounts.get(v) || 0) + 1);
   }
   return [...counts.entries()]
-    .map(([value, { count, weightedCount, top }]): RankedAttr => {
+    .map(([value, { count, weightedCount, top }]) => {
       const priorCount = priorCounts.get(value) || 0;
       const delta = count - priorCount;
-      const deltaPct = priorCount > 0 ? (delta / priorCount) * 100 : (count > 0 ? 999 : 0);
+      const deltaPct = priorCount > 0 ? Math.round((delta / priorCount) * 100) : (count > 0 ? 999 : 0);
       return {
         value,
         count,
@@ -329,10 +354,10 @@ async function synthesizeMustDo(
   const formatList = (label: string, arr: RankedAttr[]) =>
     arr.length === 0 ? `${label}: (no data)` :
     `${label}:\n${arr.map((a, i) =>
-      `  ${i + 1}. ${a.value} — ${a.count} posts (${a.deltaPct > 999 ? 'new' : a.delta >= 0 ? `+${Math.round(a.deltaPct)}%` : `${Math.round(a.deltaPct)}%`} vs prior week) · ${a.weightedCount.toLocaleString()} weighted engagement`
+      `  ${i + 1}. ${a.value} — ${a.count} posts (${a.deltaPct > 999 ? 'new' : a.delta >= 0 ? `+${Math.round(a.deltaPct)}%` : `${Math.round(a.deltaPct)}%`} vs prior period) · ${a.weightedCount.toLocaleString()} weighted engagement`
     ).join('\n')}`;
 
-  const prompt = `You are Lenzy's resident eyewear merchandising analyst briefing the Lenskart creative + product team. Based on the Gemini Vision analysis of top-engaging eyewear posts from the last 7 days, write a sharp "Weekly Must-Do".
+  const prompt = `You are Lenzy's resident eyewear merchandising analyst briefing the Lenskart creative + product team. Based on the Gemini Vision analysis of top-engaging eyewear posts from the last 30 days, write a sharp "Weekly Must-Do".
 
 Region: ${region === 'ALL' ? 'Global' : region}
 Posts analyzed: ${totalAnalyzed}
@@ -350,7 +375,7 @@ YOUR OUTPUT — valid JSON, no markdown, no code fences.
 ═══════════════════════════════════════
 
 {
-  "summary": "2-3 sentences summarizing the single biggest visual shift this week. Lead with the specific shape/color/combination that moved the most. Be concrete with numbers.",
+  "summary": "2-3 sentences summarizing the single biggest visual shift this period. Lead with the specific shape/color/combination that moved the most. Be concrete with numbers.",
   "mustDo": [
     {
       "headline": "Action-oriented imperative under 90 chars (e.g. 'Push chrome-frame aviators into this week's top-of-feed')",
@@ -366,7 +391,7 @@ RULES:
 - Mix urgency levels: at least one "now" (highest confidence), two to three "this-week", at most one "watch".
 - If a shape or color is declining sharply, include a "stop doing X" or "pull back on X" item.
 - Never use vague phrases like "consider monitoring" or "keep an eye out". Every item is an order, not a suggestion.
-- If the data shows "new" attributes (no prior-week baseline), flag them as breakout opportunities worth testing.
+- If the data shows "new" attributes (no prior-period baseline), flag them as breakout opportunities worth testing.
 - Avoid jargon. Write like a sharp merchandiser, not a consultant.
 - Output ONLY the raw JSON object. No preamble.`;
 
@@ -393,7 +418,7 @@ export async function GET(request: NextRequest) {
   const region = searchParams.get('region') || 'ALL';
   const refresh = searchParams.get('refresh') === '1';
   const limit = Math.min(parseInt(searchParams.get('limit') || '40'), 80);
-  const windowDays = Math.max(1, Math.min(parseInt(searchParams.get('window') || '7'), 30));
+  const windowDays = Math.max(1, Math.min(parseInt(searchParams.get('window') || '30'), 90));
 
   const cacheKey = `trends:${region}:${limit}:${windowDays}`;
   const now = Date.now();
@@ -406,8 +431,8 @@ export async function GET(request: NextRequest) {
   }
 
   const windowMs = windowDays * 86400 * 1000;
-  const currentPosts = topPostsInWindow(now - windowMs, now, region, limit);
-  const priorPosts = topPostsInWindow(now - 2 * windowMs, now - windowMs, region, limit);
+  const currentPosts = await topPostsInWindow(now - windowMs, now, region, limit);
+  const priorPosts = await topPostsInWindow(now - 2 * windowMs, now - windowMs, region, limit);
 
   if (currentPosts.length === 0) {
     return NextResponse.json({
@@ -426,9 +451,26 @@ export async function GET(request: NextRequest) {
     });
   }
 
+  // If no Gemini key, return post counts without vision analysis
+  if (!GEMINI_KEY) {
+    return NextResponse.json({
+      region,
+      window: windowDays,
+      totalAnalyzed: currentPosts.length,
+      topShapes: [],
+      topColors: [],
+      topMaterials: [],
+      topStyles: [],
+      byRegion: [],
+      mustDo: [],
+      summary: `Found ${currentPosts.length} posts in the last ${windowDays} days from ${region === 'ALL' ? 'all regions' : region}. Gemini Vision API key not configured — set GEMINI_API_KEY to enable visual trend analysis.`,
+      generatedAt: new Date().toISOString(),
+      cached: false,
+    });
+  }
+
   const ai = new GoogleGenAI({ apiKey: GEMINI_KEY });
 
-  // Run vision on current + prior together so deltas are comparable.
   await analyzeBatch(ai, currentPosts);
   await analyzeBatch(ai, priorPosts);
 
@@ -437,7 +479,6 @@ export async function GET(request: NextRequest) {
   const topMaterials = aggregate(currentPosts, priorPosts, 'material', 6);
   const topStyles = aggregate(currentPosts, priorPosts, 'style', 6);
 
-  // Per-region breakdown when global.
   const byRegion: RegionBreakdown[] = [];
   if (region === 'ALL') {
     const regions = Array.from(new Set(currentPosts.map(p => p.region))).filter(Boolean);
