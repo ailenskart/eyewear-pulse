@@ -43,9 +43,14 @@ export async function GET(request: NextRequest) {
   if (tier) q = q.eq('tier', tier);
   if (search && search.trim()) {
     const s = `%${search.trim()}%`;
-    q = q.or(`handle.ilike.${s},name.ilike.${s},notes.ilike.${s}`);
+    q = q.or(`handle.ilike.${s},name.ilike.${s},notes.ilike.${s},description.ilike.${s},country.ilike.${s}`);
   }
-  q = q.order('added_at', { ascending: false }).range((page - 1) * limit, page * limit - 1);
+
+  // Sorting: default by instagram_followers desc (most popular first)
+  const sortBy = searchParams.get('sortBy') || 'instagram_followers';
+  const sortOrder = searchParams.get('order') || 'desc';
+  const ascending = sortOrder === 'asc';
+  q = q.order(sortBy, { ascending, nullsFirst: false }).range((page - 1) * limit, page * limit - 1);
 
   const { data, count, error } = await q;
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });

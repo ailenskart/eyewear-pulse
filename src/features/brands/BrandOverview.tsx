@@ -23,7 +23,7 @@ export function BrandOverview({ profile }: { profile: BrandProfile }) {
 
   return (
     <div className="grid lg:grid-cols-[1fr_360px] gap-6 max-w-6xl mx-auto px-4 py-6">
-      {/* Left — timeline */}
+      {/* Left — timeline + description */}
       <div>
         <h2 className="text-[14px] font-semibold tracking-tight mb-4 text-[var(--ink-muted)] uppercase">
           Recent activity
