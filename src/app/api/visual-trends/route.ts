@@ -18,10 +18,12 @@ import { createClient } from '@supabase/supabase-js';
 export const maxDuration = 60;
 
 const GEMINI_KEY = process.env.GEMINI_API_KEY || '';
-const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
-const SUPABASE_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
-
-const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
+function getSupabase() {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
+  const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
+  if (!url || !key) throw new Error('Supabase config missing');
+  return createClient(url, key);
+}
 
 /* ─── Types ─── */
 
@@ -113,6 +115,7 @@ async function topPostsInWindow(
   const startISO = new Date(windowStartMs).toISOString();
   const endISO = new Date(windowEndMs).toISOString();
 
+  const supabase = getSupabase();
   let query = supabase
     .from('brand_content')
     .select('id, brand_id, brand_handle, posted_at, data, blob_url')
@@ -130,7 +133,7 @@ async function topPostsInWindow(
   const brandMap = new Map<string, { name: string; category: string; region: string }>();
 
   if (handles.length > 0) {
-    const { data: brands } = await supabase
+    const { data: brands } = await getSupabase()
       .from('tracked_brands')
       .select('handle, name, category, region')
       .in('handle', handles.slice(0, 500));
