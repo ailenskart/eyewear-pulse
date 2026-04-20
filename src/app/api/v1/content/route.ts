@@ -7,7 +7,7 @@
 import { NextRequest } from 'next/server';
 import { z } from 'zod';
 import { supabaseServer } from '@/lib/supabase';
-import { ok, withHandler, validateQuery } from '@/lib/api';
+import { ok, cached, withHandler, validateQuery } from '@/lib/api';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 15;
@@ -43,10 +43,10 @@ export const GET = withHandler('v1.content', async (request: NextRequest) => {
   const { data, count, error } = await q;
   if (error) return ok({ error: error.message }, { status: 500 });
 
-  return ok({
+  return cached({
     content: data || [],
     total: count || 0,
     page,
     totalPages: Math.max(1, Math.ceil((count || 0) / limit)),
-  });
+  }, 60);
 });

@@ -8,3 +8,8 @@ _bu.tmp
 _test_bu.tmp
 *.tmp
 tsconfig.tsbuildinfo
+
+# Large data files (download from Drive, don't commit)
+data/*.json
+data/*.jsonl
+data/*.csv

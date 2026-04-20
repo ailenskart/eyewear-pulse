@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseServer } from '@/lib/supabase';
+import { loggerFor } from '@/lib/logger';
 import { toFeedPost, getLastCronRun, type IgPostDbRow, type Post } from '@/lib/feed-db';
+
+const log = loggerFor('api.feed');
 // Legacy JSON fallback — only used if Supabase is empty (fresh deploys before seeding).
 import { ALL_POSTS as JSON_POSTS, FEED_STATS as JSON_STATS } from '@/lib/feed';
 
@@ -158,7 +161,7 @@ export async function GET(request: NextRequest) {
       .range(0, poolSize - 1);
     const { data, error, count } = await q;
     if (error) {
-      console.error('feed query error:', error.message);
+      log.error({ err: error.message }, 'feed query error');
     }
     const rawRows = (data as Record<string, unknown>[] | null) || [];
     if (!error && count === 0) {
@@ -235,7 +238,7 @@ export async function GET(request: NextRequest) {
   const { data, error, count } = await q;
 
   if (error) {
-    console.error('feed query error:', error.message);
+    log.error({ err: error.message }, 'feed query error');
   }
 
   const rawRows = (data as Record<string, unknown>[] | null) || [];

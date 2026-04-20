@@ -10,7 +10,7 @@
 import { NextRequest } from 'next/server';
 import { z } from 'zod';
 import { supabaseServer } from '@/lib/supabase';
-import { ok, withHandler, validateQuery } from '@/lib/api';
+import { ok, cached, withHandler, validateQuery } from '@/lib/api';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 15;
@@ -71,10 +71,10 @@ export const GET = withHandler('v1.brands', async (request: NextRequest) => {
     return { ...r, content_counts: counts, total_content: total };
   });
 
-  return ok({
+  return cached({
     brands: enriched,
     total: count || 0,
     page,
     totalPages: Math.max(1, Math.ceil((count || 0) / limit)),
-  });
+  }, 60);
 });

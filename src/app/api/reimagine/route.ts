@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { GoogleGenAI } from '@google/genai';
 import { supabaseServer } from '@/lib/supabase';
+import { loggerFor } from '@/lib/logger';
+
+const log = loggerFor('api.reimagine');
 
 const BLOB_TOKEN = process.env.BLOB_READ_WRITE_TOKEN || '';
 
@@ -205,7 +208,7 @@ async function callReplicate(modelVersion: string, input: Record<string, unknown
  */
 async function callReplicateSlug(modelSlug: string, input: Record<string, unknown>): Promise<{ url: string | null; error: string | null }> {
   try {
-    console.log(`[Replicate ${modelSlug}] Starting with input keys:`, Object.keys(input));
+    log.debug({ model: modelSlug, inputKeys: Object.keys(input) }, 'replicate starting');
     const res = await fetch(`https://api.replicate.com/v1/models/${modelSlug}/predictions`, {
       method: 'POST',
       headers: {
@@ -215,9 +218,9 @@ async function callReplicateSlug(modelSlug: string, input: Record<string, unknow
       },
       body: JSON.stringify({ input }),
     });
-    console.log(`[Replicate ${modelSlug}] HTTP status:`, res.status);
+    log.debug({ model: modelSlug, status: res.status }, 'replicate response');
     const data = await res.json();
-    console.log(`[Replicate ${modelSlug}] Response:`, JSON.stringify(data).substring(0, 500));
+    log.debug({ model: modelSlug, body: JSON.stringify(data).substring(0, 500) }, 'replicate body');
 
     // Check for API errors (402 credit, 401 auth, 422 validation)
     if (!res.ok || data.detail || data.error) {
@@ -448,7 +451,7 @@ export async function POST(request: NextRequest) {
     if (productUrl && !productFrameDescription) {
       productSlug = parseProductSlug(productUrl);
       productImageUrl = await extractProductImage(productUrl);
-      console.log('[reimagine] product URL:', productUrl, '→ slug:', productSlug, '→ image:', productImageUrl);
+      log.debug({ productUrl, productSlug, productImageUrl }, 'product URL resolved');
       const ai = new GoogleGenAI({ apiKey: GEMINI_KEY });
 
       // Path 1: we got a real product image → use vision

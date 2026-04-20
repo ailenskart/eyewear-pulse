@@ -21,6 +21,14 @@ export function ok<T>(data: T, opts: OkResponseOptions = {}): NextResponse {
   return NextResponse.json(data, { status: opts.status ?? 200, headers: opts.headers });
 }
 
+export function cached<T>(data: T, ttlSeconds = 60): NextResponse {
+  return NextResponse.json(data, {
+    headers: {
+      'Cache-Control': `public, s-maxage=${ttlSeconds}, stale-while-revalidate=${ttlSeconds * 2}`,
+    },
+  });
+}
+
 export function fail(message: string, status = 400, details?: unknown): NextResponse {
   return NextResponse.json({ error: message, details }, { status });
 }
