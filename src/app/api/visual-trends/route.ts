@@ -132,12 +132,12 @@ async function topPostsInWindow(
   if (handles.length > 0) {
     const { data: brands } = await supabase
       .from('tracked_brands')
-      .select('handle, display_name, category, region')
+      .select('handle, name, category, region')
       .in('handle', handles.slice(0, 500));
     if (brands) {
       for (const b of brands) {
         brandMap.set(b.handle, {
-          name: b.display_name || b.handle,
+          name: b.name || b.handle,
           category: b.category || 'Independent',
           region: b.region || 'Global',
         });

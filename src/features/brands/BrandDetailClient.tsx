@@ -15,7 +15,12 @@ import { MediaCard } from '@/components/ui/MediaCard';
 import { Badge } from '@/components/ui/Badge';
 import type { BrandProfile } from './types';
 
-export function BrandDetailClient({ brandId }: { brandId: number }) {
+interface BrandDetailProps {
+  brandId?: number;
+  brandHandle?: string;
+}
+
+export function BrandDetailClient({ brandId, brandHandle }: BrandDetailProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const initialTab = (searchParams.get('tab') || 'overview') as BrandTab;
@@ -23,18 +28,25 @@ export function BrandDetailClient({ brandId }: { brandId: number }) {
   const [profile, setProfile] = React.useState<BrandProfile | null>(null);
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
+  const [resolvedBrandId, setResolvedBrandId] = React.useState<number | null>(brandId ?? null);
 
   React.useEffect(() => {
     setLoading(true);
-    fetch(`/api/v1/brands/profile?id=${brandId}`)
+    // Build the API URL — support both id and handle lookup
+    const params = brandId ? `id=${brandId}` : `handle=${brandHandle}`;
+    fetch(`/api/v1/brands/profile?${params}`)
       .then(r => r.json())
       .then(data => {
         if (data.error) { setError(data.error); }
-        else { setProfile(data); }
+        else {
+          setProfile(data);
+          // Store the resolved numeric brand ID for sub-components
+          if (data.brand?.id) setResolvedBrandId(data.brand.id);
+        }
         setLoading(false);
       })
       .catch(e => { setError(e.message); setLoading(false); });
-  }, [brandId]);
+  }, [brandId, brandHandle]);
 
   const onTabChange = (t: BrandTab) => {
     setTab(t);
@@ -62,6 +74,8 @@ export function BrandDetailClient({ brandId }: { brandId: number }) {
     </div>;
   }
 
+  const effectiveBrandId = resolvedBrandId ?? 0;
+
   return (
     <div>
       <BrandHeader brand={profile.brand} />
@@ -74,9 +88,9 @@ export function BrandDetailClient({ brandId }: { brandId: number }) {
         {tab === 'people'     && <BrandPeople items={profile.people} />}
         {tab === 'celebs'     && <CelebsTab items={profile.celebs} />}
         {tab === 'reimagines' && <ReimaginesTab items={profile.reimagines} />}
-        {tab === 'links'      && <LinksTab brandId={brandId} />}
-        {tab === 'news'       && <BrandNews brandId={brandId} />}
-        {tab === 'compare'    && <CompareTab brandId={brandId} />}
+        {tab === 'links'      && <LinksTab brandId={effectiveBrandId} />}
+        {tab === 'news'       && <BrandNews brandId={effectiveBrandId} />}
+        {tab === 'compare'    && <CompareTab brandId={effectiveBrandId} />}
       </div>
     </div>
   );
