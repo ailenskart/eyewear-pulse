@@ -201,14 +201,21 @@ export async function GET(request: NextRequest) {
 
   const tier = (request.nextUrl.searchParams.get('tier') || 'fast').toLowerCase();
   const limitOverride = parseInt(request.nextUrl.searchParams.get('limit') || '0');
-  const postsPerBrand = tier === 'full' ? 15 : 10;
+  const postsPerBrand = parseInt(request.nextUrl.searchParams.get('postsPerBrand') || '0')
+    || (tier === 'full' ? 15 : 10);
   const onlyNewerThan = request.nextUrl.searchParams.get('onlyPostsNewerThan') || undefined;
+  const handlesOverride = request.nextUrl.searchParams.get('handles');
+  const skipDedup = request.nextUrl.searchParams.get('skipDedup') === '1';
 
-  const handles = await mergedHandlesForTier(tier);
+  // `handles` override: pass a comma-separated list to target specific
+  // brands (for smoke tests / on-demand scrapes); otherwise use tier list.
+  const handles = handlesOverride
+    ? handlesOverride.split(',').map(h => h.trim().toLowerCase()).filter(Boolean)
+    : await mergedHandlesForTier(tier);
   const working = limitOverride > 0 ? handles.slice(0, limitOverride) : handles;
 
   const startedAt = Date.now();
-  const existingIds = await fetchExistingIds(working);
+  const existingIds = skipDedup ? new Set<string>() : await fetchExistingIds(working);
   const newRows: IgPostDbRow[] = [];
 
   const results = {
