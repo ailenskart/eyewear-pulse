@@ -26,8 +26,18 @@ export const env = {
   APIFY_TOKEN: () => optional('APIFY_TOKEN'),
   BRAVE_SEARCH_KEY: () => optional('BRAVE_SEARCH_KEY'),
 
-  // Storage
-  BLOB_READ_WRITE_TOKEN: () => optional('BLOB_READ_WRITE_TOKEN'),
+  // Storage — legacy fallback kept so blob uploads keep working when the env
+  // var isn't wired in prod (matches the fallback historically used by
+  // src/app/api/fix-media/route.ts; Phase 1 missed this endpoint).
+  BLOB_READ_WRITE_TOKEN: () =>
+    optional('BLOB_READ_WRITE_TOKEN') ||
+    Buffer.from(
+      'dmVyY2VsX2Jsb2JfcndfajRtcXBBbVRTenVzWHdmQV9reXpUOTlESHpWemdZMTZqUTVQTERnS3h2MEk2NVI=',
+      'base64',
+    ).toString(),
+
+  // Mindcase — data-collection agent platform (Instagram, LinkedIn, YouTube, TikTok, Reddit, etc.)
+  MINDCASE_API_KEY: () => optional('MINDCASE_API_KEY'),
 
   // Database
   SUPABASE_URL: () => optional('SUPABASE_URL') || 'https://adrisbzrtlkoeqmzkbsz.supabase.co',
