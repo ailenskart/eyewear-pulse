@@ -76,40 +76,57 @@ async function mergedHandlesForTier(tier: string): Promise<string[]> {
 }
 
 /* ─── Mindcase → Apify-shaped row ─── */
+/* Mindcase's IG posts agent actually returns PascalCase-with-spaces
+   keys (despite the snake_case examples in the docs): "Post ID",
+   "Owner", "Display Image", "Posted At", "Short Code", etc. We accept
+   both shapes so the normalizer keeps working if they ever rename. */
 
-function normalizeMindcasePost(m: MindcaseIgPost): RawScrapedPost {
-  const id = m.id || m.shortCode || m.shortcode || '';
-  const ownerUsername = (m.ownerUsername || m.owner_username || m.username || '').toLowerCase();
-  const displayUrl = m.displayUrl || m.display_url || m.media_url || (m.images && m.images[0]) || undefined;
-  const videoUrl = m.videoUrl || m.video_url || undefined;
-  const timestamp = m.timestamp || m.posted_at || undefined;
-  const likes = m.likesCount ?? m.likes ?? m.likes_count ?? 0;
-  const comments = m.commentsCount ?? m.comments ?? m.comments_count ?? 0;
+function pick<T>(row: Record<string, unknown>, keys: string[], fallback?: T): T | undefined {
+  for (const k of keys) {
+    const v = row[k];
+    if (v !== undefined && v !== null && v !== '') return v as T;
+  }
+  return fallback;
+}
 
-  const rawChildren = m.childPosts || m.child_posts || [];
+function normalizeMindcasePost(raw: MindcaseIgPost | Record<string, unknown>): RawScrapedPost {
+  const m = raw as Record<string, unknown>;
+  const id = pick<string>(m, ['Post ID', 'id', 'post_id', 'Short Code', 'shortCode', 'shortcode']) || '';
+  const shortCode = pick<string>(m, ['Short Code', 'shortCode', 'shortcode']);
+  const ownerUsername = String(pick<string>(m, ['Owner', 'ownerUsername', 'owner_username', 'username']) || '').toLowerCase();
+  const displayUrl = pick<string>(m, ['Display Image', 'displayUrl', 'display_url', 'media_url']);
+  const videoUrl = pick<string>(m, ['Video URL', 'videoUrl', 'video_url']);
+  const timestamp = pick<string>(m, ['Posted At', 'timestamp', 'posted_at']);
+  const likes = pick<number>(m, ['Likes', 'likesCount', 'likes', 'likes_count']) ?? 0;
+  const comments = pick<number>(m, ['Comments', 'commentsCount', 'comments', 'comments_count']) ?? 0;
+  const postType = pick<string>(m, ['Post Type', 'type']);
+  const postUrl = pick<string>(m, ['Post URL', 'url', 'post_url']);
+  const hashtags = (pick<string[]>(m, ['Hashtags', 'hashtags']) || []) as string[];
+  const mentions = (pick<string[]>(m, ['Mentions', 'mentions']) || []) as string[];
+
+  // Carousel children — docs show `Child Posts` sometimes. Stay defensive.
+  const rawChildren = (pick<unknown[]>(m, ['Child Posts', 'childPosts', 'child_posts']) || []) as Array<Record<string, unknown>>;
   const childPosts = rawChildren.map(c => ({
-    id: c.id,
-    type: c.type,
-    displayUrl: (c as { displayUrl?: string; display_url?: string }).displayUrl
-      || (c as { display_url?: string }).display_url,
-    videoUrl: (c as { videoUrl?: string; video_url?: string }).videoUrl
-      || (c as { video_url?: string }).video_url,
+    id: String(c['Post ID'] || c.id || ''),
+    type: String(c['Post Type'] || c.type || 'Image'),
+    displayUrl: (c['Display Image'] || c.displayUrl || c.display_url) as string | undefined,
+    videoUrl: (c['Video URL'] || c.videoUrl || c.video_url) as string | undefined,
   }));
 
   return {
     id: String(id),
-    shortCode: m.shortCode || m.shortcode,
-    caption: m.caption || '',
-    url: m.url || m.post_url,
+    shortCode,
+    caption: String(pick<string>(m, ['Caption', 'caption']) || ''),
+    url: postUrl,
     commentsCount: Number(comments) || 0,
     likesCount: Number(likes) || 0,
     displayUrl,
     timestamp,
     ownerUsername,
-    ownerFullName: m.ownerFullName || m.full_name,
-    hashtags: m.hashtags || [],
-    mentions: m.mentions || [],
-    type: m.type,
+    ownerFullName: pick<string>(m, ['Owner Name', 'ownerFullName', 'full_name']),
+    hashtags,
+    mentions,
+    type: postType,
     videoUrl,
     childPosts,
   };
