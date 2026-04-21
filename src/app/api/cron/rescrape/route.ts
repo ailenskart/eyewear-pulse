@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { ApifyClient } from 'apify-client';
 import { supabaseServer } from '@/lib/supabase';
 import { isApifyConfigured } from '@/lib/apify';
+import { env } from '@/lib/env';
 import { toDbRow, upsertPosts, logCronRun, type RawScrapedPost, type IgPostDbRow } from '@/lib/feed-db';
 
 /**
@@ -33,7 +34,6 @@ import { toDbRow, upsertPosts, logCronRun, type RawScrapedPost, type IgPostDbRow
 export const maxDuration = 800; // Vercel Pro caps functions at 900s; leave a buffer
 
 const APIFY_TOKEN = process.env.APIFY_TOKEN || '';
-const BLOB_TOKEN = process.env.BLOB_READ_WRITE_TOKEN || '';
 const CRON_SECRET = process.env.CRON_SECRET || 'lenzy-cron-2026';
 const ACTOR_ID = 'shu8hvrXbJbY3Eb9W';
 const BATCH_SIZE = 15;
@@ -124,12 +124,13 @@ async function mergedHandlesForTier(tier: string): Promise<string[]> {
 /* ─── Media upload helpers ─── */
 
 async function uploadToBlob(data: ArrayBuffer, path: string, contentType: string): Promise<string | null> {
-  if (!BLOB_TOKEN) return null;
+  const token = env.BLOB_READ_WRITE_TOKEN();
+  if (!token) return null;
   try {
     const res = await fetch(`https://blob.vercel-storage.com/${path}`, {
       method: 'PUT',
       headers: {
-        'Authorization': `Bearer ${BLOB_TOKEN}`,
+        'Authorization': `Bearer ${token}`,
         'x-api-version': '7',
         'Content-Type': contentType,
         'x-content-type': contentType,

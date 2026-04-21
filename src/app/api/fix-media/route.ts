@@ -1,7 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-
-const d = (s: string) => Buffer.from(s, 'base64').toString();
-const BLOB_TOKEN = process.env.BLOB_READ_WRITE_TOKEN || d('dmVyY2VsX2Jsb2JfcndfajRtcXBBbVRTenVzWHdmQV9reXpUOTlESHpWemdZMTZqUTVQTERnS3h2MEk2NVI=');
+import { env } from '@/lib/env';
 
 /**
  * POST /api/fix-media
@@ -41,7 +39,7 @@ export async function POST(request: NextRequest) {
     const blobRes = await fetch(`https://blob.vercel-storage.com/${blobPath}`, {
       method: 'PUT',
       headers: {
-        'Authorization': `Bearer ${BLOB_TOKEN}`,
+        'Authorization': `Bearer ${env.BLOB_READ_WRITE_TOKEN()}`,
         'x-api-version': '7',
         'Content-Type': contentType,
         'x-content-type': contentType,
