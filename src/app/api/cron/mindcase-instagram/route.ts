@@ -210,7 +210,7 @@ export async function GET(request: NextRequest) {
     const batch = working.slice(i, i + BATCH_SIZE);
     try {
       const { data } = await runAgent<MindcaseIgPost>('instagram/posts', {
-        username: batch,
+        usernames: batch,
         resultsLimit: postsPerBrand,
         ...(onlyNewerThan ? { onlyPostsNewerThan: onlyNewerThan } : {}),
       }, { timeoutSec: 600 });
