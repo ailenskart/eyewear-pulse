@@ -266,7 +266,10 @@ export async function upsertPosts(rows: IgPostDbRow[]): Promise<{ inserted: numb
     brand_id: idByHandle.get(r.brand_handle) || null,
     brand_handle: r.brand_handle,
     type: 'ig_post',
-    source: 'apify',
+    // `source` is a weak signal in prod (Apify + Mindcase both write
+    // ig_post rows). Dedup is handled upstream via fetchExistingIds,
+    // so the value here is just metadata.
+    source: 'ig',
     source_ref: r.id,
     caption: r.caption,
     url: r.post_url,
@@ -290,14 +293,16 @@ export async function upsertPosts(rows: IgPostDbRow[]): Promise<{ inserted: numb
     },
   }));
 
+  // Plain insert — dedup is enforced upstream via fetchExistingIds().
+  // Previously used .upsert() with onConflict:'brand_id,type,source,
+  // source_ref' but the matching unique index was never applied in
+  // prod, so every write failed with "no unique or exclusion
+  // constraint matching the ON CONFLICT specification".
   const BATCH = 500;
   let inserted = 0;
   for (let i = 0; i < contentRows.length; i += BATCH) {
     const slice = contentRows.slice(i, i + BATCH);
-    const { error } = await client.from('brand_content').upsert(slice, {
-      onConflict: 'brand_id,type,source,source_ref',
-      ignoreDuplicates: false,
-    });
+    const { error } = await client.from('brand_content').insert(slice);
     if (error) return { inserted, error: error.message };
     inserted += slice.length;
   }
