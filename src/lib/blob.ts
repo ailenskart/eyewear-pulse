@@ -92,16 +92,43 @@ export function parseVideoUrlFromEmbed(html: string): string | null {
   return null;
 }
 
-/** Debug: return a snapshot of what each IG embed variant serves. */
+/** Debug: return a snapshot of what each IG embed variant serves and
+ *  any candidate video-URL substrings so we can see what regex to use. */
 export async function debugFetchIgEmbed(shortCode: string): Promise<{
-  attempts: Array<{ url: string; status: number; size: number; snippet: string; foundVideoUrl: string | null }>;
+  attempts: Array<{
+    url: string;
+    status: number;
+    size: number;
+    foundVideoUrl: string | null;
+    candidates: string[];
+    mp4Matches: string[];
+  }>;
 }> {
   const urls = [
     `https://www.instagram.com/p/${shortCode}/embed/captioned/`,
     `https://www.instagram.com/reel/${shortCode}/embed/captioned/`,
     `https://www.instagram.com/p/${shortCode}/embed/`,
   ];
-  const attempts: Array<{ url: string; status: number; size: number; snippet: string; foundVideoUrl: string | null }> = [];
+  const attempts: Array<{
+    url: string;
+    status: number;
+    size: number;
+    foundVideoUrl: string | null;
+    candidates: string[];
+    mp4Matches: string[];
+  }> = [];
+
+  const fieldPatterns = [
+    /"video_url":[^,}]{0,200}/g,
+    /"playable_url[_a-z]*":[^,}]{0,200}/g,
+    /"contentUrl":[^,}]{0,200}/g,
+    /<video[^>]*src="[^"]{0,300}"/gi,
+    /og:video[^>]*content="[^"]{0,300}"/gi,
+    /playlist_url[^"]{0,80}"[^"]{0,300}"/gi,
+    /dash_manifest[^"]{0,80}/gi,
+  ];
+  const mp4Pattern = /https?:\/\/[^\s"'<>]{0,400}\.mp4[^\s"'<>]{0,400}/g;
+
   for (const u of urls) {
     try {
       const res = await fetch(u, {
@@ -110,21 +137,32 @@ export async function debugFetchIgEmbed(shortCode: string): Promise<{
           'Accept': 'text/html,application/xhtml+xml',
           'Accept-Language': 'en-US,en;q=0.9',
         },
-        signal: AbortSignal.timeout(12_000),
+        signal: AbortSignal.timeout(15_000),
       });
       const html = await res.text();
-      const snippet = html
-        .replace(/\s+/g, ' ')
-        .slice(0, 800);
+      const candidates: string[] = [];
+      for (const p of fieldPatterns) {
+        const matches = html.match(p) || [];
+        for (const m of matches.slice(0, 3)) candidates.push(m.slice(0, 200));
+      }
+      const mp4Matches = (html.match(mp4Pattern) || []).slice(0, 5).map(m => m.slice(0, 300));
       const foundVideoUrl = parseVideoUrlFromEmbed(html);
-      attempts.push({ url: u, status: res.status, size: html.length, snippet, foundVideoUrl });
+      attempts.push({
+        url: u,
+        status: res.status,
+        size: html.length,
+        foundVideoUrl,
+        candidates,
+        mp4Matches,
+      });
     } catch (err) {
       attempts.push({
         url: u,
         status: 0,
         size: 0,
-        snippet: err instanceof Error ? err.message : 'fetch error',
         foundVideoUrl: null,
+        candidates: [err instanceof Error ? err.message : 'fetch error'],
+        mp4Matches: [],
       });
     }
   }
