@@ -48,7 +48,12 @@ export interface EyewearDetection {
  * when present. Returns { isWearing: false, raw: '' } on any failure.
  */
 export async function detectEyewear(imageUrl: string): Promise<EyewearDetection> {
-  const token = process.env.REPLICATE_API_TOKEN;
+  // Use the env helper (required()) rather than process.env directly —
+  // Next.js 16 otherwise tree-shakes the env var out of this bundle
+  // because vision.ts is only reached via a dynamic import from the
+  // celebrity scanner, so it doesn't look like a statically-used env.
+  let token = '';
+  try { token = env.REPLICATE_API_TOKEN(); } catch { return { isWearing: false, description: null, raw: '' }; }
   if (!token) return { isWearing: false, description: null, raw: '' };
 
   const prompt = [
@@ -143,7 +148,3 @@ export async function detectEyewearBatch(
   return out;
 }
 
-// `env` is referenced only to keep the import graph honest (we rely
-// on env.REPLICATE_API_TOKEN being provisioned in Vercel; reading
-// process.env directly above keeps the code edge-compatible).
-void env;
