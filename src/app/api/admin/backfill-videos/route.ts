@@ -106,10 +106,10 @@ export async function GET(request: NextRequest) {
     const pid = r.source_ref || String(r.id);
     const blobUrl = await uploadToBlob(buf, `posts/video_${pid}.mp4`, 'video/mp4');
     if (!blobUrl) { results.failed++; return null; }
-    return { id: r.id, video_url: blobUrl, data: { ...(r.data || {}), video_blob_url: blobUrl } };
+    return { id: r.id, video_url: blobUrl, data: { ...(r.data || {}), video_blob_url: blobUrl } as Record<string, unknown> };
   });
 
-  const patches = outcomes.filter((x): x is { id: number | string; video_url: string; data: Record<string, unknown> } => !!x);
+  const patches = outcomes.filter((x): x is NonNullable<typeof x> => !!x);
   for (const p of patches) {
     const { error: upErr } = await client
       .from('brand_content')
