@@ -42,27 +42,30 @@ const BLOB_TOKEN = process.env.BLOB_READ_WRITE_TOKEN || '';
 const KNOWN_HANDLES: Record<string, string> = {
   // ── Hollywood / US Actors ──
   'Zendaya': 'zendaya', 'Timothée Chalamet': 'tchalamet', 'Tom Cruise': 'tomcruise',
-  'Jennifer Aniston': 'jenniferaniston', 'Brad Pitt': 'bradpittofflcial',
+  'Jennifer Aniston': 'jenniferaniston',
+  // Brad Pitt has no verified personal IG; skip rather than scrape an imposter account.
   'Leonardo DiCaprio': 'leonardodicaprio', 'Johnny Depp': 'johnnydepp',
   'Ryan Reynolds': 'vancityreynolds', 'Chris Hemsworth': 'chrishemsworth',
   'Dwayne Johnson': 'therock', 'Robert Downey Jr.': 'robertdowneyjr',
   'Jeff Goldblum': 'jeffgoldblum', 'Idris Elba': 'idriselba',
   'Ryan Gosling': 'ryangosling', 'Jake Gyllenhaal': 'jakegyllenhaal',
   'Will Smith': 'willsmith', 'Samuel L. Jackson': 'samuelljackson',
-  'Jason Momoa': 'praboroarn_jasonmomoa', 'Keanu Reeves': 'keanureevesofficial_',
+  'Jason Momoa': 'prideofgypsies',
+  // Keanu Reeves has no verified personal IG; skip.
   'Emma Stone': 'emmastone', 'Margot Robbie': 'margotrobbie',
   'Florence Pugh': 'florencepugh', 'Sydney Sweeney': 'sydney_sweeney',
   'Anne Hathaway': 'annehathaway', 'Lupita Nyongo': 'lupitanyongo',
-  'Cate Blanchett': 'cikiblanchett',
+  // Cate Blanchett has no verified personal IG; skip.
 
   // ── Bollywood / India ──
   'Shah Rukh Khan': 'iamsrk', 'Amitabh Bachchan': 'amitabhbachchan',
   'Salman Khan': 'beingsalmankhan', 'Ranveer Singh': 'ranveersingh',
   'Hrithik Roshan': 'hrithikroshan', 'Kartik Aaryan': 'kartikaaryan',
-  'Tiger Shroff': 'tigerjackieshroff', 'Vicky Kaushal': 'vaborwsky',
-  'Ranbir Kapoor': 'raborwsky', 'Shahid Kapoor': 'shahidkapoor',
+  'Tiger Shroff': 'tigerjackieshroff', 'Vicky Kaushal': 'vickykaushal09',
+  // Ranbir Kapoor has no personal IG; skip.
+  'Shahid Kapoor': 'shahidkapoor',
   'Varun Dhawan': 'varundvn', 'Sidharth Malhotra': 'sidmalhotra',
-  'Ayushmann Khurrana': 'ayaborwmann', 'Rajkummar Rao': 'rajkummar_rao',
+  'Ayushmann Khurrana': 'ayushmannk', 'Rajkummar Rao': 'rajkummar_rao',
   'Deepika Padukone': 'deepikapadukone', 'Priyanka Chopra': 'priyankachopra',
   'Alia Bhatt': 'aliaabhatt', 'Katrina Kaif': 'katrinakaif',
   'Anushka Sharma': 'anushkasharma', 'Kareena Kapoor': 'kareenakapoorkhan',
@@ -92,8 +95,8 @@ const KNOWN_HANDLES: Record<string, string> = {
   'BLACKPINK Jennie': 'jennierubyjane', 'BLACKPINK Lisa': 'lalalalisa_m',
   'BLACKPINK Rosé': 'roses_are_rosie',
   'G-Dragon': 'xxxibgdrgn', 'Jay Park': 'jparkitrighthere',
-  'Badshah': 'baaborwshahthe', 'AP Dhillon': 'apdhillon',
-  'Diljit Dosanjh': 'diljitdosanjh', 'Honey Singh': 'yaborwhoneysingh',
+  'Badshah': 'badboyshah', 'AP Dhillon': 'apdhillon',
+  'Diljit Dosanjh': 'diljitdosanjh', 'Honey Singh': 'yoyohoneysingh',
 
   // ── Athletes ──
   'Cristiano Ronaldo': 'cristiano', 'Lionel Messi': 'leomessi',
@@ -102,7 +105,7 @@ const KNOWN_HANDLES: Record<string, string> = {
   'Serena Williams': 'serenawilliams', 'Lewis Hamilton': 'lewishamilton',
   'Tom Brady': 'tombrady', 'Patrick Mahomes': 'patrickmahomes',
   'Virat Kohli': 'virat.kohli', 'MS Dhoni': 'mahi7781',
-  'Rohit Sharma': 'rohitsharma45', 'KL Rahul': 'rahaborwlkl',
+  'Rohit Sharma': 'rohitsharma45', 'KL Rahul': 'klrahul',
   'Hardik Pandya': 'hardikpandya93', 'Rishabh Pant': 'rishabpant',
   'Usain Bolt': 'usainbolt', 'Conor McGregor': 'thenotoriousmma',
   'Floyd Mayweather': 'floydmayweather', 'Max Verstappen': 'maxverstappen1',
@@ -132,7 +135,7 @@ const KNOWN_HANDLES: Record<string, string> = {
   'Satya Nadella': 'satyanadella',
 
   // ── International / European ──
-  'Giannis Antetokounmpo': 'gaborwnnisaborwn34', 'Zlatan Ibrahimović': 'iamzlatanibrahimovic',
+  'Giannis Antetokounmpo': 'giannis_an34', 'Zlatan Ibrahimović': 'iamzlatanibrahimovic',
   'Monica Bellucci': 'monicabellucciofficiel', 'Penélope Cruz': 'penelopecruzoficial',
   'Anya Taylor-Joy': 'anyataylorjoy',
 
@@ -141,12 +144,41 @@ const KNOWN_HANDLES: Record<string, string> = {
 
   // ── African Stars ──
   'Burna Boy': 'burnaboygram', 'Wizkid': 'wizkidayo',
-  'Davido': 'davido', 'Tiwa Savage': 'taborwwasavage',
+  'Davido': 'davido', 'Tiwa Savage': 'tiwasavage',
 
   // ── Fashion Designers ──
   'Virgil Abloh': 'virgilabloh', 'Tom Ford': 'tomford',
   'Donatella Versace': 'donatella_versace', 'Marc Jacobs': 'marcjacobs',
   'Alexander Wang': 'alexanderwangny',
+
+  // ── Additional from celebrities.json (batched in one patch) ──
+  'Aamir Khan': 'aamirkhanproductions', 'Ananya Panday': 'ananyapanday',
+  'Adele': 'adele', 'Anderson .Paak': 'anderson._paak',
+  'Angelina Jolie': 'angelinajolie_official', 'Anna Wintour': 'annawintour',
+  'Camila Cabello': 'camila_cabello', 'Daniel Craig': 'danielcraig',
+  'Denzel Washington': 'denzelwashington', 'Erling Haaland': 'erling.haaland',
+  'George Clooney': 'georgeclooney_official', 'Halsey': 'iamhalsey',
+  'Henry Cavill': 'henrycavill', 'Jamie Foxx': 'iamjamiefoxx',
+  'Jason Statham': 'jasonstatham', 'Jay-Z': 'jayz',
+  'Kate Moss': 'katemossagency', 'Lana Del Rey': 'honeymoon',
+  'Lewis Capaldi': 'lewiscapaldi', 'Lil Nas X': 'lilnasx',
+  'Michael B Jordan': 'michaelbjordan',
+  'Mick Jagger': 'mickjagger', 'Mr. Beast': 'mrbeast',
+  'Novak Djokovic': 'djokernole', 'Olivia Rodrigo': 'oliviarodrigo',
+  'Pedro Pascal': 'pascalispunk', 'PewDiePie': 'pewdiepie',
+  'Rafael Nadal': 'rafaelnadal', 'Roger Federer': 'rogerfederer',
+  'Sabrina Carpenter': 'sabrinacarpenter', 'Sam Smith': 'samsmith',
+  'Scarlett Johansson': 'scarlettjohanssonofficial', 'Shawn Mendes': 'shawnmendes',
+  'Stephen Curry': 'stephencurry30', 'Suhana Khan': 'suhanakhan2',
+  'Tems': 'temsbaby',
+
+  // Alias entries — same handle as an existing canonical name so the
+  // cron can find them however they're spelled in celebrities.json.
+  'A$AP Rocky': 'asaprocky',
+  'Robert Downey Jr': 'robertdowneyjr',
+  'Samuel L Jackson': 'samuelljackson',
+  'Tyler, The Creator': 'feliciathegoat',
+  'Virushka': 'anushkasharma', // Virat + Anushka; use Anushka's account
 };
 
 // Export for the cron + other routes
