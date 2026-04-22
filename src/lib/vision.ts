@@ -20,10 +20,13 @@ import { env } from './env';
 
 const REPLICATE_BASE = 'https://api.replicate.com/v1';
 
-// Moondream 2 — small, fast VLM with good zero-shot vision QA.
-// We pin the version to keep behaviour stable; bump when we want
-// the latest published weights.
-const MOONDREAM_VERSION = '72ccb656353c348c1385df54b237eeb7bfa625bdfcba70c00dcc8ef2f6bc20b4';
+// Moondream 2 on Replicate — slug lucataco/moondream2, current
+// version hash scraped from replicate.com/lucataco/moondream2/versions.
+// Community models can't be invoked via /v1/models/<slug>/predictions
+// (that endpoint is only for "official" Replicate models), so we call
+// /v1/predictions with an explicit version. Bump the hash below when
+// you want newer weights.
+const MOONDREAM_VERSION = '72ccb656353c348c1385df54b237eeb7bfa874bf11486cf0b9473e691b662d31';
 
 interface ReplicatePrediction {
   id: string;
@@ -72,10 +75,7 @@ export async function detectEyewear(imageUrl: string): Promise<EyewearDetection>
   ].join('\n');
 
   try {
-    // Moondream 2 is published under vikhyatk (the original author).
-    // Using the slug endpoint means we always get the latest version
-    // without needing to pin a hash.
-    const createRes = await fetch(`${REPLICATE_BASE}/models/vikhyatk/moondream2/predictions`, {
+    const createRes = await fetch(`${REPLICATE_BASE}/predictions`, {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${token}`,
@@ -83,6 +83,7 @@ export async function detectEyewear(imageUrl: string): Promise<EyewearDetection>
         'Prefer': 'wait=30',
       },
       body: JSON.stringify({
+        version: MOONDREAM_VERSION,
         input: { image: imageUrl, prompt },
       }),
       signal: AbortSignal.timeout(45_000),
