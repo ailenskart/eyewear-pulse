@@ -74,9 +74,11 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: 'No celeb handles available. Check the KNOWN_HANDLES map.' }, { status: 500 });
   }
 
-  const origin = process.env.VERCEL_URL
-    ? `https://${process.env.VERCEL_URL}`
-    : process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000';
+  // Use the incoming request's origin (always matches the public hostname
+  // the cron was called with — e.g. https://lenzy.studio) rather than
+  // VERCEL_URL, which points at an internal per-deployment URL that
+  // sometimes returns a Next 404 shell when called cross-host.
+  const origin = request.nextUrl.origin;
 
   const startedAt = Date.now();
   const summary = {
@@ -90,9 +92,16 @@ export async function GET(request: NextRequest) {
   for (const celeb of targets) {
     try {
       // Call our own scanner endpoint — it handles Apify + Vision + Blob + DB
-      const url = `${origin}/api/celebrities/instagram?name=${encodeURIComponent(celeb.name)}&handle=${encodeURIComponent(celeb.handle)}&limit=25`;
-      const res = await fetch(url, { signal: AbortSignal.timeout(55000) });
-      const data = await res.json();
+      const url = `${origin}/api/celebrities/instagram?name=${encodeURIComponent(celeb.name)}&handle=${encodeURIComponent(celeb.handle)}&limit=30`;
+      const res = await fetch(url, { signal: AbortSignal.timeout(90_000) });
+      const text = await res.text();
+      let data: { totalScanned?: number; eyewearCount?: number; source?: string; error?: string } = {};
+      try {
+        data = JSON.parse(text);
+      } catch {
+        throw new Error(`non-JSON response (${res.status}): ${text.slice(0, 120)}`);
+      }
+      if (data.error) throw new Error(data.error);
 
       summary.celebsProcessed++;
       summary.totalScanned += data.totalScanned || 0;
