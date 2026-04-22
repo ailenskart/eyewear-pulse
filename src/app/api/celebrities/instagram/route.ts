@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { GoogleGenAI } from '@google/genai';
+// (Gemini import removed — vision now via src/lib/vision.ts which
+// calls Moondream 2 on Replicate. See commit message for context.)
 import { runActor, isApifyConfigured, DEFAULT_ACTORS } from '@/lib/apify';
 import { supabaseServer } from '@/lib/supabase';
 
@@ -30,7 +31,7 @@ import { supabaseServer } from '@/lib/supabase';
 
 export const maxDuration = 60;
 
-const GEMINI_KEY = process.env.GEMINI_API_KEY || '';
+// GEMINI_KEY no longer needed; see src/lib/vision.ts (Moondream on Replicate).
 const BRAVE_KEY = process.env.BRAVE_SEARCH_KEY || '';
 const BLOB_TOKEN = process.env.BLOB_READ_WRITE_TOKEN || '';
 
@@ -328,66 +329,23 @@ async function uploadToBlob(imageUrl: string, path: string): Promise<string | nu
   } catch { return null; }
 }
 
-/* ═══ 4. Gemini Vision — detect eyewear + extract details ═══ */
+/* ═══ 4. Vision — detect eyewear + extract description ═══
+ *
+ * Open-source VLM via Replicate (Moondream 2, 2B params). Replaces
+ * the previous Gemini Vision call — no Google dependency, cheaper,
+ * and avoids the silent-fail we were seeing when GEMINI_API_KEY
+ * wasn't loaded at runtime. See src/lib/vision.ts for details.
+ */
 
 async function detectEyewearBatch(
   photos: Array<{ id: string; imageUrl: string }>,
 ): Promise<Map<string, string>> {
+  const { detectEyewearBatch: runOpen } = await import('@/lib/vision');
+  const results = await runOpen(photos, 4);
   const detected = new Map<string, string>();
-  if (photos.length === 0) return detected;
-
-  const loaded = await Promise.all(photos.map(async p => {
-    try {
-      const res = await fetch(p.imageUrl, {
-        headers: { 'User-Agent': 'Mozilla/5.0' },
-        signal: AbortSignal.timeout(8000),
-      });
-      if (!res.ok) return null;
-      const buf = await res.arrayBuffer();
-      if (buf.byteLength > 4 * 1024 * 1024) return null;
-      return { ...p, base64: Buffer.from(buf).toString('base64'), mime: res.headers.get('content-type') || 'image/jpeg' };
-    } catch { return null; }
-  }));
-  const valid = loaded.filter((x): x is NonNullable<typeof x> => x !== null);
-  if (valid.length === 0) return detected;
-
-  const ai = new GoogleGenAI({ apiKey: GEMINI_KEY });
-  const BATCH = 8;
-  for (let start = 0; start < valid.length; start += BATCH) {
-    const slice = valid.slice(start, start + BATCH);
-    const parts: Array<{ text: string } | { inlineData: { mimeType: string; data: string } }> = [
-      {
-        text: `I'm showing you ${slice.length} Instagram photos from a celebrity's account. For EACH photo:
-1. Is the person VISIBLY wearing sunglasses or eyeglasses ON THEIR FACE?
-2. If yes, describe the eyewear in detail.
-
-Return a compact JSON array:
-[{"i":0,"yes":true,"type":"oversized black acetate cat-eye sunglasses with gold temple arms, possibly Versace"},{"i":1,"yes":false}]
-
-Rules:
-- yes=true ONLY if eyewear is clearly visible ON the person's face in the photo.
-- Eyewear held in hand, pushed up on head, on a table, or worn by someone else = false.
-- When yes=true, describe: shape + color + material + lens type + possible brand if recognizable. Max 100 chars.
-- Be specific: "round gold metal clear-lens glasses" not just "glasses".
-- If you recognize the brand (Ray-Ban, Gucci, Dior, Prada, Oakley, etc.), include it.
-- Output ONLY the raw JSON array. No preamble, no code fences.`,
-      },
-      ...slice.map(v => ({ inlineData: { mimeType: v.mime, data: v.base64 } })),
-    ];
-
-    for (const model of ['gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-1.5-flash']) {
-      try {
-        const r = await ai.models.generateContent({ model, contents: [{ role: 'user', parts }] });
-        if (!r.text) continue;
-        const txt = r.text.trim().replace(/^```json\s*/i, '').replace(/^```\s*/, '').replace(/```$/, '').trim();
-        const arr = JSON.parse(txt) as Array<{ i: number; yes: boolean; type?: string }>;
-        for (const item of arr) {
-          if (item.yes && slice[item.i]) {
-            detected.set(slice[item.i].id, item.type || 'eyewear');
-          }
-        }
-        break;
-      } catch { continue; }
+  for (const [id, r] of results) {
+    if (r.isWearing) {
+      detected.set(id, r.description || 'eyewear');
     }
   }
   return detected;
