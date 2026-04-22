@@ -99,6 +99,7 @@ function contentRowToIgPostRow(r: Record<string, unknown>): IgPostDbRow {
     caption: String(r.caption || ''),
     likes: Number(r.likes) || 0,
     comments: Number(r.comments) || 0,
+    views: Number(data.views) || 0,
     engagement: Number(r.engagement) || 0,
     post_type: String(data.post_type || 'Image'),
     post_url: String(r.url || ''),
@@ -112,6 +113,51 @@ function contentRowToIgPostRow(r: Record<string, unknown>): IgPostDbRow {
     carousel_slides: ((data.carousel_slides || []) as Array<{ url: string; type: string }>),
     posted_at: r.posted_at ? String(r.posted_at) : null,
   };
+}
+
+/**
+ * Rising-stars / breakout score.
+ *   score = engagement_per_follower × recency_decay
+ *
+ * Surfaces posts that are punching above the creator's usual audience —
+ * e.g., a 50k-follower indie brand whose reel lands 500k views. We use
+ * a half-life of 3 days for recency so the board stays lively without
+ * letting a sudden viral hit from 2 months ago dominate forever.
+ */
+function breakoutScore(r: IgPostDbRow, followers: number | null): number {
+  const likes = Number(r.likes) || 0;
+  const comments = Number(r.comments) || 0;
+  const views = Number(r.views) || 0;
+  const signal = likes + comments * 5 + views;
+  if (!followers || followers <= 0 || signal <= 0) return 0;
+  const posted = r.posted_at ? new Date(r.posted_at).getTime() : 0;
+  const hoursOld = posted > 0 ? Math.max(0, (Date.now() - posted) / 3600000) : 24 * 365;
+  const recency = Math.exp(-hoursOld / (24 * 3)); // 3-day half-life
+  const rate = signal / followers;
+  return rate * recency;
+}
+
+/**
+ * Batch-fetch follower counts for a set of brand handles. We store
+ * followers in tracked_brands (column `followerEstimate` in v1 API,
+ * mirrored as `followers_count` in the table). Falls back to null for
+ * any handle we don't know about.
+ */
+async function fetchFollowerMap(
+  client: ReturnType<typeof supabaseServer>,
+  handles: string[],
+): Promise<Map<string, number>> {
+  if (handles.length === 0) return new Map();
+  const unique = Array.from(new Set(handles.map(h => h.toLowerCase())));
+  const { data } = await client
+    .from('tracked_brands')
+    .select('handle, followers_count')
+    .in('handle', unique);
+  const m = new Map<string, number>();
+  for (const b of (data || []) as Array<{ handle: string; followers_count: number | null }>) {
+    if (b.handle && b.followers_count) m.set(b.handle.toLowerCase(), Number(b.followers_count));
+  }
+  return m;
 }
 
 function freshnessScore(r: IgPostDbRow): number {
@@ -165,11 +211,12 @@ export async function GET(request: NextRequest) {
       return NextResponse.json(buildJsonFallback({ category, region, brand, search, sortBy, page, limit }));
     }
     const rows = rawRows.map(contentRowToIgPostRow);
+    const followerMap = await fetchFollowerMap(client, rows.map(r => r.brand_handle));
     const scored = rows
       .map(r => ({ r, s: freshnessScore(r) }))
       .sort((a, b) => b.s - a.s)
       .map(x => x.r);
-    const mapped = scored.map(toFeedPost);
+    const mapped = scored.map(r => toFeedPost(r, followerMap.get(r.brand_handle.toLowerCase()) ?? null));
     const spread = spreadByBrand(mapped);
     const start = (page - 1) * limit;
     const paged = spread.slice(start, start + limit);
@@ -177,6 +224,55 @@ export async function GET(request: NextRequest) {
     const stats = await getStatsCached(client, { category, region, brand, search });
     const lastUpdated = await getLastCronRun().catch(() => null);
     const total = count || rows.length;
+    return NextResponse.json({
+      posts: paged,
+      total,
+      page,
+      totalPages: Math.max(1, Math.ceil(total / limit)),
+      stats,
+      source: 'supabase',
+      lastUpdated,
+    });
+  }
+
+  if (sortBy === 'breakout') {
+    // Pull a wide pool of recent posts (last ~45 days), score each by
+    // engagement-per-follower × 3-day recency decay, return the top.
+    const poolSize = Math.max(500, page * limit * 8);
+    const sinceIso = new Date(Date.now() - 45 * 86400 * 1000).toISOString();
+    const q = buildQuery()
+      .gte('posted_at', sinceIso)
+      .order('posted_at', { ascending: false, nullsFirst: false })
+      .range(0, poolSize - 1);
+    const { data, error, count } = await q;
+    if (error) console.error('feed breakout query error:', error.message);
+    const rawRows = (data as Record<string, unknown>[] | null) || [];
+    if (!error && count === 0) {
+      return NextResponse.json(buildJsonFallback({ category, region, brand, search, sortBy, page, limit }));
+    }
+    const rows = rawRows.map(contentRowToIgPostRow);
+    const followerMap = await fetchFollowerMap(client, rows.map(r => r.brand_handle));
+    // Drop posts from brands with no known follower count — the formula
+    // would divide by zero and we'd just be ranking by raw engagement,
+    // which the "Top" sort already covers.
+    const scored = rows
+      .map(r => ({
+        r,
+        followers: followerMap.get(r.brand_handle.toLowerCase()) ?? null,
+      }))
+      .filter(x => x.followers && x.followers > 0)
+      .map(x => ({ ...x, s: breakoutScore(x.r, x.followers) }))
+      .filter(x => x.s > 0)
+      .sort((a, b) => b.s - a.s);
+
+    const mapped = scored.map(x => toFeedPost(x.r, x.followers));
+    const spread = spreadByBrand(mapped);
+    const start = (page - 1) * limit;
+    const paged = spread.slice(start, start + limit);
+
+    const stats = await getStatsCached(client, { category, region, brand, search });
+    const lastUpdated = await getLastCronRun().catch(() => null);
+    const total = scored.length;
     return NextResponse.json({
       posts: paged,
       total,
@@ -198,7 +294,8 @@ export async function GET(request: NextRequest) {
       return NextResponse.json(buildJsonFallback({ category, region, brand, search, sortBy, page, limit }));
     }
     const rows = (data as Record<string, unknown>[]).map(contentRowToIgPostRow);
-    const mapped = rows.map(toFeedPost);
+    const followerMap = await fetchFollowerMap(client, rows.map(r => r.brand_handle));
+    const mapped = rows.map(r => toFeedPost(r, followerMap.get(r.brand_handle.toLowerCase()) ?? null));
     const randomised = spreadByBrand(shuffle(mapped));
     const start = (page - 1) * limit;
     const stats = await getStatsCached(client, { category, region, brand, search });
@@ -246,10 +343,11 @@ export async function GET(request: NextRequest) {
   }
 
   const rows = rawRows.map(contentRowToIgPostRow);
+  const followerMap = await fetchFollowerMap(client, rows.map(r => r.brand_handle));
   const stats = await getStatsCached(client, { category, region, brand, search });
   const lastUpdated = await getLastCronRun().catch(() => null);
 
-  const mapped = rows.map(toFeedPost);
+  const mapped = rows.map(r => toFeedPost(r, followerMap.get(r.brand_handle.toLowerCase()) ?? null));
   const interleaved = spreadByBrand(mapped);
 
   const payload: FeedResponse = {

@@ -11,11 +11,13 @@ interface CarouselSlide { url: string; type: string }
 
 interface Post {
   id: string;
-  brand: { name: string; handle: string; category: string };
+  brand: { name: string; handle: string; category: string; followers?: number };
   imageUrl: string;
   caption: string;
   likes: number;
   comments: number;
+  views?: number;
+  breakoutRate?: number;
   postedAt: string;
   postUrl: string;
   isVideo: boolean;
@@ -222,10 +224,22 @@ function FeedCard({ post, onOpen }: { post: Post; onOpen: () => void }) {
           </div>
         )}
 
+        {/* Breakout rate badge — shown when the post is punching above
+            the creator's follower count (≥20% engagement rate). */}
+        {post.breakoutRate && post.breakoutRate >= 0.2 ? (
+          <div className="absolute bottom-9 left-2 bg-gradient-to-r from-amber-500 to-orange-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full shadow-md pointer-events-none">
+            ⚡ {(post.breakoutRate * 100).toFixed(0)}%
+          </div>
+        ) : null}
+
         {/* Bottom gradient + time/likes */}
         <div className="absolute bottom-0 inset-x-0 bg-gradient-to-t from-black/80 to-transparent px-2.5 py-1.5 text-white text-[11px] flex items-center justify-between pointer-events-none">
           <span className="text-[10px]">{rel(post.postedAt)}</span>
-          {post.likes > 0 && <span className="text-[10px] font-semibold">♥ {formatNum(post.likes)}</span>}
+          {post.views && post.views > 0 ? (
+            <span className="text-[10px] font-semibold">▶ {formatNum(post.views)}</span>
+          ) : post.likes > 0 ? (
+            <span className="text-[10px] font-semibold">♥ {formatNum(post.likes)}</span>
+          ) : null}
         </div>
       </div>
     </div>
@@ -349,7 +363,7 @@ export function FeedPage() {
   const [loading, setLoading] = React.useState(true);
   const [search, setSearch] = React.useState('');
   const [cat, setCat] = React.useState('All');
-  const [sort, setSort] = React.useState<'recent' | 'likes' | 'engagement' | 'shuffle'>('recent');
+  const [sort, setSort] = React.useState<'breakout' | 'recent' | 'likes' | 'engagement' | 'shuffle'>('recent');
   const [openPost, setOpenPost] = React.useState<Post | null>(null);
 
   React.useEffect(() => {
@@ -390,11 +404,14 @@ export function FeedPage() {
           className="flex-1 min-w-[240px]"
         />
         <div className="flex bg-[var(--surface-2)] rounded-[var(--radius)] p-0.5">
-          {(['recent', 'likes', 'engagement', 'shuffle'] as const).map(s => (
+          {(['breakout', 'recent', 'likes', 'engagement', 'shuffle'] as const).map(s => (
             <button key={s} onClick={() => setSort(s)}
               className={cn('px-2.5 h-8 rounded text-[11px] font-semibold capitalize transition-colors',
                 sort === s ? 'bg-[var(--surface)] shadow-sm' : 'text-[var(--ink-muted)]',
-              )}>{s === 'recent' ? 'Recent' : s === 'likes' ? 'Top' : s === 'engagement' ? 'Trending' : 'Shuffle'}</button>
+              )}
+              title={s === 'breakout' ? 'Posts punching above their creator’s usual engagement' : undefined}>
+              {s === 'breakout' ? '⚡ Rising' : s === 'recent' ? 'Recent' : s === 'likes' ? 'Top' : s === 'engagement' ? 'Trending' : 'Shuffle'}
+            </button>
           ))}
         </div>
       </div>

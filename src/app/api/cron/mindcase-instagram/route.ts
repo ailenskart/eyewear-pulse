@@ -103,6 +103,8 @@ function normalizeMindcasePost(raw: MindcaseIgPost | Record<string, unknown>): R
   const postUrl = pick<string>(m, ['Post URL', 'url', 'post_url']);
   const hashtags = (pick<string[]>(m, ['Hashtags', 'hashtags']) || []) as string[];
   const mentions = (pick<string[]>(m, ['Mentions', 'mentions']) || []) as string[];
+  const videoPlays = pick<number>(m, ['Video Plays', 'videoPlays', 'video_plays', 'plays']);
+  const videoViews = pick<number>(m, ['Video Views', 'videoViews', 'video_views', 'views']);
 
   // Carousel children — docs show `Child Posts` sometimes. Stay defensive.
   const rawChildren = (pick<unknown[]>(m, ['Child Posts', 'childPosts', 'child_posts']) || []) as Array<Record<string, unknown>>;
@@ -128,6 +130,8 @@ function normalizeMindcasePost(raw: MindcaseIgPost | Record<string, unknown>): R
     mentions,
     type: postType,
     videoUrl,
+    videoPlays: typeof videoPlays === 'number' ? videoPlays : undefined,
+    videoViews: typeof videoViews === 'number' ? videoViews : undefined,
     childPosts,
   };
 }

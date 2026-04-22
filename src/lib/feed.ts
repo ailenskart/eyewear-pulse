@@ -18,6 +18,7 @@ export interface Post {
     category: string;
     region: string;
     priceRange: string;
+    followers?: number;
   };
   imageUrl: string;
   rawImageUrl: string; // absolute URL (Blob or IG CDN), for server-side use
@@ -26,7 +27,9 @@ export interface Post {
   caption: string;
   likes: number;
   comments: number;
+  views: number;
   engagement: number;
+  breakoutRate: number;
   hashtags: string[];
   postedAt: string;
   postUrl: string;
@@ -169,7 +172,9 @@ function transformPosts(): Post[] {
       caption: p.caption || '',
       likes,
       comments,
+      views: 0,
       engagement: likes > 0 ? parseFloat(((likes + comments) / Math.max(likes * 10, 1) * 100).toFixed(2)) : 0,
+      breakoutRate: 0,
       hashtags: p.hashtags || [],
       postedAt: p.timestamp || new Date().toISOString(),
       postUrl: p.url || `https://www.instagram.com/p/${p.shortCode}/`,

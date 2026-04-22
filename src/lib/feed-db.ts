@@ -19,7 +19,7 @@ export interface CarouselSlide { url: string; type: string }
 
 export interface Post {
   id: string;
-  brand: { name: string; handle: string; category: string; region: string; priceRange: string };
+  brand: { name: string; handle: string; category: string; region: string; priceRange: string; followers?: number };
   imageUrl: string;
   rawImageUrl: string;
   videoUrl: string | null;
@@ -27,7 +27,10 @@ export interface Post {
   caption: string;
   likes: number;
   comments: number;
+  views: number;
   engagement: number;
+  /** Rate = (likes + comments*5 + views) / followers. 0 when followers unknown. */
+  breakoutRate: number;
   hashtags: string[];
   postedAt: string;
   postUrl: string;
@@ -89,6 +92,10 @@ export interface RawScrapedPost {
   localImage?: string;
   blobUrl?: string;
   videoBlobUrl?: string;
+  /** Number of video plays (IG-side, public). Only set for Video posts. */
+  videoPlays?: number;
+  /** Number of video views (IG-side, public). Only set for Video posts. */
+  videoViews?: number;
   carouselSlides?: Array<{ url: string; type: string }>;
   childPosts?: Array<{ id?: string; type?: string; displayUrl?: string; videoUrl?: string }>;
 }
@@ -133,6 +140,7 @@ export interface IgPostDbRow {
   caption: string | null;
   likes: number;
   comments: number;
+  views: number;
   engagement: number;
   post_type: string | null;
   post_url: string | null;
@@ -177,6 +185,13 @@ export function toDbRow(p: RawScrapedPost): IgPostDbRow | null {
     || p.localImage
     || '';
 
+  // For videos, IG publicly exposes Views/Plays even when likes are hidden,
+  // so use the max of (views, plays, likes) as the engagement signal.
+  const views = Math.max(
+    Number(p.videoViews) || 0,
+    Number(p.videoPlays) || 0,
+  );
+
   return {
     id,
     brand_handle: handle,
@@ -187,6 +202,7 @@ export function toDbRow(p: RawScrapedPost): IgPostDbRow | null {
     caption: p.caption || '',
     likes,
     comments,
+    views,
     engagement,
     post_type: p.type || 'Image',
     post_url: p.url || `https://www.instagram.com/p/${p.shortCode}/`,
@@ -194,7 +210,7 @@ export function toDbRow(p: RawScrapedPost): IgPostDbRow | null {
     blob_url: p.blobUrl || null,
     video_url: p.videoUrl || null,
     video_blob_url: p.videoBlobUrl || null,
-    is_video: !!p.videoUrl,
+    is_video: !!p.videoUrl || (p.type === 'Video' || p.type === 'Reel'),
     hashtags: p.hashtags || [],
     mentions: p.mentions || [],
     carousel_slides: slides,
@@ -204,13 +220,14 @@ export function toDbRow(p: RawScrapedPost): IgPostDbRow | null {
 
 /* ─── DB row → feed Post (what the UI expects) ─── */
 
-export function toFeedPost(r: IgPostDbRow): Post {
+export function toFeedPost(r: IgPostDbRow, followers?: number | null): Post {
   const brand = {
     name: r.brand_name || r.brand_handle,
     handle: r.brand_handle,
     category: r.brand_category || 'Independent',
     region: r.brand_region || 'North America',
     priceRange: r.brand_price_range || '$$',
+    followers: followers || undefined,
   };
 
   // Pick the best image URL in preference order.
@@ -225,6 +242,17 @@ export function toFeedPost(r: IgPostDbRow): Post {
     url: s.url && s.url.includes('cdninstagram.com') ? `/api/img?url=${encodeURIComponent(s.url)}` : s.url,
   }));
 
+  // Breakout rate = engagement signal / follower count. For image posts
+  // the signal is (likes + comments*5); for video posts we add in views
+  // because IG hides likes on some reels but still exposes views.
+  const likes = Number(r.likes) || 0;
+  const comments = Number(r.comments) || 0;
+  const views = Number(r.views) || 0;
+  const engagementSignal = likes + (comments * 5) + views;
+  const breakoutRate = followers && followers > 0
+    ? engagementSignal / followers
+    : 0;
+
   return {
     id: r.id,
     brand,
@@ -233,9 +261,11 @@ export function toFeedPost(r: IgPostDbRow): Post {
     videoUrl: proxyIgUrl(r.video_blob_url || r.video_url),
     carouselSlides: slides,
     caption: r.caption || '',
-    likes: r.likes,
-    comments: r.comments,
+    likes,
+    comments,
+    views,
     engagement: Number(r.engagement) || 0,
+    breakoutRate,
     hashtags: r.hashtags || [],
     postedAt: r.posted_at || new Date().toISOString(),
     postUrl: r.post_url || '',
@@ -286,6 +316,7 @@ export async function upsertPosts(rows: IgPostDbRow[]): Promise<{ inserted: numb
       is_video: r.is_video,
       carousel_slides: r.carousel_slides,
       video_blob_url: r.video_blob_url,
+      views: r.views || 0,
       brand_name: r.brand_name,
       brand_category: r.brand_category,
       brand_region: r.brand_region,
