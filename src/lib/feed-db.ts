@@ -324,16 +324,19 @@ export async function upsertPosts(rows: IgPostDbRow[]): Promise<{ inserted: numb
     },
   }));
 
-  // Plain insert — dedup is enforced upstream via fetchExistingIds().
-  // Previously used .upsert() with onConflict:'brand_id,type,source,
-  // source_ref' but the matching unique index was never applied in
-  // prod, so every write failed with "no unique or exclusion
-  // constraint matching the ON CONFLICT specification".
+  // Use upsert with ignoreDuplicates: the unique index on
+  // (brand_id, type, source, source_ref) rejects re-inserts from the
+  // same post; we want those to be silently skipped (ON CONFLICT DO
+  // NOTHING) rather than erroring or overwriting good engagement
+  // counts already stored.
   const BATCH = 500;
   let inserted = 0;
   for (let i = 0; i < contentRows.length; i += BATCH) {
     const slice = contentRows.slice(i, i + BATCH);
-    const { error } = await client.from('brand_content').insert(slice);
+    const { error } = await client.from('brand_content').upsert(slice, {
+      onConflict: 'brand_id,type,source,source_ref',
+      ignoreDuplicates: true,
+    });
     if (error) return { inserted, error: error.message };
     inserted += slice.length;
   }
