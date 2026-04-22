@@ -22,9 +22,32 @@ export const maxDuration = 800;
 
 const CRON_SECRET = process.env.CRON_SECRET || 'lenzy-cron-2026';
 
-// Import the full handle list dynamically to avoid circular deps
-async function getCelebList(): Promise<Array<{ name: string; handle: string }>> {
-  // Import the handle map from the scanner route
+// Pull the celebrity list from the Supabase `celebrities` table when
+// it's been populated (v9 bundle — 3,006 IG-handle'd celebs). Fall
+// back to the hardcoded KNOWN_HANDLES map so a fresh deploy that
+// hasn't run the import yet still has something to scan.
+async function getCelebList(): Promise<Array<{ name: string; handle: string; eyewearAffinity?: string | null }>> {
+  try {
+    const client = supabaseServer();
+    const { data } = await client
+      .from('celebrities')
+      .select('name,instagram_handle,eyewear_affinity,instagram_followers')
+      .not('instagram_handle', 'is', null)
+      .order('instagram_followers', { ascending: false, nullsFirst: false })
+      .limit(5000);
+    const dbRows = (data || []) as Array<{ name: string; instagram_handle: string; eyewear_affinity: string | null; instagram_followers: number | null }>;
+    if (dbRows.length > 0) {
+      return dbRows
+        .filter(r => r.instagram_handle && r.instagram_handle.trim())
+        .map(r => ({
+          name: r.name,
+          handle: r.instagram_handle.toLowerCase().replace(/^@/, ''),
+          eyewearAffinity: r.eyewear_affinity,
+        }));
+    }
+  } catch {
+    /* fall back to hardcoded map */
+  }
   try {
     const { ALL_CELEB_HANDLES } = await import('@/app/api/celebrities/instagram/route');
     return Object.entries(ALL_CELEB_HANDLES).map(([name, handle]) => ({ name, handle }));
