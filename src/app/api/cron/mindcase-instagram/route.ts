@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseServer } from '@/lib/supabase';
 import { runAgent, isMindcaseConfigured, type MindcaseIgPost } from '@/lib/mindcase';
-import { downloadMedia, uploadToBlob } from '@/lib/blob';
+import { downloadMedia, uploadToBlob, fetchIgVideoUrl } from '@/lib/blob';
 import {
   toDbRow,
   upsertPosts,
@@ -149,11 +149,23 @@ async function uploadPostMedia(post: RawScrapedPost): Promise<{ image: boolean; 
     }
   }
 
-  if (post.videoUrl && !post.videoBlobUrl) {
-    const data = await downloadMedia(post.videoUrl);
-    if (data && data.byteLength < MAX_VIDEO_MB * 1024 * 1024) {
-      const blobUrl = await uploadToBlob(data, `posts/video_${pid}.mp4`, 'video/mp4');
-      if (blobUrl) { post.videoBlobUrl = blobUrl; video = true; }
+  // Mindcase's IG Posts agent doesn't expose video_url. When the
+  // post is a Video/Reel we recover the MP4 URL from Instagram's
+  // public embed page and blob-host it. Best-effort — IG may rate
+  // limit, in which case we keep the poster thumbnail and skip.
+  const isVideoPost = post.type === 'Video' || post.type === 'Reel' || !!post.videoUrl;
+  if (isVideoPost && !post.videoBlobUrl) {
+    let mp4 = post.videoUrl;
+    if (!mp4 && post.shortCode) {
+      const found = await fetchIgVideoUrl(post.shortCode).catch(() => null);
+      if (found) { mp4 = found; post.videoUrl = found; }
+    }
+    if (mp4) {
+      const data = await downloadMedia(mp4);
+      if (data && data.byteLength < MAX_VIDEO_MB * 1024 * 1024) {
+        const blobUrl = await uploadToBlob(data, `posts/video_${pid}.mp4`, 'video/mp4');
+        if (blobUrl) { post.videoBlobUrl = blobUrl; video = true; }
+      }
     }
   }
 

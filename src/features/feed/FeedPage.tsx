@@ -23,6 +23,13 @@ interface Post {
   carouselSlides?: CarouselSlide[];
 }
 
+/** Parse the shortCode out of an Instagram permalink. */
+function shortCodeFromUrl(u: string | null | undefined): string | null {
+  if (!u) return null;
+  const m = u.match(/instagram\.com\/(?:p|reel|tv)\/([A-Za-z0-9_-]+)/);
+  return m?.[1] || null;
+}
+
 interface FeedData {
   posts: Post[];
   total: number;
@@ -74,19 +81,32 @@ function FeedCard({ post, onOpen }: { post: Post; onOpen: () => void }) {
   const [videoFailed, setVideoFailed] = React.useState(false);
   const videoRef = React.useRef<HTMLVideoElement>(null);
 
-  // Fallback: server-side fetch from IG + upload to Blob when the existing
-  // video URL fails (expired IG CDN signature).
+  // Fallback chain when a video URL fails or is missing:
+  //   1. If we have a direct videoUrl, re-download via /api/fix-media
+  //      (handles expired IG CDN signatures on Apify-scraped rows).
+  //   2. Otherwise (Mindcase-scraped rows have no videoUrl), scrape
+  //      the IG public embed via /api/ig-extract-video using the
+  //      post's shortCode — extracts video_url, downloads, blobs.
   async function retryVideo() {
-    if (!post.videoUrl) return;
+    const shortCode = shortCodeFromUrl(post.postUrl);
     try {
-      const res = await fetch('/api/fix-media', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ url: post.videoUrl, postId: post.id, type: 'video' }),
-      });
-      const data = await res.json();
-      if (data.blobUrl) {
-        setVideoSrc(data.blobUrl);
+      let blobUrl: string | null = null;
+      if (post.videoUrl) {
+        const res = await fetch('/api/fix-media', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ url: post.videoUrl, postId: post.id, type: 'video' }),
+        });
+        const data = await res.json();
+        blobUrl = data.blobUrl || null;
+      }
+      if (!blobUrl && shortCode) {
+        const res = await fetch(`/api/ig-extract-video?shortCode=${encodeURIComponent(shortCode)}&postId=${encodeURIComponent(post.id)}`);
+        const data = await res.json();
+        blobUrl = data.blobUrl || null;
+      }
+      if (blobUrl) {
+        setVideoSrc(blobUrl);
         setVideoFailed(false);
         setPlaying(true);
       }
@@ -105,9 +125,20 @@ function FeedCard({ post, onOpen }: { post: Post; onOpen: () => void }) {
   return (
     <div className="group bg-[var(--surface)] border border-[var(--border)] rounded-[var(--radius-lg)] overflow-hidden hover:border-[var(--accent)] hover:shadow-[var(--shadow)] transition-all">
       <div className="relative aspect-square bg-[var(--surface-2)] overflow-hidden">
-        {post.isVideo && post.videoUrl ? (
+        {post.isVideo ? (
           !playing ? (
-            <div className="relative w-full h-full cursor-pointer" onClick={() => setPlaying(true)}>
+            <div className="relative w-full h-full cursor-pointer" onClick={async () => {
+              if (post.videoUrl) { setPlaying(true); return; }
+              // Mindcase didn't give us a video URL — extract from IG embed.
+              const sc = shortCodeFromUrl(post.postUrl);
+              if (!sc) { setVideoFailed(true); setPlaying(true); return; }
+              try {
+                const res = await fetch(`/api/ig-extract-video?shortCode=${encodeURIComponent(sc)}&postId=${encodeURIComponent(post.id)}`);
+                const data = await res.json();
+                if (data.blobUrl) { setVideoSrc(data.blobUrl); setPlaying(true); }
+                else { setVideoFailed(true); setPlaying(true); }
+              } catch { setVideoFailed(true); setPlaying(true); }
+            }}>
               {!imgError ? (
                 <img src={post.imageUrl} alt="" loading="lazy" onError={() => setImgError(true)}
                      className="w-full h-full object-cover group-hover:scale-[1.02] transition-transform duration-300" />
@@ -130,10 +161,10 @@ function FeedCard({ post, onOpen }: { post: Post; onOpen: () => void }) {
                 <span className="text-white text-[10px] font-medium bg-black/60 px-2 py-0.5 rounded">Tap to retry</span>
               </div>
             </div>
-          ) : (
+          ) : (videoSrc || post.videoUrl) ? (
             <video
               ref={videoRef}
-              src={videoSrc || post.videoUrl}
+              src={(videoSrc || post.videoUrl)!}
               autoPlay playsInline loop muted
               className="w-full h-full object-cover"
               onError={() => { setVideoFailed(true); setPlaying(false); }}
@@ -143,6 +174,10 @@ function FeedCard({ post, onOpen }: { post: Post; onOpen: () => void }) {
                 else videoRef.current?.pause();
               }}
             />
+          ) : (
+            <div className="w-full h-full flex items-center justify-center text-center p-4 text-[11px] text-[var(--ink-muted)]">
+              Video not available
+            </div>
           )
         ) : (
           <div className="relative w-full h-full cursor-pointer" onClick={handleTileClick}>
@@ -201,6 +236,21 @@ function FeedCard({ post, onOpen }: { post: Post; onOpen: () => void }) {
 function PostLightbox({ post, onClose }: { post: Post; onClose: () => void }) {
   const slides = React.useMemo(() => buildSlides(post), [post]);
   const [idx, setIdx] = React.useState(0);
+  const [videoSrc, setVideoSrc] = React.useState<string | null>(post.videoUrl || null);
+  const [videoLoading, setVideoLoading] = React.useState(false);
+
+  // If this is a video post and we don't have a URL yet, fetch from IG embed
+  React.useEffect(() => {
+    if (!post.isVideo || videoSrc || videoLoading) return;
+    const sc = shortCodeFromUrl(post.postUrl);
+    if (!sc) return;
+    setVideoLoading(true);
+    fetch(`/api/ig-extract-video?shortCode=${encodeURIComponent(sc)}&postId=${encodeURIComponent(post.id)}`)
+      .then(r => r.json())
+      .then(d => { if (d.blobUrl) setVideoSrc(d.blobUrl); })
+      .catch(() => {})
+      .finally(() => setVideoLoading(false));
+  }, [post.id, post.isVideo, post.postUrl, videoSrc, videoLoading]);
 
   React.useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -212,7 +262,8 @@ function PostLightbox({ post, onClose }: { post: Post; onClose: () => void }) {
   }, [slides.length]);
 
   const curr = slides[Math.min(idx, slides.length - 1)];
-  const showVideo = post.isVideo && post.videoUrl && idx === 0;
+  const resolvedVideoUrl = videoSrc || post.videoUrl || null;
+  const showVideo = post.isVideo && idx === 0;
 
   function handleMediaClick(e: React.MouseEvent<HTMLDivElement>) {
     if (slides.length <= 1 || showVideo) return;
@@ -228,13 +279,28 @@ function PostLightbox({ post, onClose }: { post: Post; onClose: () => void }) {
       <div className="relative bg-black flex-1 min-h-[40vh] md:min-h-0 md:max-w-[60%] flex items-center justify-center">
         <div className="w-full h-full flex items-center justify-center cursor-pointer" onClick={handleMediaClick}>
           {showVideo ? (
-            <video
-              key={post.videoUrl!}
-              src={post.videoUrl!}
-              controls autoPlay playsInline
-              poster={post.imageUrl}
-              className="max-w-full max-h-[90vh] object-contain"
-            />
+            resolvedVideoUrl ? (
+              <video
+                key={resolvedVideoUrl}
+                src={resolvedVideoUrl}
+                controls autoPlay playsInline
+                poster={post.imageUrl}
+                className="max-w-full max-h-[90vh] object-contain"
+              />
+            ) : (
+              <div className="relative w-full max-w-md">
+                <img src={post.imageUrl} alt="" className="w-full object-contain" />
+                <div className="absolute inset-0 flex items-center justify-center bg-black/40">
+                  {videoLoading ? (
+                    <div className="text-white text-[12px] font-medium">Extracting video…</div>
+                  ) : (
+                    <div className="text-white text-[12px] font-medium px-3 py-1.5 bg-black/60 rounded">
+                      Video couldn&apos;t be recovered
+                    </div>
+                  )}
+                </div>
+              </div>
+            )
           ) : (
             <img src={curr.url} alt="" className="max-w-full max-h-[90vh] object-contain" />
           )}

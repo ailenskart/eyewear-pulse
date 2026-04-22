@@ -58,3 +58,64 @@ export async function rehostImage(url: string, blobPath: string, contentType = '
   if (!data) return null;
   return uploadToBlob(data, blobPath, contentType);
 }
+
+/* ─── Instagram video-URL extraction via public embed ─── */
+/* Mindcase's IG posts agent doesn't return MP4 URLs for Video/Reel
+   posts, so we fall back to scraping the public embed page, which
+   still works for public accounts without auth. */
+
+function unescapeJsonString(s: string): string {
+  return s
+    .replace(/\\u0026/g, '&')
+    .replace(/\\u0025/g, '%')
+    .replace(/\\u003d/g, '=')
+    .replace(/\\\//g, '/')
+    .replace(/\\"/g, '"');
+}
+
+export function parseVideoUrlFromEmbed(html: string): string | null {
+  const patterns = [
+    /"video_url":"([^"]+\.mp4[^"]*)"/,
+    /"playable_url_quality_hd":"([^"]+\.mp4[^"]*)"/,
+    /"playable_url":"([^"]+\.mp4[^"]*)"/,
+    /"contentUrl":"([^"]+\.mp4[^"]*)"/,
+    /<meta\s+property="og:video"\s+content="([^"]+)"/,
+    /<meta\s+property="og:video:secure_url"\s+content="([^"]+)"/,
+  ];
+  for (const pat of patterns) {
+    const m = html.match(pat);
+    if (m?.[1]) {
+      const url = unescapeJsonString(m[1]);
+      if (url.startsWith('http')) return url;
+    }
+  }
+  return null;
+}
+
+export async function fetchIgVideoUrl(shortCode: string): Promise<string | null> {
+  const urls = [
+    `https://www.instagram.com/p/${shortCode}/embed/captioned/`,
+    `https://www.instagram.com/reel/${shortCode}/embed/captioned/`,
+    `https://www.instagram.com/p/${shortCode}/embed/`,
+  ];
+  for (const u of urls) {
+    try {
+      const res = await fetch(u, {
+        headers: {
+          'User-Agent': UA,
+          'Accept': 'text/html,application/xhtml+xml',
+          'Accept-Language': 'en-US,en;q=0.9',
+        },
+        signal: AbortSignal.timeout(12_000),
+      });
+      if (!res.ok) continue;
+      const html = await res.text();
+      if (html.length < 1000) continue;
+      const url = parseVideoUrlFromEmbed(html);
+      if (url) return url;
+    } catch {
+      /* try next */
+    }
+  }
+  return null;
+}
