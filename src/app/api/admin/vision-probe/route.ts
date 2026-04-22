@@ -32,5 +32,19 @@ export async function GET(request: NextRequest) {
     ...result,
     durationMs: Date.now() - startedAt,
     hasReplicateToken: (() => { try { return !!env.REPLICATE_API_TOKEN(); } catch { return false; } })(),
+    envProbe: {
+      REPLICATE_API_TOKEN: !!process.env.REPLICATE_API_TOKEN,
+      REPLICATE_TOKEN: !!process.env.REPLICATE_TOKEN,
+      REPLICATE_API_KEY: !!process.env.REPLICATE_API_KEY,
+      GEMINI_API_KEY: !!process.env.GEMINI_API_KEY,
+      OPENAI_API_KEY: !!process.env.OPENAI_API_KEY,
+      MINDCASE_API_KEY: !!process.env.MINDCASE_API_KEY,
+      APIFY_TOKEN: !!process.env.APIFY_TOKEN,
+      BLOB_READ_WRITE_TOKEN: !!process.env.BLOB_READ_WRITE_TOKEN,
+      // All env var NAMES starting with common prefixes (values hidden)
+      allVars: Object.keys(process.env).filter(k =>
+        /^(REPLICATE|GEMINI|OPENAI|MINDCASE|APIFY|BLOB|SUPABASE|CRON|VERCEL)/.test(k)
+      ),
+    },
   });
 }
