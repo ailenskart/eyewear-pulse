@@ -92,6 +92,45 @@ export function parseVideoUrlFromEmbed(html: string): string | null {
   return null;
 }
 
+/** Debug: return a snapshot of what each IG embed variant serves. */
+export async function debugFetchIgEmbed(shortCode: string): Promise<{
+  attempts: Array<{ url: string; status: number; size: number; snippet: string; foundVideoUrl: string | null }>;
+}> {
+  const urls = [
+    `https://www.instagram.com/p/${shortCode}/embed/captioned/`,
+    `https://www.instagram.com/reel/${shortCode}/embed/captioned/`,
+    `https://www.instagram.com/p/${shortCode}/embed/`,
+  ];
+  const attempts: Array<{ url: string; status: number; size: number; snippet: string; foundVideoUrl: string | null }> = [];
+  for (const u of urls) {
+    try {
+      const res = await fetch(u, {
+        headers: {
+          'User-Agent': UA,
+          'Accept': 'text/html,application/xhtml+xml',
+          'Accept-Language': 'en-US,en;q=0.9',
+        },
+        signal: AbortSignal.timeout(12_000),
+      });
+      const html = await res.text();
+      const snippet = html
+        .replace(/\s+/g, ' ')
+        .slice(0, 800);
+      const foundVideoUrl = parseVideoUrlFromEmbed(html);
+      attempts.push({ url: u, status: res.status, size: html.length, snippet, foundVideoUrl });
+    } catch (err) {
+      attempts.push({
+        url: u,
+        status: 0,
+        size: 0,
+        snippet: err instanceof Error ? err.message : 'fetch error',
+        foundVideoUrl: null,
+      });
+    }
+  }
+  return { attempts };
+}
+
 export async function fetchIgVideoUrl(shortCode: string): Promise<string | null> {
   const urls = [
     `https://www.instagram.com/p/${shortCode}/embed/captioned/`,

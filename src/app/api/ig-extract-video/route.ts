@@ -19,13 +19,18 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { downloadMedia, uploadToBlob, fetchIgVideoUrl } from '@/lib/blob';
+import { downloadMedia, uploadToBlob, fetchIgVideoUrl, debugFetchIgEmbed } from '@/lib/blob';
 
 export const maxDuration = 60;
 
-async function handle(shortCode: string, postId?: string) {
+async function handle(shortCode: string, postId: string | undefined, debug: boolean) {
   if (!shortCode) {
     return NextResponse.json({ error: 'shortCode required' }, { status: 400 });
+  }
+
+  if (debug) {
+    const snapshot = await debugFetchIgEmbed(shortCode);
+    return NextResponse.json(snapshot);
   }
 
   const videoUrl = await fetchIgVideoUrl(shortCode);
@@ -50,10 +55,11 @@ async function handle(shortCode: string, postId?: string) {
 export async function GET(request: NextRequest) {
   const shortCode = request.nextUrl.searchParams.get('shortCode') || '';
   const postId = request.nextUrl.searchParams.get('postId') || undefined;
-  return handle(shortCode, postId);
+  const debug = request.nextUrl.searchParams.get('debug') === '1';
+  return handle(shortCode, postId, debug);
 }
 
 export async function POST(request: NextRequest) {
-  const body = (await request.json().catch(() => ({}))) as { shortCode?: string; postId?: string };
-  return handle(body.shortCode || '', body.postId);
+  const body = (await request.json().catch(() => ({}))) as { shortCode?: string; postId?: string; debug?: boolean };
+  return handle(body.shortCode || '', body.postId, !!body.debug);
 }
