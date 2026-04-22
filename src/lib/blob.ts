@@ -126,6 +126,13 @@ export async function debugFetchIgEmbed(shortCode: string): Promise<{
     /og:video[^>]*content="[^"]{0,300}"/gi,
     /playlist_url[^"]{0,80}"[^"]{0,300}"/gi,
     /dash_manifest[^"]{0,80}/gi,
+    /video_versions/gi,
+    /"__typename":"XDT[^"]+"/g,
+    /is_video["':]{0,5}true/g,
+    /has_audio["':]{0,5}true/g,
+    /application\/vnd\.apple\.mpegurl/gi,
+    /m3u8/gi,
+    /\.mp4/g,
   ];
   const mp4Pattern = /https?:\/\/[^\s"'<>]{0,400}\.mp4[^\s"'<>]{0,400}/g;
 
