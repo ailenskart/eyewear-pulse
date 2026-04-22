@@ -324,17 +324,20 @@ export async function upsertPosts(rows: IgPostDbRow[]): Promise<{ inserted: numb
     },
   }));
 
-  // Use upsert with ignoreDuplicates: the unique index on
-  // (brand_id, type, source, source_ref) rejects re-inserts from the
-  // same post; we want those to be silently skipped (ON CONFLICT DO
-  // NOTHING) rather than erroring or overwriting good engagement
-  // counts already stored.
+  // The actual unique constraint in prod is named
+  //   brand_content_brand_type_source_ref_unique
+  // which covers (brand_id, type, source_ref) — NOT source. Passing
+  // a wider tuple makes Postgres reject the upsert with "no unique
+  // or exclusion constraint matching the ON CONFLICT specification"
+  // because no index matches exactly. Using the correct 3-col tuple
+  // with ignoreDuplicates lets repeat-scrapes silently skip already-
+  // stored posts (ON CONFLICT DO NOTHING).
   const BATCH = 500;
   let inserted = 0;
   for (let i = 0; i < contentRows.length; i += BATCH) {
     const slice = contentRows.slice(i, i + BATCH);
     const { error } = await client.from('brand_content').upsert(slice, {
-      onConflict: 'brand_id,type,source,source_ref',
+      onConflict: 'brand_id,type,source_ref',
       ignoreDuplicates: true,
     });
     if (error) return { inserted, error: error.message };
