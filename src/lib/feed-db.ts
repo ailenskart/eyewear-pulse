@@ -324,23 +324,39 @@ export async function upsertPosts(rows: IgPostDbRow[]): Promise<{ inserted: numb
     },
   }));
 
-  // The actual unique constraint in prod is named
-  //   brand_content_brand_type_source_ref_unique
-  // which covers (brand_id, type, source_ref) — NOT source. Passing
-  // a wider tuple makes Postgres reject the upsert with "no unique
-  // or exclusion constraint matching the ON CONFLICT specification"
-  // because no index matches exactly. Using the correct 3-col tuple
-  // with ignoreDuplicates lets repeat-scrapes silently skip already-
-  // stored posts (ON CONFLICT DO NOTHING).
+  // The unique constraint in prod is brand_content_brand_type_source_ref_unique
+  // but the exact column tuple isn't recoverable from the name — "brand"
+  // could be brand_id OR brand_handle. brand_handle is far more likely
+  // the real constraint since many rows have NULL brand_id (unknown
+  // brand) and a NULL-tolerant UNIQUE wouldn't actually dedupe those.
+  //
+  // Strategy: try a few likely tuples before falling back to plain
+  // .insert() (which errors on duplicates — but we dedup upstream via
+  // fetchExistingIds() so in practice no duplicates should reach here).
   const BATCH = 500;
   let inserted = 0;
+  const conflictTargets = [
+    'brand_handle,type,source_ref',
+    'brand_id,type,source_ref',
+  ];
   for (let i = 0; i < contentRows.length; i += BATCH) {
     const slice = contentRows.slice(i, i + BATCH);
-    const { error } = await client.from('brand_content').upsert(slice, {
-      onConflict: 'brand_id,type,source_ref',
-      ignoreDuplicates: true,
-    });
-    if (error) return { inserted, error: error.message };
+    let lastError: string | undefined;
+    let ok = false;
+    for (const onConflict of conflictTargets) {
+      const { error } = await client.from('brand_content').upsert(slice, {
+        onConflict,
+        ignoreDuplicates: true,
+      });
+      if (!error) { ok = true; break; }
+      lastError = error.message;
+      if (!/no unique or exclusion constraint/i.test(lastError)) break;
+    }
+    if (!ok) {
+      // Every conflict target failed — fall back to plain insert.
+      const { error } = await client.from('brand_content').insert(slice);
+      if (error) return { inserted, error: lastError || error.message };
+    }
     inserted += slice.length;
   }
   return { inserted };
