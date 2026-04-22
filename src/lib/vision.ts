@@ -40,6 +40,8 @@ export interface EyewearDetection {
   isWearing: boolean;
   description: string | null;
   raw: string;
+  /** Populated when the API call fails — helps diagnose which stage. */
+  error?: string;
 }
 
 /**
@@ -53,8 +55,8 @@ export async function detectEyewear(imageUrl: string): Promise<EyewearDetection>
   // because vision.ts is only reached via a dynamic import from the
   // celebrity scanner, so it doesn't look like a statically-used env.
   let token = '';
-  try { token = env.REPLICATE_API_TOKEN(); } catch { return { isWearing: false, description: null, raw: '' }; }
-  if (!token) return { isWearing: false, description: null, raw: '' };
+  try { token = env.REPLICATE_API_TOKEN(); } catch { return { isWearing: false, description: null, raw: '', error: 'no REPLICATE_API_TOKEN' }; }
+  if (!token) return { isWearing: false, description: null, raw: '', error: 'empty token' };
 
   const prompt = [
     'Is the main person VISIBLY wearing sunglasses or eyeglasses ON THEIR FACE in this photo?',
@@ -70,8 +72,10 @@ export async function detectEyewear(imageUrl: string): Promise<EyewearDetection>
   ].join('\n');
 
   try {
-    // Kick off prediction
-    const createRes = await fetch(`${REPLICATE_BASE}/predictions`, {
+    // Use Replicate's model-slug-first endpoint so we don't depend on
+    // a pinned version hash that may have been deprecated. This is the
+    // same pattern used by /api/reimagine for FLUX.
+    const createRes = await fetch(`${REPLICATE_BASE}/models/lucataco/moondream2/predictions`, {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${token}`,
@@ -79,12 +83,14 @@ export async function detectEyewear(imageUrl: string): Promise<EyewearDetection>
         'Prefer': 'wait=30',
       },
       body: JSON.stringify({
-        version: MOONDREAM_VERSION,
         input: { image: imageUrl, prompt },
       }),
       signal: AbortSignal.timeout(45_000),
     });
-    if (!createRes.ok) return { isWearing: false, description: null, raw: '' };
+    if (!createRes.ok) {
+      const errText = await createRes.text().catch(() => '');
+      return { isWearing: false, description: null, raw: '', error: `replicate ${createRes.status}: ${errText.slice(0, 200)}` };
+    }
     let pred = await createRes.json() as ReplicatePrediction;
 
     // Poll until terminal — `Prefer: wait=30` above usually makes the
@@ -103,13 +109,13 @@ export async function detectEyewear(imageUrl: string): Promise<EyewearDetection>
     }
 
     if (pred.status !== 'succeeded' || !pred.output) {
-      return { isWearing: false, description: null, raw: '' };
+      return { isWearing: false, description: null, raw: '', error: `status=${pred.status} err=${pred.error || 'n/a'}` };
     }
 
     const text = Array.isArray(pred.output) ? pred.output.join('') : String(pred.output);
     return parseEyewearReply(text);
-  } catch {
-    return { isWearing: false, description: null, raw: '' };
+  } catch (err) {
+    return { isWearing: false, description: null, raw: '', error: err instanceof Error ? err.message : 'exception' };
   }
 }
 
