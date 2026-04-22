@@ -222,32 +222,51 @@ export async function GET(request: NextRequest) {
   const onlyNewerThan = request.nextUrl.searchParams.get('onlyPostsNewerThan') || undefined;
   const handlesOverride = request.nextUrl.searchParams.get('handles');
   const skipDedup = request.nextUrl.searchParams.get('skipDedup') === '1';
+  // Pagination — slice the tier handle list so a cron caller can walk
+  // through a 3,000-brand list in multiple invocations without blowing
+  // past Vercel's 800s function limit. Default: start=0, count=all.
+  const start = Math.max(0, parseInt(request.nextUrl.searchParams.get('start') || '0'));
+  const countParam = parseInt(request.nextUrl.searchParams.get('count') || '0');
+  // Soft wall-clock budget — stop launching new Mindcase calls once we
+  // burn through it so Vercel doesn't kill the function mid-batch.
+  const softBudgetMs = Math.max(30_000, parseInt(request.nextUrl.searchParams.get('softBudgetMs') || '600000'));
 
   // `handles` override: pass a comma-separated list to target specific
   // brands (for smoke tests / on-demand scrapes); otherwise use tier list.
-  const handles = handlesOverride
+  const allHandles = handlesOverride
     ? handlesOverride.split(',').map(h => h.trim().toLowerCase()).filter(Boolean)
     : await mergedHandlesForTier(tier);
-  const working = limitOverride > 0 ? handles.slice(0, limitOverride) : handles;
+  const sliced = countParam > 0 ? allHandles.slice(start, start + countParam) : allHandles.slice(start);
+  const working = limitOverride > 0 ? sliced.slice(0, limitOverride) : sliced;
 
   const startedAt = Date.now();
   const existingIds = skipDedup ? new Set<string>() : await fetchExistingIds(working);
-  const newRows: IgPostDbRow[] = [];
 
   const results = {
     tier,
     source: 'mindcase' as const,
+    start,
+    brandsPool: allHandles.length,
     batchesRun: 0,
     brandsHit: working.length,
+    brandsProcessed: 0,
     newPosts: 0,
     imagesUploaded: 0,
     videosUploaded: 0,
     slidesUploaded: 0,
+    inserted: 0,
+    insertErrors: [] as string[],
     errors: [] as string[],
+    stoppedEarly: false,
   };
 
   for (let i = 0; i < working.length; i += BATCH_SIZE) {
+    if (Date.now() - startedAt > softBudgetMs) {
+      results.stoppedEarly = true;
+      break;
+    }
     const batch = working.slice(i, i + BATCH_SIZE);
+    const batchRows: IgPostDbRow[] = [];
     try {
       const { data } = await runAgent<MindcaseIgPost>('instagram/posts', {
         usernames: batch,
@@ -266,50 +285,63 @@ export async function GET(request: NextRequest) {
 
         const row = toDbRow(post);
         if (row) {
-          newRows.push(row);
+          batchRows.push(row);
           existingIds.add(post.id);
           results.newPosts++;
         }
       }
       results.batchesRun++;
+      results.brandsProcessed = i + batch.length;
     } catch (err) {
       results.errors.push(
         `Batch ${Math.floor(i / BATCH_SIZE) + 1}: ${err instanceof Error ? err.message : 'unknown'}`,
       );
     }
-  }
 
-  let upsertResult: { inserted: number; error?: string } = { inserted: 0 };
-  if (newRows.length > 0) {
-    upsertResult = await upsertPosts(newRows);
-  }
+    // Commit after EACH batch so we don't lose work if Vercel kills
+    // the function on the next batch. Previously we buffered all rows
+    // in memory and wrote at the end — meaning a 800s timeout on a
+    // 3,000-brand crawl threw away 200 batches of successful scrapes.
+    if (batchRows.length > 0) {
+      const res = await upsertPosts(batchRows);
+      results.inserted += res.inserted;
+      if (res.error) results.insertErrors.push(res.error);
 
-  try {
-    const scrapedHandles = Array.from(new Set(newRows.map(r => r.brand_handle)));
-    if (scrapedHandles.length > 0) {
-      const client = supabaseServer();
-      await client
-        .from('tracked_brands')
-        .update({ last_scraped_at: new Date().toISOString() })
-        .in('handle', scrapedHandles);
+      try {
+        const scrapedHandles = Array.from(new Set(batchRows.map(r => r.brand_handle)));
+        if (scrapedHandles.length > 0) {
+          const client = supabaseServer();
+          await client
+            .from('tracked_brands')
+            .update({ last_scraped_at: new Date().toISOString() })
+            .in('handle', scrapedHandles);
+        }
+      } catch { /* non-fatal */ }
     }
-  } catch { /* non-fatal */ }
+  }
 
   const durationMs = Date.now() - startedAt;
   await logCronRun({
     tier: `mindcase:${tier}`,
     brandsHit: results.brandsHit,
-    newPosts: upsertResult.inserted,
+    newPosts: results.inserted,
     durationMs,
-    error: upsertResult.error || (results.errors.length > 0 ? results.errors.join(' | ') : undefined),
+    error: results.insertErrors.length > 0
+      ? results.insertErrors.join(' | ')
+      : (results.errors.length > 0 ? results.errors.join(' | ') : undefined),
   });
+
+  const nextStart = results.stoppedEarly
+    ? start + results.brandsProcessed
+    : (countParam > 0 && start + results.brandsProcessed < allHandles.length
+        ? start + results.brandsProcessed
+        : null);
 
   return NextResponse.json({
     success: true,
     ...results,
-    inserted: upsertResult.inserted,
-    upsertError: upsertResult.error,
     durationMs,
-    message: `mindcase-${tier} rescrape done. ${upsertResult.inserted}/${results.newPosts} new posts in ${Math.round(durationMs / 1000)}s.`,
+    nextStart,
+    message: `mindcase-${tier} rescrape done. ${results.inserted}/${results.newPosts} new posts in ${Math.round(durationMs / 1000)}s.`,
   });
 }
