@@ -72,10 +72,10 @@ export async function detectEyewear(imageUrl: string): Promise<EyewearDetection>
   ].join('\n');
 
   try {
-    // Use Replicate's model-slug-first endpoint so we don't depend on
-    // a pinned version hash that may have been deprecated. This is the
-    // same pattern used by /api/reimagine for FLUX.
-    const createRes = await fetch(`${REPLICATE_BASE}/models/lucataco/moondream2/predictions`, {
+    // Moondream 2 is published under vikhyatk (the original author).
+    // Using the slug endpoint means we always get the latest version
+    // without needing to pin a hash.
+    const createRes = await fetch(`${REPLICATE_BASE}/models/vikhyatk/moondream2/predictions`, {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${token}`,
