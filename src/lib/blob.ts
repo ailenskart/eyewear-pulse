@@ -176,7 +176,11 @@ export async function debugFetchIgEmbed(shortCode: string): Promise<{
   return { attempts };
 }
 
-export async function fetchIgVideoUrl(shortCode: string): Promise<string | null> {
+async function fetchIgVideoUrlViaEmbed(shortCode: string): Promise<string | null> {
+  // Instagram has fully stripped video URLs from their public embed
+  // pages (confirmed April 2026 — 850KB HTML, no .mp4, no is_video,
+  // no video_versions, no manifest). Kept as a first-try so if IG
+  // ever re-exposes it we pick it up automatically.
   const urls = [
     `https://www.instagram.com/p/${shortCode}/embed/captioned/`,
     `https://www.instagram.com/reel/${shortCode}/embed/captioned/`,
@@ -202,4 +206,40 @@ export async function fetchIgVideoUrl(shortCode: string): Promise<string | null>
     }
   }
   return null;
+}
+
+async function fetchIgVideoUrlViaApify(shortCode: string): Promise<string | null> {
+  // Apify's IG scraper (actor shu8hvrXbJbY3Eb9W) reliably returns
+  // videoUrl for Video / Reel posts — this is the same actor that
+  // produced the 670 video posts in our seed data with blob URLs.
+  // Only fires when APIFY_TOKEN is set; returns null otherwise so
+  // callers can gracefully degrade.
+  try {
+    const { runActor, isApifyConfigured, DEFAULT_ACTORS } = await import('./apify');
+    if (!isApifyConfigured()) return null;
+    const result = await runActor<{ videoUrl?: string; shortCode?: string }>(
+      DEFAULT_ACTORS.instagram,
+      {
+        directUrls: [`https://www.instagram.com/p/${shortCode}/`],
+        resultsType: 'posts',
+        resultsLimit: 1,
+      },
+      { timeout: 60 },
+    );
+    if (!result.ok) return null;
+    for (const item of result.items) {
+      if (item?.videoUrl) return item.videoUrl;
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+export async function fetchIgVideoUrl(shortCode: string): Promise<string | null> {
+  // Try IG's own public embed first (free, instantaneous when it works),
+  // then fall back to Apify (reliable, costs credits).
+  const embed = await fetchIgVideoUrlViaEmbed(shortCode);
+  if (embed) return embed;
+  return fetchIgVideoUrlViaApify(shortCode);
 }
