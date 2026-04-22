@@ -1,8 +1,11 @@
 /**
- * Apify SDK helper — uses the official `apify-client` package.
+ * Apify REST API helper — minimal fetch-based wrapper.
  *
- * Runs any Apify actor, waits for completion, and returns
- * the dataset items. Perfect for serverless functions.
+ * We previously used the official `apify-client` SDK but it performs
+ * dynamic `require()` calls internally that Next 16 + Turbopack can't
+ * bundle, failing at runtime with "Cannot find module as expression
+ * is too dynamic" on every actor call. The REST API is two fetches
+ * and has none of those issues.
  *
  * Usage:
  *   const { ok, items } = await runActor('shu8hvrXbJbY3Eb9W', {
@@ -11,21 +14,14 @@
  *     resultsLimit: 25,
  *   });
  *
- * Requires APIFY_TOKEN env var. Free $5 credit on signup.
+ * Requires APIFY_TOKEN env var.
  */
 
-import { ApifyClient } from 'apify-client';
-
 const APIFY_TOKEN = process.env.APIFY_TOKEN || '';
-
-let _client: ApifyClient | null = null;
-function getClient(): ApifyClient {
-  if (!_client) _client = new ApifyClient({ token: APIFY_TOKEN });
-  return _client;
-}
+const BASE = 'https://api.apify.com/v2';
 
 export interface ApifyRunOptions {
-  timeout?: number;       // max seconds to wait (default 55)
+  timeout?: number;       // max seconds to wait for actor run
   memoryMbytes?: number;  // actor memory
   maxItems?: number;      // hard cap on items returned
 }
@@ -51,6 +47,33 @@ export function apifySetupInstructions() {
   };
 }
 
+type RunRecord = {
+  id: string;
+  status: 'READY' | 'RUNNING' | 'SUCCEEDED' | 'FAILED' | 'TIMING-OUT' | 'TIMED-OUT' | 'ABORTING' | 'ABORTED';
+  defaultDatasetId?: string;
+};
+
+async function apifyJson<T>(path: string, init?: RequestInit): Promise<T> {
+  const url = `${BASE}${path}${path.includes('?') ? '&' : '?'}token=${APIFY_TOKEN}`;
+  const res = await fetch(url, {
+    ...init,
+    headers: { 'Content-Type': 'application/json', ...(init?.headers || {}) },
+  });
+  const text = await res.text();
+  const json = text ? JSON.parse(text) : {};
+  if (!res.ok) {
+    const msg = (json as { error?: { message?: string }; message?: string }).error?.message
+      || (json as { message?: string }).message
+      || `Apify ${res.status} on ${path}`;
+    throw new Error(msg);
+  }
+  return json as T;
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
 export async function runActor<T = Record<string, unknown>>(
   actorId: string,
   input: Record<string, unknown>,
@@ -65,30 +88,49 @@ export async function runActor<T = Record<string, unknown>>(
     };
   }
 
+  const timeoutMs = (options.timeout ?? 55) * 1000;
+  // Apify actor IDs can be "user~actor" (with ~) or a bare slug; both work URL-encoded.
+  const actorPath = encodeURIComponent(actorId);
+
   try {
-    const client = getClient();
-    const timeoutSecs = options.timeout ?? 55;
+    // 1. Start the actor run
+    const startRes = await apifyJson<{ data: RunRecord }>(
+      `/acts/${actorPath}/runs`,
+      {
+        method: 'POST',
+        body: JSON.stringify(input),
+      },
+    );
+    const runId = startRes.data.id;
 
-    // Run the actor and wait for it to finish
-    const run = await client.actor(actorId).call(input, {
-      waitSecs: timeoutSecs,
-      ...(options.memoryMbytes ? { memoryMbytes: options.memoryMbytes } : {}),
-    });
-
-    if (!run || !run.defaultDatasetId) {
-      return { ok: false, actor: actorId, error: 'Actor run did not return a dataset.' };
+    // 2. Poll for completion
+    const deadline = Date.now() + timeoutMs;
+    let interval = 2000;
+    let runRec = startRes.data;
+    while (runRec.status !== 'SUCCEEDED' && Date.now() < deadline) {
+      if (runRec.status === 'FAILED' || runRec.status === 'ABORTED' || runRec.status === 'TIMED-OUT') {
+        return { ok: false, actor: actorId, error: `Apify run ${runRec.status.toLowerCase()}` };
+      }
+      await sleep(interval);
+      interval = Math.min(Math.round(interval * 1.3), 8_000);
+      const poll = await apifyJson<{ data: RunRecord }>(`/actor-runs/${runId}`);
+      runRec = poll.data;
     }
 
-    // Fetch results from the dataset
-    const { items } = await client.dataset(run.defaultDatasetId).listItems({
-      limit: options.maxItems,
-    });
+    if (runRec.status !== 'SUCCEEDED') {
+      return { ok: false, actor: actorId, error: `Apify run timed out after ${options.timeout ?? 55}s` };
+    }
+    if (!runRec.defaultDatasetId) {
+      return { ok: false, actor: actorId, error: 'Apify run did not return a dataset.' };
+    }
 
-    return { ok: true, actor: actorId, items: (items || []) as T[] };
+    // 3. Fetch dataset items
+    const limit = options.maxItems ? `?limit=${options.maxItems}` : '';
+    const items = await apifyJson<T[]>(`/datasets/${runRec.defaultDatasetId}/items${limit}`);
+    return { ok: true, actor: actorId, items: items as T[] };
   } catch (err) {
     const msg = err instanceof Error ? err.message : 'Apify run failed';
-    // Check for common errors
-    if (msg.includes('401') || msg.includes('Unauthorized')) {
+    if (msg.includes('401') || msg.toLowerCase().includes('unauthorized')) {
       return { ok: false, actor: actorId, error: 'Invalid APIFY_TOKEN. Check your token at apify.com → Settings → Integrations.' };
     }
     return { ok: false, actor: actorId, error: msg };

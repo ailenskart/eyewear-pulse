@@ -7,6 +7,7 @@
  */
 
 import { env } from './env';
+import { runActor, isApifyConfigured, DEFAULT_ACTORS } from './apify';
 
 const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
 
@@ -215,7 +216,6 @@ async function fetchIgVideoUrlViaApify(shortCode: string): Promise<string | null
   // Only fires when APIFY_TOKEN is set; returns null otherwise so
   // callers can gracefully degrade.
   try {
-    const { runActor, isApifyConfigured, DEFAULT_ACTORS } = await import('./apify');
     if (!isApifyConfigured()) return null;
     const result = await runActor<{ videoUrl?: string; shortCode?: string }>(
       DEFAULT_ACTORS.instagram,
