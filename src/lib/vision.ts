@@ -110,18 +110,22 @@ export async function detectEyewear(imageUrl: string): Promise<EyewearDetection>
     const verdict = parseEyewearReply(text);
     if (!verdict.isWearing) return verdict;
 
-    // Second call — short description of the eyewear. Only runs on a
-    // Yes so we don't waste credits on every image. Moondream 2 often
-    // hallucinates Yes (small model), so we also use this second call
-    // as an implicit sanity check: if it can't describe the eyewear
-    // concretely we downgrade to a No.
+    // Second call — one-sentence eyewear description. Used both as a
+    // label for the feed AND as a cheap sanity check. We only
+    // downgrade the Yes on EXPLICIT negation ("no glasses" / "not
+    // wearing") — otherwise trust the first call. Moondream's
+    // description is often poetic and won't always name the frame
+    // explicitly, so requiring an eyewear-keyword match was too strict
+    // and nuked ~100% of detections in testing.
     const describe = await describeEyewear(imageUrl, token);
-    if (describe && describe.isEyewearMention) {
-      return { isWearing: true, description: describe.text, raw: text };
+    if (describe && describe.isExplicitlyNoGlasses) {
+      return { isWearing: false, description: null, raw: text, error: 'description call said no glasses' };
     }
-    // First call said Yes, description call came back empty / no
-    // concrete eyewear mention → likely a false positive, downgrade.
-    return { isWearing: false, description: null, raw: text, error: 'description call did not confirm' };
+    return {
+      isWearing: true,
+      description: describe?.text || null,
+      raw: text,
+    };
   } catch (err) {
     return { isWearing: false, description: null, raw: '', error: err instanceof Error ? err.message : 'exception' };
   }
@@ -133,8 +137,8 @@ export async function detectEyewear(imageUrl: string): Promise<EyewearDetection>
  * an eyewear-related description, we treat the original Yes as a
  * false positive.
  */
-async function describeEyewear(imageUrl: string, token: string): Promise<{ text: string | null; isEyewearMention: boolean } | null> {
-  const prompt = 'Describe the glasses or sunglasses the main person is wearing in this photo in one short sentence. Mention shape, color, and any visible brand clues. If the person is not wearing glasses, say "No glasses".';
+async function describeEyewear(imageUrl: string, token: string): Promise<{ text: string | null; isExplicitlyNoGlasses: boolean } | null> {
+  const prompt = 'Describe the glasses or sunglasses the main person is wearing in one short sentence. Mention shape, color, and any visible brand clues. If they are not wearing glasses, start the reply with "No glasses".';
   try {
     const res = await fetch(`${REPLICATE_BASE}/predictions`, {
       method: 'POST',
@@ -158,13 +162,14 @@ async function describeEyewear(imageUrl: string, token: string): Promise<{ text:
     }
     if (pred.status !== 'succeeded' || !pred.output) return null;
     const text = (Array.isArray(pred.output) ? pred.output.join('') : String(pred.output)).trim();
-    // Positive signal: mentions glasses / sunglasses / frames / lenses / shades / eyewear
-    // Negative signal: says no glasses / not wearing
     const lower = text.toLowerCase();
-    const negative = /\bno\s+glass(es)?\b|\bnot\s+wearing\b|\bdoesn'?t\s+have\b|\bwithout\s+glasses\b/.test(lower);
-    if (negative) return { text: null, isEyewearMention: false };
-    const positive = /\b(sunglass(es)?|glass(es)?|eyewear|frames?|shades?|spectacles?|lenses?|aviator|wayfarer|cat[- ]eye|oakley|ray[- ]?ban|gucci|prada|dior|versace)\b/.test(lower);
-    return { text: text.slice(0, 140), isEyewearMention: positive };
+    // Only treat very explicit negations as "downgrade" signals. Any
+    // other reply is treated as a description (even if Moondream gets
+    // creative — we'd rather keep a slightly mis-described hit than
+    // throw out genuine eyewear photos because the description didn't
+    // hit an exact keyword.
+    const isExplicitlyNoGlasses = /^no\s+glasses\b/i.test(text) || /\b(is|are)\s+not\s+wearing\s+(any\s+)?(glasses|sunglasses|eyewear)\b/.test(lower) || /\bno,?\s+(she|he|they)\s+(is|are)\s+not\b/i.test(text);
+    return { text: text.slice(0, 140), isExplicitlyNoGlasses };
   } catch {
     return null;
   }

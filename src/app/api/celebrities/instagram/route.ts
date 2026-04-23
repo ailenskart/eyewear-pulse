@@ -235,12 +235,61 @@ interface CandidatePhoto {
   postedAt?: string;
 }
 
-/* ═══ 1. Instagram via Apify (PRIMARY) ═══ */
+/* ═══ 1. Instagram via Mindcase (PRIMARY), Apify fallback ═══
+ *
+ * Was Apify-first but the free-tier $5 gets exhausted fast at
+ * n=30+ celeb scans/day. Mindcase (80k credit budget) is our primary
+ * now; Apify fires only when Mindcase can't satisfy the request.
+ */
+
+async function fetchInstagramPostsViaMindcase(handle: string, limit: number): Promise<CandidatePhoto[] | null> {
+  try {
+    const { runAgent, isMindcaseConfigured } = await import('@/lib/mindcase');
+    if (!isMindcaseConfigured()) return null;
+    const result = await runAgent<Record<string, unknown>>('instagram/posts', {
+      usernames: [handle],
+      resultsLimit: limit,
+    }, { timeoutSec: 90 });
+    const pick = (row: Record<string, unknown>, keys: string[]): string | number | null => {
+      for (const k of keys) {
+        const v = row[k];
+        if (v !== undefined && v !== null && v !== '') return v as string | number;
+      }
+      return null;
+    };
+    return result.data
+      .filter(p => pick(p, ['Display Image', 'displayUrl', 'display_url']))
+      .map((p, i) => ({
+        id: String(pick(p, ['Post ID', 'id', 'Short Code', 'shortCode']) || `mc_${i}`),
+        imageUrl: String(pick(p, ['Display Image', 'displayUrl', 'display_url']) || ''),
+        thumb: String(pick(p, ['Display Image', 'displayUrl', 'display_url']) || ''),
+        pageUrl: String(pick(p, ['Post URL', 'url', 'post_url']) || `https://www.instagram.com/${handle}/`),
+        source: `@${handle}`,
+        title: String(pick(p, ['Caption', 'caption']) || '').substring(0, 200),
+        caption: String(pick(p, ['Caption', 'caption']) || ''),
+        likes: Number(pick(p, ['Likes', 'likesCount', 'likes'])) || 0,
+        comments: Number(pick(p, ['Comments', 'commentsCount', 'comments'])) || 0,
+        postedAt: String(pick(p, ['Posted At', 'timestamp', 'posted_at']) || ''),
+      }));
+  } catch {
+    return null;
+  }
+}
 
 async function fetchInstagramPosts(name: string, handleOverride: string | null, limit: number) {
   const handle = handleOverride || KNOWN_HANDLES[name] || null;
   if (!handle) return { ok: false as const, error: `No IG handle for "${name}". Use ?handle=xxx to specify.`, handle: null, posts: [] as CandidatePhoto[] };
-  if (!isApifyConfigured()) return { ok: false as const, error: 'APIFY_TOKEN required for Instagram scanning.', handle, posts: [] as CandidatePhoto[] };
+
+  // Primary: Mindcase
+  const mindcasePosts = await fetchInstagramPostsViaMindcase(handle, limit);
+  if (mindcasePosts && mindcasePosts.length > 0) {
+    return { ok: true as const, posts: mindcasePosts, handle };
+  }
+
+  // Fallback: Apify
+  if (!isApifyConfigured()) {
+    return { ok: false as const, error: 'Both Mindcase and Apify unavailable for Instagram scanning.', handle, posts: [] as CandidatePhoto[] };
+  }
 
   const result = await runActor<Record<string, unknown>>(DEFAULT_ACTORS.instagram, {
     directUrls: [`https://www.instagram.com/${handle}/`],
