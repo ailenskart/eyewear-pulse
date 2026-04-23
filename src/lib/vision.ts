@@ -48,11 +48,30 @@ export interface EyewearDetection {
 }
 
 /**
+ * Instagram's CDN (scontent*.cdninstagram.com) blocks Replicate's
+ * egress IPs, so when we pass a raw IG URL to Moondream it silently
+ * 403s on image fetch and the model returns status=failed.
+ *
+ * Our /api/img proxy server-side-fetches from IG (Vercel's IPs aren't
+ * blocked) and re-streams the bytes, so we rewrite any IG-CDN URL to
+ * go through the proxy before handing it to Moondream. Non-IG URLs
+ * (e.g. our own blob storage) pass through unchanged.
+ */
+function toModelFriendlyUrl(imageUrl: string): string {
+  if (!imageUrl) return imageUrl;
+  // Already on our blob, or not an IG CDN URL — pass through
+  if (imageUrl.includes('blob.vercel-storage.com')) return imageUrl;
+  if (!imageUrl.includes('cdninstagram.com') && !imageUrl.includes('fbcdn.net')) return imageUrl;
+  return `https://lenzy.studio/api/img?url=${encodeURIComponent(imageUrl)}`;
+}
+
+/**
  * Run Moondream on a single image with a targeted prompt. Returns
  * parsed isWearing + eyewear description (shape/color/brand-hints)
  * when present. Returns { isWearing: false, raw: '' } on any failure.
  */
-export async function detectEyewear(imageUrl: string): Promise<EyewearDetection> {
+export async function detectEyewear(rawImageUrl: string): Promise<EyewearDetection> {
+  const imageUrl = toModelFriendlyUrl(rawImageUrl);
   // Use the env helper (required()) rather than process.env directly —
   // Next.js 16 otherwise tree-shakes the env var out of this bundle
   // because vision.ts is only reached via a dynamic import from the
@@ -137,7 +156,8 @@ export async function detectEyewear(imageUrl: string): Promise<EyewearDetection>
  * an eyewear-related description, we treat the original Yes as a
  * false positive.
  */
-async function describeEyewear(imageUrl: string, token: string): Promise<{ text: string | null; isExplicitlyNoGlasses: boolean } | null> {
+async function describeEyewear(rawImageUrl: string, token: string): Promise<{ text: string | null; isExplicitlyNoGlasses: boolean } | null> {
+  const imageUrl = toModelFriendlyUrl(rawImageUrl);
   const prompt = 'Describe the glasses or sunglasses the main person is wearing in one short sentence. Mention shape, color, and any visible brand clues. If they are not wearing glasses, start the reply with "No glasses".';
   try {
     const res = await fetch(`${REPLICATE_BASE}/predictions`, {
