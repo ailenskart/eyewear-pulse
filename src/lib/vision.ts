@@ -61,18 +61,11 @@ export async function detectEyewear(imageUrl: string): Promise<EyewearDetection>
   try { token = env.REPLICATE_API_TOKEN(); } catch { return { isWearing: false, description: null, raw: '', error: 'no REPLICATE_API_TOKEN' }; }
   if (!token) return { isWearing: false, description: null, raw: '', error: 'empty token' };
 
-  const prompt = [
-    'Is the main person VISIBLY wearing sunglasses or eyeglasses ON THEIR FACE in this photo?',
-    'Answer in this exact format:',
-    'YES — <short description: shape + color + any visible brand clues, under 100 characters>',
-    'or',
-    'NO',
-    '',
-    'Rules:',
-    '- YES only if glasses are clearly on the face.',
-    '- Glasses held in hand, pushed onto head, on a table, worn by someone else = NO.',
-    '- Shaded eye makeup / squinting / face covered by a hand = NO.',
-  ].join('\n');
+  // Moondream 2 (1.86B) is a small VLM — complex multi-step prompts
+  // confuse it. Keep the question sharp and binary. Describe-then-
+  // classify is a separate second call when the answer is Yes, in
+  // detectEyewear below.
+  const prompt = 'Does the main person in this photo have sunglasses or prescription glasses covering their eyes right now? Answer only Yes or No. Glasses pushed up on the head, held in hand, on a table, or worn by someone else = No.';
 
   try {
     const createRes = await fetch(`${REPLICATE_BASE}/predictions`, {
@@ -114,20 +107,75 @@ export async function detectEyewear(imageUrl: string): Promise<EyewearDetection>
     }
 
     const text = Array.isArray(pred.output) ? pred.output.join('') : String(pred.output);
-    return parseEyewearReply(text);
+    const verdict = parseEyewearReply(text);
+    if (!verdict.isWearing) return verdict;
+
+    // Second call — short description of the eyewear. Only runs on a
+    // Yes so we don't waste credits on every image. Moondream 2 often
+    // hallucinates Yes (small model), so we also use this second call
+    // as an implicit sanity check: if it can't describe the eyewear
+    // concretely we downgrade to a No.
+    const describe = await describeEyewear(imageUrl, token);
+    if (describe && describe.isEyewearMention) {
+      return { isWearing: true, description: describe.text, raw: text };
+    }
+    // First call said Yes, description call came back empty / no
+    // concrete eyewear mention → likely a false positive, downgrade.
+    return { isWearing: false, description: null, raw: text, error: 'description call did not confirm' };
   } catch (err) {
     return { isWearing: false, description: null, raw: '', error: err instanceof Error ? err.message : 'exception' };
   }
 }
 
+/**
+ * Second-pass description call. Runs only when the first call said
+ * Yes. Asks Moondream to describe the eyewear; if it can't produce
+ * an eyewear-related description, we treat the original Yes as a
+ * false positive.
+ */
+async function describeEyewear(imageUrl: string, token: string): Promise<{ text: string | null; isEyewearMention: boolean } | null> {
+  const prompt = 'Describe the glasses or sunglasses the main person is wearing in this photo in one short sentence. Mention shape, color, and any visible brand clues. If the person is not wearing glasses, say "No glasses".';
+  try {
+    const res = await fetch(`${REPLICATE_BASE}/predictions`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json',
+        'Prefer': 'wait=30',
+      },
+      body: JSON.stringify({ version: MOONDREAM_VERSION, input: { image: imageUrl, prompt } }),
+      signal: AbortSignal.timeout(45_000),
+    });
+    if (!res.ok) return null;
+    let pred = await res.json() as ReplicatePrediction;
+    const start = Date.now();
+    while (pred.status !== 'succeeded' && pred.status !== 'failed' && pred.status !== 'canceled') {
+      if (Date.now() - start > 30_000) break;
+      await sleep(1200);
+      const pr = await fetch(`${REPLICATE_BASE}/predictions/${pred.id}`, { headers: { 'Authorization': `Bearer ${token}` } });
+      if (!pr.ok) break;
+      pred = await pr.json() as ReplicatePrediction;
+    }
+    if (pred.status !== 'succeeded' || !pred.output) return null;
+    const text = (Array.isArray(pred.output) ? pred.output.join('') : String(pred.output)).trim();
+    // Positive signal: mentions glasses / sunglasses / frames / lenses / shades / eyewear
+    // Negative signal: says no glasses / not wearing
+    const lower = text.toLowerCase();
+    const negative = /\bno\s+glass(es)?\b|\bnot\s+wearing\b|\bdoesn'?t\s+have\b|\bwithout\s+glasses\b/.test(lower);
+    if (negative) return { text: null, isEyewearMention: false };
+    const positive = /\b(sunglass(es)?|glass(es)?|eyewear|frames?|shades?|spectacles?|lenses?|aviator|wayfarer|cat[- ]eye|oakley|ray[- ]?ban|gucci|prada|dior|versace)\b/.test(lower);
+    return { text: text.slice(0, 140), isEyewearMention: positive };
+  } catch {
+    return null;
+  }
+}
+
 export function parseEyewearReply(raw: string): EyewearDetection {
   const text = raw.trim();
-  const isWearing = /^\s*YES\b/i.test(text);
-  if (!isWearing) return { isWearing: false, description: null, raw: text };
-  // Extract whatever follows "YES —" or "YES:" or "YES -" or just "YES"
-  const m = text.match(/^\s*YES[\s\-—:,.]+([\s\S]+)$/i);
-  const description = m ? m[1].trim().slice(0, 140) : null;
-  return { isWearing: true, description, raw: text };
+  // Accept any reply that starts with "Yes" (case-insensitive) — Moondream
+  // almost always answers the binary question with just "Yes" or "No".
+  const isWearing = /^\s*yes\b/i.test(text);
+  return { isWearing, description: null, raw: text };
 }
 
 /**

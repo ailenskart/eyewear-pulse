@@ -56,6 +56,17 @@ async function getCelebList(): Promise<Array<{ name: string; handle: string; eye
   }
 }
 
+/**
+ * Pick a batch of celebs to scan. Strategy:
+ *   • Take the least-recently-scanned 2N (so new celebs + stale
+ *     celebs get priority)
+ *   • Randomly sample N from that pool → keeps ordering fresh,
+ *     surfaces different celebs each run instead of always scanning
+ *     the same top-of-queue.
+ *   • Also picks up celebs from the v9 `celebrities` table with real
+ *     IG handles via getCelebList, so we cycle through all 3,006
+ *     over time instead of the old 180 hardcoded ones.
+ */
 async function pickCelebsForRun(n: number): Promise<Array<{ name: string; handle: string }>> {
   const all = await getCelebList();
   if (all.length === 0) return [];
@@ -79,8 +90,17 @@ async function pickCelebsForRun(n: number): Promise<Array<{ name: string; handle
     ...c,
     ts: lastScan.get(slugify(c.name)) || '1970-01-01T00:00:00.000Z',
   }));
+  // Least recently scanned first
   withTs.sort((a, b) => new Date(a.ts).getTime() - new Date(b.ts).getTime());
-  return withTs.slice(0, n);
+
+  // Take 2N stalest, then randomly sample N — gives ordering freshness
+  // and avoids always scanning the same handful.
+  const pool = withTs.slice(0, Math.max(n * 2, n + 10));
+  for (let i = pool.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [pool[i], pool[j]] = [pool[j], pool[i]];
+  }
+  return pool.slice(0, n);
 }
 
 export async function GET(request: NextRequest) {
@@ -90,7 +110,10 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
   }
 
-  const n = Math.min(20, Math.max(1, parseInt(request.nextUrl.searchParams.get('n') || '8')));
+  // Default n bumped from 8 to 25 — Vercel's 800s wall easily fits a
+  // ~20-celeb scan (each celeb is ~20-30s Apify + ~10-20s Moondream
+  // for eyewear photos). Raise via ?n=30 for manual sweeps.
+  const n = Math.min(50, Math.max(1, parseInt(request.nextUrl.searchParams.get('n') || '25')));
   const targets = await pickCelebsForRun(n);
 
   if (targets.length === 0) {

@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from 'next/server';
 // calls Moondream 2 on Replicate. See commit message for context.)
 import { runActor, isApifyConfigured, DEFAULT_ACTORS } from '@/lib/apify';
 import { supabaseServer } from '@/lib/supabase';
+import { env } from '@/lib/env';
 
 /**
  * Celebrity Instagram eyewear scanner — INSTAGRAM-FIRST.
@@ -33,7 +34,12 @@ export const maxDuration = 60;
 
 // GEMINI_KEY no longer needed; see src/lib/vision.ts (Moondream on Replicate).
 const BRAVE_KEY = process.env.BRAVE_SEARCH_KEY || '';
-const BLOB_TOKEN = process.env.BLOB_READ_WRITE_TOKEN || '';
+// Read the Vercel Blob token via the env helper so Next bundles the
+// var properly (direct process.env reads get tree-shaken out of some
+// routes — we saw this with REPLICATE_API_TOKEN earlier).
+function blobToken(): string {
+  try { return env.BLOB_READ_WRITE_TOKEN() || ''; } catch { return ''; }
+}
 
 /* ═══════════════════════════════════════════════════════════════
    200+ verified celebrity Instagram handles — fashionable celebs
@@ -304,7 +310,8 @@ async function fetchBraveImages(name: string, limit: number): Promise<CandidateP
 /* ═══ 3. Blob upload — persist images permanently ═══ */
 
 async function uploadToBlob(imageUrl: string, path: string): Promise<string | null> {
-  if (!BLOB_TOKEN) return null;
+  const token = blobToken();
+  if (!token) return null;
   try {
     const res = await fetch(imageUrl, {
       headers: { 'User-Agent': 'Mozilla/5.0' },
@@ -317,7 +324,7 @@ async function uploadToBlob(imageUrl: string, path: string): Promise<string | nu
     const blobRes = await fetch(`https://blob.vercel-storage.com/${path}`, {
       method: 'PUT',
       headers: {
-        'Authorization': `Bearer ${BLOB_TOKEN}`,
+        'Authorization': `Bearer ${token}`,
         'x-api-version': '7',
         'Content-Type': ct,
         'x-content-type': ct,
@@ -366,12 +373,31 @@ async function persistToDB(
   try {
     const client = supabaseServer();
     const slug = slugify(name);
+
+    // Pull designation (category + country + region) from the
+    // celebrities directory so the /celebrities page can show tags
+    // next to each photo. Match by slug first, then by name fallback.
+    let category: string | null = null;
+    let country: string | null = null;
+    try {
+      const { data: celebRows } = await client
+        .from('celebrities')
+        .select('name,slug,category,country,region,instagram_handle')
+        .or(`slug.eq.${slug},name.eq.${encodeURIComponent(name)}`)
+        .limit(1);
+      const row = (celebRows || [])[0] as { category?: string | null; country?: string | null; region?: string | null } | undefined;
+      if (row) {
+        category = row.category ?? null;
+        country = row.country ?? null;
+      }
+    } catch { /* best-effort */ }
+
     const rows = photos.map(p => ({
       id: `${slug}_${p.id}`,
       celeb_name: name,
       celeb_slug: slug,
-      celeb_category: null,
-      celeb_country: null,
+      celeb_category: category,
+      celeb_country: country,
       image_url: p.imageUrl,
       blob_url: p.blobUrl || null,
       thumb_url: p.thumbnail || null,
@@ -393,8 +419,8 @@ async function persistToDB(
     await client.from('celeb_scan_log').insert({
       celeb_name: name,
       celeb_slug: slug,
-      candidates: photos.length,
       detected: photos.length,
+      total_scanned: photos.length,
       source: source === 'instagram' ? `@${handle}` : source,
     });
   } catch { /* non-fatal */ }
@@ -466,7 +492,7 @@ export async function GET(request: NextRequest) {
 
   for (const c of eyewearCandidates) {
     let blobUrl: string | null = null;
-    if (BLOB_TOKEN) {
+    if (blobToken()) {
       const blobPath = `celeb/${slugify(name)}/${c.id}.jpg`;
       blobUrl = await uploadToBlob(c.imageUrl, blobPath);
     }
