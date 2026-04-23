@@ -530,21 +530,36 @@ export async function GET(request: NextRequest) {
     });
   }
 
-  // ── Gemini Vision filter ──
+  // ── Upload all candidates to our Blob FIRST, then detect ──
+  // Moondream via Replicate gets 403'd fetching raw IG CDN URLs
+  // (cdninstagram.com / fbcdn.net IP-block Replicate's egress). So
+  // we rehost each candidate to our own blob FIRST and pass the blob
+  // URL to the vision call. Upload-before-detect means we burn a bit
+  // of blob storage on non-eyewear posts but the detection recall
+  // goes back to what it was before we switched to Mindcase.
+  const blobByCandidateId = new Map<string, string>();
+  if (blobToken()) {
+    await Promise.all(candidates.map(async c => {
+      const blobPath = `celeb/${slugify(name)}/${c.id}.jpg`;
+      const url = await uploadToBlob(c.imageUrl, blobPath);
+      if (url) blobByCandidateId.set(c.id, url);
+    }));
+  }
+
+  // Use blob URLs where available — fall back to source URL if upload
+  // failed (gives the raw URL a chance, which some sources allow).
   const detected = await detectEyewearBatch(
-    candidates.map(c => ({ id: c.id, imageUrl: c.imageUrl }))
+    candidates.map(c => ({
+      id: c.id,
+      imageUrl: blobByCandidateId.get(c.id) || c.imageUrl,
+    }))
   );
 
-  // ── Upload confirmed eyewear photos to Blob ──
   const eyewearCandidates = candidates.filter(c => detected.has(c.id));
   const photos: EyewearPhoto[] = [];
 
   for (const c of eyewearCandidates) {
-    let blobUrl: string | null = null;
-    if (blobToken()) {
-      const blobPath = `celeb/${slugify(name)}/${c.id}.jpg`;
-      blobUrl = await uploadToBlob(c.imageUrl, blobPath);
-    }
+    const blobUrl: string | null = blobByCandidateId.get(c.id) || null;
     photos.push({
       id: c.id,
       imageUrl: blobUrl || c.imageUrl,
