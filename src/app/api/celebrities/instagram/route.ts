@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 // (Gemini import removed — vision now via src/lib/vision.ts which
 // calls Moondream 2 on Replicate. See commit message for context.)
 import { runActor, isApifyConfigured, DEFAULT_ACTORS } from '@/lib/apify';
+import { runAgent as runMindcaseAgent, isMindcaseConfigured } from '@/lib/mindcase';
 import { supabaseServer } from '@/lib/supabase';
 import { env } from '@/lib/env';
 
@@ -244,9 +245,8 @@ interface CandidatePhoto {
 
 async function fetchInstagramPostsViaMindcase(handle: string, limit: number): Promise<CandidatePhoto[] | null> {
   try {
-    const { runAgent, isMindcaseConfigured } = await import('@/lib/mindcase');
     if (!isMindcaseConfigured()) return null;
-    const result = await runAgent<Record<string, unknown>>('instagram/posts', {
+    const result = await runMindcaseAgent<Record<string, unknown>>('instagram/posts', {
       usernames: [handle],
       resultsLimit: limit,
     }, { timeoutSec: 90 });
