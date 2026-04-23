@@ -80,11 +80,13 @@ export async function detectEyewear(rawImageUrl: string): Promise<EyewearDetecti
   try { token = env.REPLICATE_API_TOKEN(); } catch { return { isWearing: false, description: null, raw: '', error: 'no REPLICATE_API_TOKEN' }; }
   if (!token) return { isWearing: false, description: null, raw: '', error: 'empty token' };
 
-  // Moondream 2 (1.86B) is a small VLM — complex multi-step prompts
-  // confuse it. Keep the question sharp and binary. Describe-then-
-  // classify is a separate second call when the answer is Yes, in
-  // detectEyewear below.
-  const prompt = 'Does the main person in this photo have sunglasses or prescription glasses covering their eyes right now? Answer only Yes or No. Glasses pushed up on the head, held in hand, on a table, or worn by someone else = No.';
+  // Moondream 2 (1.86B) is a small VLM — it's most accurate on short,
+  // plainspoken yes/no questions. Conditions and qualifiers confuse
+  // it: the tight prompt we tried earlier returned "No" even on a
+  // photo we'd previously confirmed as eyewear. Keep it simple; the
+  // describe() second-pass handles the edge cases (pushed-up,
+  // held-in-hand, etc) via explicit "No glasses" detection.
+  const prompt = 'Is the person in this photo wearing glasses or sunglasses? Answer only Yes or No.';
 
   try {
     const createRes = await fetch(`${REPLICATE_BASE}/predictions`, {
