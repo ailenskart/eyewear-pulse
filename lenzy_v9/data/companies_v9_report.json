@@ -1,0 +1,191 @@
+{
+  "source_total": 3095,
+  "cleaned_total": 3068,
+  "quarantined": 0,
+  "merged_duplicates": 27,
+  "by_region": [
+    [
+      "Europe",
+      939
+    ],
+    [
+      "East Asia",
+      676
+    ],
+    [
+      "North America",
+      319
+    ],
+    [
+      "Southeast Asia",
+      248
+    ],
+    [
+      "Africa",
+      230
+    ],
+    [
+      "South Asia",
+      212
+    ],
+    [
+      "Middle East",
+      146
+    ],
+    [
+      "Latin America",
+      142
+    ],
+    [
+      "Oceania",
+      70
+    ],
+    [
+      "Global",
+      47
+    ],
+    [
+      "Other",
+      38
+    ],
+    [
+      "Asia-Pacific",
+      1
+    ]
+  ],
+  "by_country_top30": [
+    [
+      "China",
+      353
+    ],
+    [
+      "USA",
+      288
+    ],
+    [
+      "India",
+      173
+    ],
+    [
+      "Hong Kong",
+      131
+    ],
+    [
+      "France",
+      130
+    ],
+    [
+      "Japan",
+      127
+    ],
+    [
+      "Italy",
+      105
+    ],
+    [
+      "Germany",
+      103
+    ],
+    [
+      "Tanzania",
+      94
+    ],
+    [
+      "UK",
+      81
+    ],
+    [
+      "Unknown",
+      72
+    ],
+    [
+      "Netherlands",
+      68
+    ],
+    [
+      "Australia",
+      65
+    ],
+    [
+      "Poland",
+      60
+    ],
+    [
+      "Russia",
+      56
+    ],
+    [
+      "South Korea",
+      51
+    ],
+    [
+      "Brazil",
+      51
+    ],
+    [
+      "Nigeria",
+      47
+    ],
+    [
+      "Sweden",
+      46
+    ],
+    [
+      "Vietnam",
+      46
+    ],
+    [
+      "Thailand",
+      44
+    ],
+    [
+      "Portugal",
+      43
+    ],
+    [
+      "Switzerland",
+      42
+    ],
+    [
+      "Spain",
+      39
+    ],
+    [
+      "Malaysia",
+      39
+    ],
+    [
+      "Egypt",
+      38
+    ],
+    [
+      "Singapore",
+      37
+    ],
+    [
+      "South Africa",
+      37
+    ],
+    [
+      "Philippines",
+      36
+    ],
+    [
+      "Indonesia",
+      33
+    ]
+  ],
+  "with_website": 1954,
+  "with_ig_handle": 1267,
+  "with_linkedin": 2630,
+  "with_people": 1562,
+  "with_sitemap": 492,
+  "with_product_urls": 216,
+  "total_product_urls": 30818,
+  "needs_reverification": 3068,
+  "stripped_fabrications": {
+    "recent_posts": 865,
+    "engagement_rate": 865,
+    "avg_likes": 865
+  }
+}
