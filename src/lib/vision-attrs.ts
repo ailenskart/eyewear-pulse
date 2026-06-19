@@ -12,10 +12,17 @@
  */
 
 import { GoogleGenAI } from '@google/genai';
-import type { FrameAttrs } from '@/lib/shifts';
 import { loggerFor } from '@/lib/logger';
 
 const log = loggerFor('vision-attrs');
+
+export interface FrameAttrs {
+  shape?: string;
+  color?: string;
+  material?: string;
+  lensType?: string;
+  style?: string;
+}
 
 export interface ImageRef {
   id: string;

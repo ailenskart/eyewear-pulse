@@ -7,31 +7,23 @@ import { Skeleton } from '@/components/ui/Skeleton';
 import { Button } from '@/components/ui/Button';
 import { cn } from '@/components/ui/cn';
 
-interface ShiftExample {
-  account?: string; accountName?: string;
-  brand?: string; brandName?: string;
-  title?: string; price?: number | null; currency?: string | null;
-  imageUrl: string; url: string; likes?: number;
+interface FrameExample { entity: string; entityName: string; image: string; url: string }
+interface WearShift {
+  id: string; label: string; heroImage: string; heroUrl: string;
+  people: number; priorPeople: number; growth: number; isNew: boolean; posts: number;
+  examples: FrameExample[];
 }
-interface PickingUpShift {
-  signature: string; label: string;
-  currentAccounts: number; priorAccounts: number; accountsDelta: number;
-  deltaPct: number; isNew: boolean; posts: number; momentum: number;
-  examples: ShiftExample[];
-}
-interface LaunchingShift {
-  signature: string; label: string;
-  brands: number; recentBrands: number; products: number; momentum: number;
-  examples: ShiftExample[];
+interface LaunchShift {
+  id: string; label: string; heroImage: string; heroUrl: string;
+  brands: number; products: number; examples: FrameExample[];
 }
 interface ShiftsData {
   refDate: string; window: number; region: string;
-  pickingUp: PickingUpShift[]; launching: LaunchingShift[];
-  summary: string;
+  wearing: WearShift[]; launching: LaunchShift[]; summary: string;
   meta: {
-    postsCurrent: number; postsPrior: number;
-    visionAnalyzed: number; visionPending: number;
-    productsScanned: number; visionEnabled: boolean;
+    igEmbedded: number; igTotal: number;
+    productEmbedded: number; productTotal: number;
+    clusteredCurrent: number; needsBackfill: boolean;
   };
   cached: boolean;
 }
@@ -55,146 +47,163 @@ export function ShiftsPage() {
 
   return (
     <div className="max-w-6xl mx-auto px-4 py-5">
-      <div className="flex items-start justify-between gap-3 mb-5">
+      <div className="flex items-start justify-between gap-3 mb-4">
         <div>
           <h1 className="text-[22px] font-semibold tracking-tight">Shifts</h1>
           <p className="text-[12px] text-[var(--ink-muted)] mt-0.5 max-w-2xl">
-            Only what&apos;s actually moving — specific frames an accelerating number of accounts are
-            picking up, and frames many brands are launching at once. No generic eyewear.
+            Specific frames a lot of people are wearing right now — and the frames brands are launching.
+            Grouped by what the glasses actually look like.
           </p>
         </div>
         <div className="flex items-center gap-1 shrink-0">
           {WINDOWS.map(w => (
-            <button
-              key={w}
-              onClick={() => setWindow(w)}
-              className={cn(
-                'h-8 px-2.5 rounded-[var(--radius)] text-[12px] font-semibold transition-colors',
-                window === w ? 'bg-[var(--accent)] text-[var(--accent-ink)]' : 'bg-[var(--surface-2)] text-[var(--ink-muted)] hover:bg-[var(--border)]',
-              )}
-            >{w}d</button>
+            <button key={w} onClick={() => setWindow(w)}
+              className={cn('h-8 px-2.5 rounded-[var(--radius)] text-[12px] font-semibold transition-colors',
+                window === w ? 'bg-[var(--accent)] text-[var(--accent-ink)]' : 'bg-[var(--surface-2)] text-[var(--ink-muted)] hover:bg-[var(--border)]')}>
+              {w}d
+            </button>
           ))}
-          <Button size="sm" variant="secondary" onClick={() => load(true)} loading={loading}>Rescan</Button>
+          <Button size="sm" variant="secondary" onClick={() => load(true)} loading={loading}>Refresh</Button>
         </div>
       </div>
 
-      {loading && !data && <div className="space-y-3">{[1, 2, 3].map(i => <Skeleton key={i} className="h-28" />)}</div>}
+      {loading && !data && (
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+          {[1, 2, 3, 4, 5, 6, 7, 8].map(i => <Skeleton key={i} className="aspect-[4/5]" />)}
+        </div>
+      )}
 
       {data && (
         <>
-          <Card padding="lg" className="mb-6 bg-gradient-to-br from-[var(--accent-soft)] to-[var(--surface)]">
-            <div className="flex items-start justify-between gap-3 mb-2">
-              <Badge tone="accent">What moved</Badge>
-              {data.cached && <Badge size="xs">Cached</Badge>}
-            </div>
-            <p className="text-[14px] leading-relaxed">{data.summary}</p>
-            <div className="text-[10px] text-[var(--ink-muted)] mt-3">
-              {data.meta.postsCurrent} posts this period vs {data.meta.postsPrior} prior ·{' '}
-              {data.meta.visionEnabled
-                ? `${data.meta.visionAnalyzed} newly scanned${data.meta.visionPending > 0 ? `, ${data.meta.visionPending} pending (rescan to fill in)` : ''}`
-                : 'Vision off'}{' '}· {data.meta.productsScanned} products
-            </div>
-          </Card>
+          {data.meta.needsBackfill ? (
+            <BackfillNotice meta={data.meta} />
+          ) : (
+            <p className="text-[13px] leading-relaxed text-[var(--ink-muted)] mb-6">{data.summary}</p>
+          )}
 
-          <Lane
-            title="Picking up on Instagram"
-            subtitle="Frames gaining distinct accounts week-over-week"
-            empty="No frame is accelerating across enough accounts yet. Rescan to scan more posts, or widen the window."
-          >
-            {data.pickingUp.map(s => <PickCard key={s.signature} s={s} />)}
-          </Lane>
+          {/* Lead lane — frames people are wearing */}
+          <Section title="Frames people are wearing" count={data.wearing.length}
+            empty="No frame has enough people wearing it in this window yet. Try a wider window.">
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+              {data.wearing.map(s => <WearCard key={s.id} s={s} />)}
+            </div>
+          </Section>
 
-          <Lane
-            title="Brands launching"
-            subtitle="Concrete frames multiple brands are converging on"
-            empty="No cross-brand convergence above the threshold. This lane sharpens as product scrapes accumulate launch history."
-          >
-            {data.launching.map(s => <LaunchCard key={s.signature} s={s} />)}
-          </Lane>
+          {/* Secondary lane — brands launching */}
+          {data.launching.length > 0 && (
+            <Section title="Brands launching the same frame" count={data.launching.length} empty="">
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+                {data.launching.map(s => <LaunchCard key={s.id} s={s} />)}
+              </div>
+            </Section>
+          )}
+
+          <div className="text-[10px] text-[var(--ink-muted)] mt-8 border-t border-[var(--border)] pt-3">
+            Visual index: {data.meta.igEmbedded.toLocaleString()} / {data.meta.igTotal.toLocaleString()} posts ·{' '}
+            {data.meta.productEmbedded.toLocaleString()} / {data.meta.productTotal.toLocaleString()} products indexed
+            {data.cached && ' · cached'}
+          </div>
         </>
       )}
     </div>
   );
 }
 
-function Lane({ title, subtitle, empty, children }: {
-  title: string; subtitle: string; empty: string; children: React.ReactNode;
-}) {
-  const items = React.Children.toArray(children);
+function Section({ title, count, empty, children }: { title: string; count: number; empty: string; children: React.ReactNode }) {
   return (
     <section className="mb-8">
-      <div className="mb-3">
-        <h2 className="text-[14px] font-semibold tracking-tight">{title}</h2>
-        <p className="text-[11px] text-[var(--ink-muted)]">{subtitle}</p>
-      </div>
-      {items.length === 0
+      <h2 className="text-[14px] font-semibold tracking-tight mb-3">{title}</h2>
+      {count === 0 && empty
         ? <Card padding="md"><p className="text-[12px] text-[var(--ink-muted)]">{empty}</p></Card>
-        : <div className="grid sm:grid-cols-2 gap-3">{items}</div>}
+        : children}
     </section>
   );
 }
 
-function Thumbs({ examples, max = 4 }: { examples: ShiftExample[]; max?: number }) {
-  const shown = examples.filter(e => e.imageUrl).slice(0, max);
-  if (shown.length === 0) return null;
+function Hero({ image, url, alt }: { image: string; url: string; alt: string }) {
   return (
-    <div className="flex gap-1.5 mt-3">
-      {shown.map((e, i) => (
-        <a
-          key={i}
-          href={e.url || '#'}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="relative block w-1/4 aspect-square rounded-[var(--radius)] overflow-hidden bg-[var(--surface-2)] group"
-          title={e.accountName || e.brandName || ''}
-        >
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={e.imageUrl} alt={e.accountName || e.brandName || 'frame'} className="w-full h-full object-cover transition-transform group-hover:scale-105" loading="lazy" />
-          <span className="absolute bottom-0 inset-x-0 px-1 py-0.5 text-[8px] font-medium text-white bg-black/55 truncate">
-            {e.accountName || e.brandName}
-          </span>
-        </a>
-      ))}
+    <a href={url || '#'} target="_blank" rel="noopener noreferrer" className="block relative aspect-[4/5] bg-[var(--surface-2)] overflow-hidden">
+      {image
+        // eslint-disable-next-line @next/next/no-img-element
+        ? <img src={image} alt={alt} className="w-full h-full object-cover transition-transform duration-200 group-hover:scale-[1.03]" loading="lazy" />
+        : <div className="w-full h-full grid place-items-center text-[var(--ink-soft)] text-[11px]">no image</div>}
+      <div className="absolute inset-x-0 bottom-0 h-16 bg-gradient-to-t from-black/65 to-transparent" />
+    </a>
+  );
+}
+
+function Avatars({ examples, total }: { examples: FrameExample[]; total: number }) {
+  const shown = examples.filter(e => e.image).slice(0, 5);
+  const extra = total - shown.length;
+  return (
+    <div className="flex items-center gap-1.5 mt-2">
+      <div className="flex -space-x-2">
+        {shown.map((e, i) => (
+          <a key={i} href={e.url || '#'} target="_blank" rel="noopener noreferrer" title={e.entityName}
+            className="w-6 h-6 rounded-full ring-2 ring-[var(--surface)] overflow-hidden bg-[var(--surface-2)] hover:z-10">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={e.image} alt={e.entityName} className="w-full h-full object-cover" loading="lazy" />
+          </a>
+        ))}
+      </div>
+      {extra > 0 && <span className="text-[10px] text-[var(--ink-muted)]">+{extra} more</span>}
     </div>
   );
 }
 
-function PickCard({ s }: { s: PickingUpShift }) {
+function WearCard({ s }: { s: WearShift }) {
   return (
-    <Card padding="md">
-      <div className="flex items-start justify-between gap-2">
-        <h3 className="text-[15px] font-semibold capitalize leading-tight">{s.label}</h3>
-        <Badge tone={s.isNew ? 'danger' : 'accent'} size="xs">
-          {s.isNew ? 'NEW' : `+${s.accountsDelta}`}
-        </Badge>
+    <Card variant="photographic" padding="none" className="group">
+      <div className="relative">
+        <Hero image={s.heroImage} url={s.heroUrl} alt={s.label || 'frame'} />
+        {(s.isNew || s.growth > 0) && (
+          <div className="absolute top-2 right-2">
+            <Badge tone={s.isNew ? 'danger' : 'success'} size="xs">{s.isNew ? 'NEW' : `+${s.growth}`}</Badge>
+          </div>
+        )}
+        <div className="absolute bottom-2 left-2.5 right-2.5 text-white">
+          <div className="text-[15px] font-bold leading-none">Worn by {s.people}</div>
+          {s.label && <div className="text-[11px] capitalize opacity-90 mt-0.5 truncate">{s.label}</div>}
+        </div>
       </div>
-      <div className="flex items-center gap-3 mt-1.5 text-[11px] text-[var(--ink-muted)]">
-        <span><span className="font-semibold text-[var(--ink)]">{s.currentAccounts}</span> accounts</span>
-        <span>·</span>
-        <span>{s.posts} posts</span>
-        {!s.isNew && <><span>·</span><span className={s.deltaPct >= 0 ? 'text-[var(--success)]' : 'text-[var(--danger)]'}>
-          {s.deltaPct >= 0 ? '+' : ''}{s.deltaPct > 998 ? '∞' : s.deltaPct}%
-        </span></>}
+      <div className="px-2.5 pb-2.5">
+        <Avatars examples={s.examples} total={s.people} />
       </div>
-      <Thumbs examples={s.examples} />
     </Card>
   );
 }
 
-function LaunchCard({ s }: { s: LaunchingShift }) {
+function LaunchCard({ s }: { s: LaunchShift }) {
   return (
-    <Card padding="md">
-      <div className="flex items-start justify-between gap-2">
-        <h3 className="text-[15px] font-semibold capitalize leading-tight">{s.label}</h3>
-        <Badge tone="accent" size="xs">{s.brands} brands</Badge>
+    <Card variant="photographic" padding="none" className="group">
+      <div className="relative">
+        <Hero image={s.heroImage} url={s.heroUrl} alt={s.label || 'frame'} />
+        <div className="absolute top-2 right-2"><Badge tone="accent" size="xs">{s.brands} brands</Badge></div>
+        <div className="absolute bottom-2 left-2.5 right-2.5 text-white">
+          <div className="text-[15px] font-bold leading-none">{s.brands} brands</div>
+          {s.label && <div className="text-[11px] capitalize opacity-90 mt-0.5 truncate">{s.label}</div>}
+        </div>
       </div>
-      <div className="flex items-center gap-3 mt-1.5 text-[11px] text-[var(--ink-muted)]">
-        <span><span className="font-semibold text-[var(--ink)]">{s.brands}</span> brands converging</span>
-        <span>·</span>
-        <span>{s.products} SKUs</span>
-        {s.recentBrands > 0 && <><span>·</span><span className="text-[var(--success)]">{s.recentBrands} fresh</span></>}
+      <div className="px-2.5 pb-2.5">
+        <Avatars examples={s.examples} total={s.brands} />
       </div>
-      <Thumbs examples={s.examples} />
+    </Card>
+  );
+}
+
+function BackfillNotice({ meta }: { meta: ShiftsData['meta'] }) {
+  return (
+    <Card padding="lg" className="mb-6 bg-gradient-to-br from-[var(--accent-soft)] to-[var(--surface)]">
+      <Badge tone="accent">Visual index building</Badge>
+      <p className="text-[14px] leading-relaxed mt-2">
+        Shifts groups the same frame by what it looks like, which needs each photo run through the
+        image model first. None are indexed yet.
+      </p>
+      <p className="text-[12px] text-[var(--ink-muted)] mt-2">
+        Set <code className="font-mono">REPLICATE_API_TOKEN</code> on the server, then run the embedder:{' '}
+        <code className="font-mono">/api/shifts/embed?key=…&amp;type=ig_post</code> (repeat until done).
+        Indexed so far: {meta.igEmbedded}/{meta.igTotal} posts, {meta.productEmbedded}/{meta.productTotal} products.
+      </p>
     </Card>
   );
 }

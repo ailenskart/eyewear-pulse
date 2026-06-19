@@ -2,28 +2,27 @@ import { NextRequest } from 'next/server';
 import { withHandler, ok, validateQuery } from '@/lib/api';
 import { supabaseServer } from '@/lib/supabase';
 import { env, hasEnv } from '@/lib/env';
-import { extractFrameAttrs, type ImageRef } from '@/lib/vision-attrs';
+import { clusterByCosine, assignToClusters, type VecItem } from '@/lib/cluster';
 import {
-  rankPickingUp, rankLaunching, deriveAttrsFromText,
-  type FrameAttrs, type PostSignal, type ProductSignal,
-  type PickingUpShift, type LaunchingShift,
+  buildWearShifts, buildLaunchShifts,
+  type FrameInstance, type WearShift, type LaunchShift,
 } from '@/lib/shifts';
+import { extractFrameAttrs } from '@/lib/vision-attrs';
 import { z } from 'zod';
 
 /**
- * GET /api/shifts — concrete trend shifts, not generic eyewear.
+ * GET /api/shifts — specific frames that are actually moving, shown by image.
  *
- *   ?window=30        days per period (current vs prior)
- *   ?region=Europe    optional region filter for the picking-up lane
- *   ?minAdopters=3    distinct IG accounts required for a picking-up shift
- *   ?minBrands=3      distinct brands required for a launching shift
- *   ?scan=48          max NEW images to send to Vision this request
- *   ?refresh=1        bypass the result cache
+ *   ?window=30        days per period (current vs prior) for the wearing lane
+ *   ?region=Europe    optional region filter (wearing lane)
+ *   ?minPeople=3      distinct accounts needed for a "wearing" frame
+ *   ?minBrands=3      distinct brands needed for a "launching" frame
+ *   ?threshold=0.88   CLIP cosine cutoff for "same frame"
+ *   ?refresh=1        bypass cache
  *
- * Windows are measured back from the freshest post we hold (not wall-clock
- * now) so the surface stays meaningful against the data we actually have.
- * Vision attributes are persisted to brand_content.data.vision, so the
- * lane sharpens — and gets cheaper — every time it's loaded.
+ * Frames are grouped by CLIP visual similarity (the same frame), not by
+ * attribute tags. Windows are measured back from the freshest post we hold.
+ * Requires the image index — run /api/shifts/embed to populate it.
  */
 
 export const maxDuration = 60;
@@ -31,9 +30,9 @@ export const maxDuration = 60;
 const QuerySchema = z.object({
   window: z.coerce.number().int().min(1).max(120).optional(),
   region: z.string().optional(),
-  minAdopters: z.coerce.number().int().min(2).max(20).optional(),
+  minPeople: z.coerce.number().int().min(2).max(20).optional(),
   minBrands: z.coerce.number().int().min(2).max(20).optional(),
-  scan: z.coerce.number().int().min(0).max(120).optional(),
+  threshold: z.coerce.number().min(0.5).max(0.99).optional(),
   refresh: z.coerce.number().optional(),
 });
 
@@ -41,16 +40,14 @@ interface ShiftsResult {
   refDate: string;
   window: number;
   region: string;
-  pickingUp: PickingUpShift[];
-  launching: LaunchingShift[];
+  wearing: WearShift[];
+  launching: LaunchShift[];
   summary: string;
   meta: {
-    postsCurrent: number;
-    postsPrior: number;
-    visionAnalyzed: number;
-    visionPending: number;
-    productsScanned: number;
-    visionEnabled: boolean;
+    igEmbedded: number; igTotal: number;
+    productEmbedded: number; productTotal: number;
+    clusteredCurrent: number;
+    needsBackfill: boolean;
   };
   generatedAt: string;
   cached: boolean;
@@ -58,137 +55,89 @@ interface ShiftsResult {
 
 const RESULT_CACHE = new Map<string, { payload: ShiftsResult; expiresAt: number }>();
 const TTL_MS = 6 * 60 * 60 * 1000;
-
 const DAY = 86400 * 1000;
+const CLUSTER_CAP = 700; // top-engagement images clustered per window
 
-function proxy(url: string | null | undefined): string {
-  if (!url) return '';
-  return url.includes('cdninstagram.com') ? `/api/img?url=${encodeURIComponent(url)}` : url;
-}
+const proxy = (u?: string | null) => (u ? (u.includes('cdninstagram.com') ? `/api/img?url=${encodeURIComponent(u)}` : u) : '');
 
-/* ─── IG post fetch ─── */
+/* ─── DB helpers ─── */
 
-interface PostRow {
+interface ContentRow {
   id: number;
   brand_handle: string | null;
-  brand_id: number | null;
   posted_at: string | null;
   likes: number | null;
   comments: number | null;
-  image_url: string | null;
-  blob_url: string | null;
-  url: string | null;
-  data: Record<string, unknown> | null;
-}
-
-async function fetchPosts(startISO: string, endISO: string): Promise<PostRow[]> {
-  const client = supabaseServer();
-  const { data, error } = await client
-    .from('brand_content')
-    .select('id, brand_handle, brand_id, posted_at, likes, comments, image_url, blob_url, url, data')
-    .eq('type', 'ig_post')
-    .gte('posted_at', startISO)
-    .lt('posted_at', endISO)
-    .order('posted_at', { ascending: false })
-    .limit(2000);
-  if (error || !data) return [];
-  return data as unknown as PostRow[];
-}
-
-async function maxPostedAt(): Promise<number> {
-  const client = supabaseServer();
-  const { data } = await client
-    .from('brand_content')
-    .select('posted_at')
-    .eq('type', 'ig_post')
-    .not('posted_at', 'is', null)
-    .order('posted_at', { ascending: false })
-    .limit(1);
-  const ts = data?.[0]?.posted_at;
-  return ts ? new Date(ts).getTime() : Date.now();
-}
-
-function rowVision(row: PostRow): FrameAttrs | undefined {
-  const v = row.data?.vision;
-  return v && typeof v === 'object' ? (v as FrameAttrs) : undefined;
-}
-
-function fetchableImage(row: PostRow): string {
-  // blob is permanent; raw IG CDN sometimes still fetchable server-side.
-  return row.blob_url || (row.data?.display_url as string) || row.image_url || '';
-}
-
-function toPostSignal(row: PostRow, attrs: FrameAttrs | undefined, brandName: string): PostSignal {
-  const likes = Math.max(0, Number(row.likes) || 0);
-  const comments = Math.max(0, Number(row.comments) || 0);
-  const raw = fetchableImage(row);
-  return {
-    id: String(row.id),
-    account: row.brand_handle || 'unknown',
-    accountName: brandName,
-    attrs,
-    weight: likes + comments * 5,
-    likes,
-    imageUrl: proxy(raw),
-    postUrl: row.url || (row.data?.post_url as string) || '',
-  };
-}
-
-/* ─── Product fetch (paginated) ─── */
-
-interface ProductRow {
-  id: number;
-  brand_handle: string | null;
   title: string | null;
   price: number | null;
   currency: string | null;
-  product_type: string | null;
   image_url: string | null;
   blob_url: string | null;
   url: string | null;
-  tags: string[] | null;
   data: Record<string, unknown> | null;
 }
 
-async function fetchProducts(cap = 5000): Promise<ProductRow[]> {
+const fetchableImage = (r: ContentRow) =>
+  r.blob_url || (r.data?.display_url as string) || r.image_url || (r.data?.product_image as string) || '';
+
+async function fetchPosts(startISO: string, endISO: string): Promise<ContentRow[]> {
+  const { data } = await supabaseServer()
+    .from('brand_content')
+    .select('id, brand_handle, posted_at, likes, comments, title, price, currency, image_url, blob_url, url, data')
+    .eq('type', 'ig_post')
+    .gte('posted_at', startISO).lt('posted_at', endISO)
+    .order('posted_at', { ascending: false })
+    .limit(2000);
+  return (data as unknown as ContentRow[]) || [];
+}
+
+async function fetchProductsWithEmbeddings(cap = 4000): Promise<ContentRow[]> {
+  // Drive off the embedding table so we only pull products we can cluster.
   const client = supabaseServer();
-  const out: ProductRow[] = [];
-  const PAGE = 1000;
-  for (let from = 0; from < cap; from += PAGE) {
-    const { data, error } = await client
+  const { data: emb } = await client
+    .from('content_image_embeddings')
+    .select('content_id')
+    .eq('ctype', 'product')
+    .limit(cap);
+  const ids = (emb || []).map(e => (e as { content_id: number }).content_id);
+  if (ids.length === 0) return [];
+  const out: ContentRow[] = [];
+  for (let i = 0; i < ids.length; i += 300) {
+    const { data } = await client
       .from('brand_content')
-      .select('id, brand_handle, title, price, currency, product_type, image_url, blob_url, url, tags, data')
-      .eq('type', 'product')
-      .order('id', { ascending: false })
-      .range(from, from + PAGE - 1);
-    if (error || !data || data.length === 0) break;
-    out.push(...(data as unknown as ProductRow[]));
-    if (data.length < PAGE) break;
+      .select('id, brand_handle, posted_at, likes, comments, title, price, currency, image_url, blob_url, url, data')
+      .in('id', ids.slice(i, i + 300));
+    out.push(...((data as unknown as ContentRow[]) || []));
   }
   return out;
 }
 
-function toProductSignal(row: ProductRow): ProductSignal {
-  const d = row.data || {};
-  const title = row.title || (d.product_title as string) || '';
-  const attrs = deriveAttrsFromText(title, row.product_type, (row.tags || []).join(' '));
-  const firstSeen = d.first_seen_at as string | undefined;
-  const raw = row.blob_url || row.image_url || (d.product_image as string) || '';
-  return {
-    id: String(row.id),
-    brand: row.brand_handle || 'unknown',
-    brandName: (d.brand_display as string) || row.brand_handle || 'unknown',
-    attrs,
-    firstSeenMs: firstSeen ? new Date(firstSeen).getTime() : null,
-    price: row.price ?? (d.product_price as number) ?? null,
-    currency: row.currency || (d.product_currency as string) || null,
-    imageUrl: proxy(raw),
-    url: row.url || '',
-    title,
-  };
+async function fetchEmbeddings(ids: number[]): Promise<Map<string, number[]>> {
+  const map = new Map<string, number[]>();
+  if (ids.length === 0) return map;
+  const client = supabaseServer();
+  for (let i = 0; i < ids.length; i += 300) {
+    const { data } = await client
+      .from('content_image_embeddings')
+      .select('content_id, embedding')
+      .in('content_id', ids.slice(i, i + 300));
+    for (const row of (data || []) as Array<{ content_id: number; embedding: number[] }>) {
+      if (Array.isArray(row.embedding)) map.set(String(row.content_id), row.embedding);
+    }
+  }
+  return map;
 }
 
-/* ─── Brand metadata (name + region) ─── */
+async function countContent(type: string): Promise<number> {
+  const { count } = await supabaseServer()
+    .from('brand_content').select('id', { count: 'exact', head: true }).eq('type', type);
+  return count || 0;
+}
+async function countEmbedded(ctype: string): Promise<number> {
+  const { count } = await supabaseServer()
+    .from('content_image_embeddings').select('content_id', { count: 'exact', head: true }).eq('ctype', ctype);
+  return count || 0;
+}
 
 async function brandMeta(handles: string[]): Promise<Map<string, { name: string; region: string }>> {
   const map = new Map<string, { name: string; region: string }>();
@@ -196,8 +145,7 @@ async function brandMeta(handles: string[]): Promise<Map<string, { name: string;
   const client = supabaseServer();
   for (let i = 0; i < handles.length; i += 500) {
     const { data } = await client
-      .from('tracked_brands')
-      .select('handle, name, region')
+      .from('tracked_brands').select('handle, name, region')
       .in('handle', handles.slice(i, i + 500));
     for (const b of (data || []) as Array<{ handle: string; name: string; region: string }>) {
       map.set(b.handle, { name: b.name || b.handle, region: b.region || 'Global' });
@@ -206,116 +154,169 @@ async function brandMeta(handles: string[]): Promise<Map<string, { name: string;
   return map;
 }
 
-/* ─── Vision backfill: extract + persist for posts missing data.vision ─── */
+/* ─── Cluster labels (best-effort, image-derived caption) ─── */
 
-async function ensureVision(rows: PostRow[], scanCap: number): Promise<{ analyzed: number; pending: number }> {
-  const missing = rows.filter(r => rowVision(r) === undefined && fetchableImage(r));
-  if (missing.length === 0 || scanCap === 0 || !hasEnv('GEMINI_API_KEY')) {
-    return { analyzed: 0, pending: missing.length };
-  }
-  const batch = missing.slice(0, scanCap);
-  const refs: ImageRef[] = batch.map(r => ({ id: String(r.id), url: fetchableImage(r) }));
-  const attrsById = await extractFrameAttrs(env.GEMINI_API_KEY(), refs);
-
-  const client = supabaseServer();
-  await Promise.all(batch.map(async row => {
-    const attrs = attrsById.get(String(row.id)) || {};
-    const mergedData = { ...(row.data || {}), vision: attrs };
-    row.data = mergedData; // reflect locally so this request can rank it
-    await client.from('brand_content').update({ data: mergedData }).eq('id', row.id);
-  }));
-
-  return { analyzed: batch.length, pending: missing.length - batch.length };
+async function labelClusters(reps: Array<{ id: string; url: string }>): Promise<Map<string, string>> {
+  const labels = new Map<string, string>();
+  if (!hasEnv('GEMINI_API_KEY') || reps.length === 0) return labels;
+  try {
+    const attrs = await extractFrameAttrs(env.GEMINI_API_KEY(), reps.slice(0, 18));
+    for (const r of reps) {
+      const a = attrs.get(r.id);
+      if (!a) continue;
+      const label = [a.color, a.material, a.shape].filter(Boolean).join(' ');
+      if (label) labels.set(r.id, label);
+    }
+  } catch { /* labels are optional */ }
+  return labels;
 }
 
-/* ─── Summary (deterministic, no extra API cost) ─── */
+/* ─── Summary ─── */
 
-function buildSummary(pick: PickingUpShift[], launch: LaunchingShift[], visionEnabled: boolean): string {
-  if (pick.length === 0 && launch.length === 0) {
-    return visionEnabled
-      ? 'No clear trend shifts in this window yet — reload to let Vision scan more posts, or widen the window.'
-      : 'Vision is off (set GEMINI_API_KEY) so the picking-up lane is empty. The launching lane runs on product text and works without it.';
+function buildSummary(wear: WearShift[], launch: LaunchShift[], needsBackfill: boolean): string {
+  if (needsBackfill) {
+    return 'The visual index is still building. Run the image embedder, then specific frames people are wearing will appear here.';
+  }
+  if (wear.length === 0 && launch.length === 0) {
+    return 'No frame has crossed the adoption threshold in this window yet. Widen the window or lower the threshold.';
   }
   const bits: string[] = [];
-  const top = pick[0];
-  if (top) {
-    bits.push(
-      top.isNew
-        ? `${cap(top.label)} frames are breaking out — ${top.currentAccounts} accounts picked them up this period from a standing start`
-        : `${cap(top.label)} frames are accelerating — ${top.currentAccounts} accounts now (+${top.accountsDelta} vs prior)`,
-    );
+  const w = wear[0];
+  if (w) {
+    const name = w.label ? `${w.label} frames` : 'One frame';
+    bits.push(w.isNew
+      ? `${name} just broke out — ${w.people} different accounts wearing it`
+      : `${name} lead — worn by ${w.people} accounts${w.growth > 0 ? ` (+${w.growth})` : ''}`);
   }
-  const tl = launch[0];
-  if (tl) bits.push(`${tl.brands} brands are converging on ${tl.label} frames`);
+  const l = launch[0];
+  if (l) bits.push(`${l.brands} brands are launching ${l.label ? `${l.label} frames` : 'the same frame'}`);
   return bits.join('. ') + '.';
 }
-
-const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 
 /* ─── Handler ─── */
 
 export const GET = withHandler('shifts', async (request: NextRequest) => {
   const v = validateQuery(request, QuerySchema);
   if (!v.ok) return v.response;
-  const { window = 30, region = 'ALL', minAdopters = 3, minBrands = 3, scan = 48, refresh } = v.data;
+  const { window = 30, region = 'ALL', minPeople = 3, minBrands = 3, threshold = 0.88, refresh } = v.data;
 
-  const cacheKey = `${window}:${region}:${minAdopters}:${minBrands}`;
+  const cacheKey = `${window}:${region}:${minPeople}:${minBrands}:${threshold}`;
   const now = Date.now();
   if (!refresh) {
     const c = RESULT_CACHE.get(cacheKey);
     if (c && c.expiresAt > now) return ok({ ...c.payload, cached: true });
   }
 
-  const visionEnabled = hasEnv('GEMINI_API_KEY');
-  const ref = await maxPostedAt();
+  // Coverage stats.
+  const [igTotal, igEmbedded, productTotal, productEmbedded] = await Promise.all([
+    countContent('ig_post'), countEmbedded('ig_post'),
+    countContent('product'), countEmbedded('product'),
+  ]);
+
+  const needsBackfill = igEmbedded === 0 && productEmbedded === 0;
+
+  // ── Reference clock = freshest post ──
+  const { data: latest } = await supabaseServer()
+    .from('brand_content').select('posted_at').eq('type', 'ig_post')
+    .not('posted_at', 'is', null).order('posted_at', { ascending: false }).limit(1);
+  const ref = latest?.[0]?.posted_at ? new Date(latest[0].posted_at).getTime() : now;
   const wMs = window * DAY;
 
-  // ── Lane A: picking up ──
-  const curRows = await fetchPosts(new Date(ref - wMs).toISOString(), new Date(ref + DAY).toISOString());
-  const priorRows = await fetchPosts(new Date(ref - 2 * wMs).toISOString(), new Date(ref - wMs).toISOString());
+  // ── Wearing lane ──
+  let wearing: WearShift[] = [];
+  let clusteredCurrent = 0;
+  if (igEmbedded > 0) {
+    const curRows = await fetchPosts(new Date(ref - wMs).toISOString(), new Date(ref + DAY).toISOString());
+    const priorRows = await fetchPosts(new Date(ref - 2 * wMs).toISOString(), new Date(ref - wMs).toISOString());
 
-  // Persist Vision for the current window first (it's what we surface).
-  const vis = await ensureVision(curRows, scan);
-  const priorScan = Math.max(0, scan - vis.analyzed);
-  const visPrior = await ensureVision(priorRows, priorScan);
+    const handles = [...new Set([...curRows, ...priorRows].map(r => r.brand_handle).filter(Boolean) as string[])];
+    const meta = await brandMeta(handles);
+    const regionOf = (h: string | null) => (h && meta.get(h)?.region) || 'Global';
+    const inRegion = (h: string | null) => region === 'ALL' || regionOf(h).toLowerCase().includes(region.toLowerCase());
 
-  const handles = [...new Set([...curRows, ...priorRows].map(r => r.brand_handle).filter(Boolean) as string[])];
-  const meta = await brandMeta(handles);
-  const nameOf = (h: string | null) => (h && meta.get(h)?.name) || h || 'unknown';
-  const regionOf = (h: string | null) => (h && meta.get(h)?.region) || 'Global';
+    const eng = (r: ContentRow) => Math.max(0, Number(r.likes) || 0) + Math.max(0, Number(r.comments) || 0) * 5;
+    const curTop = curRows.filter(r => inRegion(r.brand_handle) && fetchableImage(r))
+      .sort((a, b) => eng(b) - eng(a)).slice(0, CLUSTER_CAP);
+    const priorTop = priorRows.filter(r => inRegion(r.brand_handle) && fetchableImage(r))
+      .sort((a, b) => eng(b) - eng(a)).slice(0, CLUSTER_CAP);
 
-  const regionFilter = (h: string | null) =>
-    region === 'ALL' ? true : regionOf(h).toLowerCase().includes(region.toLowerCase());
+    const curVecs = await fetchEmbeddings(curTop.map(r => r.id));
+    const priorVecs = await fetchEmbeddings(priorTop.map(r => r.id));
 
-  const curSignals: PostSignal[] = curRows
-    .filter(r => regionFilter(r.brand_handle))
-    .map(r => toPostSignal(r, rowVision(r), nameOf(r.brand_handle)));
-  const priorSignals: PostSignal[] = priorRows
-    .filter(r => regionFilter(r.brand_handle))
-    .map(r => toPostSignal(r, rowVision(r), nameOf(r.brand_handle)));
+    const byId = new Map<string, FrameInstance>();
+    const items: VecItem[] = [];
+    for (const r of curTop) {
+      const vec = curVecs.get(String(r.id));
+      if (!vec) continue;
+      const w = eng(r);
+      byId.set(String(r.id), {
+        id: String(r.id),
+        entity: r.brand_handle || 'unknown',
+        entityName: (r.brand_handle && meta.get(r.brand_handle)?.name) || r.brand_handle || 'unknown',
+        image: proxy(fetchableImage(r)),
+        url: r.url || (r.data?.post_url as string) || '',
+        weight: w,
+      });
+      items.push({ id: String(r.id), vector: vec, weight: w });
+    }
+    clusteredCurrent = items.length;
 
-  const pickingUp = rankPickingUp(curSignals, priorSignals, { minAdopters });
+    const clusters = clusterByCosine(items, threshold);
+    const reps = clusters.map(c => ({ repId: c.repId, vector: curVecs.get(c.repId)! })).filter(r => r.vector);
 
-  // ── Lane B: launching ──
-  const productRows = await fetchProducts();
-  const productSignals = productRows.map(toProductSignal);
-  const launching = rankLaunching(productSignals, { minBrands });
+    // Fold prior window onto current clusters to measure adopter growth.
+    const priorItems: VecItem[] = priorTop
+      .filter(r => priorVecs.has(String(r.id)))
+      .map(r => ({ id: String(r.id), vector: priorVecs.get(String(r.id))!, weight: eng(r) }));
+    const priorAssign = assignToClusters(priorItems, reps, threshold);
+    const priorHandleById = new Map(priorTop.map(r => [String(r.id), r.brand_handle || 'unknown']));
+    const priorByRep = new Map<string, Set<string>>();
+    for (const [itemId, repId] of priorAssign) {
+      const s = priorByRep.get(repId) || new Set<string>();
+      s.add(priorHandleById.get(itemId) || 'unknown');
+      priorByRep.set(repId, s);
+    }
+
+    // Build shifts, then label the surfaced clusters' hero images.
+    const draft = buildWearShifts(clusters, byId, priorByRep, { minPeople });
+    const labels = await labelClusters(draft.map(s => ({ id: s.id, url: rawOfId(byId, curTop, s.id) })));
+    wearing = buildWearShifts(clusters, byId, priorByRep, { minPeople, labels });
+  }
+
+  // ── Launching lane ──
+  let launching: LaunchShift[] = [];
+  if (productEmbedded > 0) {
+    const prodRows = await fetchProductsWithEmbeddings();
+    const prodVecs = await fetchEmbeddings(prodRows.map(r => r.id));
+    const byId = new Map<string, FrameInstance>();
+    const items: VecItem[] = [];
+    for (const r of prodRows) {
+      const vec = prodVecs.get(String(r.id));
+      if (!vec || !fetchableImage(r)) continue;
+      byId.set(String(r.id), {
+        id: String(r.id),
+        entity: r.brand_handle || 'unknown',
+        entityName: (r.data?.brand_display as string) || r.brand_handle || 'unknown',
+        image: proxy(fetchableImage(r)),
+        url: r.url || '',
+        weight: (r.blob_url ? 2 : 0) + (r.price ? 1 : 0),
+        price: r.price ?? null,
+        currency: r.currency ?? null,
+        title: r.title || (r.data?.product_title as string) || '',
+      });
+      items.push({ id: String(r.id), vector: vec, weight: byId.get(String(r.id))!.weight });
+    }
+    const clusters = clusterByCosine(items, threshold);
+    const draft = buildLaunchShifts(clusters, byId, { minBrands });
+    const labels = await labelClusters(draft.map(s => ({ id: s.id, url: rawOfId(byId, prodRows, s.id) })));
+    launching = buildLaunchShifts(clusters, byId, { minBrands, labels });
+  }
 
   const payload: ShiftsResult = {
     refDate: new Date(ref).toISOString(),
-    window,
-    region,
-    pickingUp,
-    launching,
-    summary: buildSummary(pickingUp, launching, visionEnabled),
-    meta: {
-      postsCurrent: curRows.length,
-      postsPrior: priorRows.length,
-      visionAnalyzed: vis.analyzed + visPrior.analyzed,
-      visionPending: vis.pending + visPrior.pending,
-      productsScanned: productRows.length,
-      visionEnabled,
-    },
+    window, region, wearing, launching,
+    summary: buildSummary(wearing, launching, needsBackfill),
+    meta: { igEmbedded, igTotal, productEmbedded, productTotal, clusteredCurrent, needsBackfill },
     generatedAt: new Date().toISOString(),
     cached: false,
   };
@@ -323,3 +324,10 @@ export const GET = withHandler('shifts', async (request: NextRequest) => {
   RESULT_CACHE.set(cacheKey, { payload, expiresAt: now + TTL_MS });
   return ok(payload);
 });
+
+/** Raw (un-proxied) image for a cluster rep, so Gemini/Replicate can fetch it. */
+function rawOfId(byId: Map<string, FrameInstance>, rows: ContentRow[], id: string): string {
+  const row = rows.find(r => String(r.id) === id);
+  if (row) return fetchableImage(row);
+  return byId.get(id)?.image || '';
+}
