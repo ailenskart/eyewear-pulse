@@ -8,14 +8,15 @@ import { Button } from '@/components/ui/Button';
 import { cn } from '@/components/ui/cn';
 
 interface FrameExample { entity: string; entityName: string; image: string; url: string }
+interface Confidence { level: 'high' | 'medium' | 'low'; score: number; reason: string }
 interface WearShift {
   id: string; label: string; heroImage: string; heroUrl: string;
-  people: number; priorPeople: number; growth: number; isNew: boolean; posts: number;
-  examples: FrameExample[];
+  people: number; organicPeople: number; priorPeople: number; growth: number; isNew: boolean; posts: number;
+  confidence: Confidence; examples: FrameExample[];
 }
 interface LaunchShift {
   id: string; label: string; heroImage: string; heroUrl: string;
-  brands: number; products: number; examples: FrameExample[];
+  brands: number; products: number; alsoWorn: boolean; confidence: Confidence; examples: FrameExample[];
 }
 interface ShiftsData {
   refDate: string; window: number; region: string;
@@ -151,14 +152,22 @@ function Avatars({ examples, total }: { examples: FrameExample[]; total: number 
   );
 }
 
+const CONF_LABEL = { high: 'High confidence', medium: 'Medium', low: 'Low confidence' } as const;
+const CONF_TONE = { high: 'success', medium: 'warn', low: 'neutral' } as const;
+
+function ConfidencePill({ c }: { c: Confidence }) {
+  return <Badge tone={CONF_TONE[c.level]} size="xs">{CONF_LABEL[c.level]}</Badge>;
+}
+
 function WearCard({ s }: { s: WearShift }) {
   return (
     <Card variant="photographic" padding="none" className="group">
       <div className="relative">
         <Hero image={s.heroImage} url={s.heroUrl} alt={s.label || 'frame'} />
+        <div className="absolute top-2 left-2"><ConfidencePill c={s.confidence} /></div>
         {(s.isNew || s.growth > 0) && (
           <div className="absolute top-2 right-2">
-            <Badge tone={s.isNew ? 'danger' : 'success'} size="xs">{s.isNew ? 'NEW' : `+${s.growth}`}</Badge>
+            <Badge tone={s.isNew ? 'danger' : 'accent'} size="xs">{s.isNew ? 'NEW' : `+${s.growth}`}</Badge>
           </div>
         )}
         <div className="absolute bottom-2 left-2.5 right-2.5 text-white">
@@ -168,6 +177,7 @@ function WearCard({ s }: { s: WearShift }) {
       </div>
       <div className="px-2.5 pb-2.5">
         <Avatars examples={s.examples} total={s.people} />
+        <p className="text-[10.5px] text-[var(--ink-muted)] mt-2 leading-snug">{s.confidence.reason}</p>
       </div>
     </Card>
   );
@@ -178,7 +188,8 @@ function LaunchCard({ s }: { s: LaunchShift }) {
     <Card variant="photographic" padding="none" className="group">
       <div className="relative">
         <Hero image={s.heroImage} url={s.heroUrl} alt={s.label || 'frame'} />
-        <div className="absolute top-2 right-2"><Badge tone="accent" size="xs">{s.brands} brands</Badge></div>
+        <div className="absolute top-2 left-2"><ConfidencePill c={s.confidence} /></div>
+        {s.alsoWorn && <div className="absolute top-2 right-2"><Badge tone="success" size="xs">Worn too</Badge></div>}
         <div className="absolute bottom-2 left-2.5 right-2.5 text-white">
           <div className="text-[15px] font-bold leading-none">{s.brands} brands</div>
           {s.label && <div className="text-[11px] capitalize opacity-90 mt-0.5 truncate">{s.label}</div>}
@@ -186,6 +197,7 @@ function LaunchCard({ s }: { s: LaunchShift }) {
       </div>
       <div className="px-2.5 pb-2.5">
         <Avatars examples={s.examples} total={s.brands} />
+        <p className="text-[10.5px] text-[var(--ink-muted)] mt-2 leading-snug">{s.confidence.reason}</p>
       </div>
     </Card>
   );

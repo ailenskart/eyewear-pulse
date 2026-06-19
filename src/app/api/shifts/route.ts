@@ -2,7 +2,7 @@ import { NextRequest } from 'next/server';
 import { withHandler, ok, validateQuery } from '@/lib/api';
 import { supabaseServer } from '@/lib/supabase';
 import { env, hasEnv } from '@/lib/env';
-import { clusterByCosine, assignToClusters, type VecItem } from '@/lib/cluster';
+import { clusterByCosine, assignToClusters, cosine, type VecItem } from '@/lib/cluster';
 import {
   buildWearShifts, buildLaunchShifts,
   type FrameInstance, type WearShift, type LaunchShift,
@@ -184,12 +184,11 @@ function buildSummary(wear: WearShift[], launch: LaunchShift[], needsBackfill: b
   const w = wear[0];
   if (w) {
     const name = w.label ? `${w.label} frames` : 'One frame';
-    bits.push(w.isNew
-      ? `${name} just broke out — ${w.people} different accounts wearing it`
-      : `${name} lead — worn by ${w.people} accounts${w.growth > 0 ? ` (+${w.growth})` : ''}`);
+    const conf = w.confidence.level === 'high' ? 'High confidence' : w.confidence.level === 'medium' ? 'Medium confidence' : 'Early signal';
+    bits.push(`${conf}: ${name} — worn by ${w.people}${w.organicPeople > 0 ? `, ${w.organicPeople} real ${w.organicPeople === 1 ? 'consumer' : 'consumers'}` : ''}${w.growth > 0 ? ` (+${w.growth})` : ''}`);
   }
-  const l = launch[0];
-  if (l) bits.push(`${l.brands} brands are launching ${l.label ? `${l.label} frames` : 'the same frame'}`);
+  const l = launch.find(x => x.alsoWorn) || launch[0];
+  if (l) bits.push(`${l.brands} brands launching ${l.label ? `${l.label} frames` : 'the same frame'}${l.alsoWorn ? ' that consumers are already wearing' : ''}`);
   return bits.join('. ') + '.';
 }
 
@@ -225,6 +224,10 @@ export const GET = withHandler('shifts', async (request: NextRequest) => {
   // ── Wearing lane ──
   let wearing: WearShift[] = [];
   let clusteredCurrent = 0;
+  // Wearing cluster reps (with vectors) + people counts, reused to validate
+  // launches against real consumer demand.
+  let wearReps: Array<{ repId: string; vector: number[] }> = [];
+  const wearPeopleByRep = new Map<string, number>();
   if (igEmbedded > 0) {
     const curRows = await fetchPosts(new Date(ref - wMs).toISOString(), new Date(ref + DAY).toISOString());
     const priorRows = await fetchPosts(new Date(ref - 2 * wMs).toISOString(), new Date(ref - wMs).toISOString());
@@ -253,6 +256,8 @@ export const GET = withHandler('shifts', async (request: NextRequest) => {
         id: String(r.id),
         entity: r.brand_handle || 'unknown',
         entityName: (r.brand_handle && meta.get(r.brand_handle)?.name) || r.brand_handle || 'unknown',
+        // In tracked_brands ⇒ a brand voice; otherwise a real consumer / UGC.
+        isBrand: !!(r.brand_handle && meta.has(r.brand_handle)),
         image: proxy(fetchableImage(r)),
         url: r.url || (r.data?.post_url as string) || '',
         weight: w,
@@ -281,6 +286,11 @@ export const GET = withHandler('shifts', async (request: NextRequest) => {
     const draft = buildWearShifts(clusters, byId, priorByRep, { minPeople });
     const labels = await labelClusters(draft.map(s => ({ id: s.id, url: rawOfId(byId, curTop, s.id) })));
     wearing = buildWearShifts(clusters, byId, priorByRep, { minPeople, labels });
+
+    // Expose surfaced clusters' vectors + people counts for launch validation.
+    const repVec = new Map(reps.map(r => [r.repId, r.vector]));
+    wearReps = wearing.map(s => ({ repId: s.id, vector: repVec.get(s.id)! })).filter(r => r.vector);
+    for (const s of wearing) wearPeopleByRep.set(s.id, s.people);
   }
 
   // ── Launching lane ──
@@ -297,6 +307,7 @@ export const GET = withHandler('shifts', async (request: NextRequest) => {
         id: String(r.id),
         entity: r.brand_handle || 'unknown',
         entityName: (r.data?.brand_display as string) || r.brand_handle || 'unknown',
+        isBrand: true, // products are always brand supply
         image: proxy(fetchableImage(r)),
         url: r.url || '',
         weight: (r.blob_url ? 2 : 0) + (r.price ? 1 : 0),
@@ -307,9 +318,26 @@ export const GET = withHandler('shifts', async (request: NextRequest) => {
       items.push({ id: String(r.id), vector: vec, weight: byId.get(String(r.id))!.weight });
     }
     const clusters = clusterByCosine(items, threshold);
-    const draft = buildLaunchShifts(clusters, byId, { minBrands });
+
+    // Demand validation: does this launched frame match one consumers wear?
+    const MATCH = Math.max(0.82, threshold - 0.03);
+    const alsoWornReps = new Set<string>();
+    const wornByRep = new Map<string, number>();
+    for (const c of clusters) {
+      const lv = prodVecs.get(c.repId);
+      if (!lv) continue;
+      for (const wr of wearReps) {
+        if (cosine(lv, wr.vector) >= MATCH) {
+          alsoWornReps.add(c.repId);
+          wornByRep.set(c.repId, wearPeopleByRep.get(wr.repId) || 0);
+          break;
+        }
+      }
+    }
+
+    const draft = buildLaunchShifts(clusters, byId, { minBrands, alsoWornReps, wornByRep });
     const labels = await labelClusters(draft.map(s => ({ id: s.id, url: rawOfId(byId, prodRows, s.id) })));
-    launching = buildLaunchShifts(clusters, byId, { minBrands, labels });
+    launching = buildLaunchShifts(clusters, byId, { minBrands, labels, alsoWornReps, wornByRep });
   }
 
   const payload: ShiftsResult = {

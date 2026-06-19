@@ -14,11 +14,13 @@
  */
 
 import type { Cluster } from '@/lib/cluster';
+import { wearConfidence, launchConfidence, type Confidence } from '@/lib/confidence';
 
 export interface FrameInstance {
   id: string;
   entity: string;     // IG account handle (wearing) or brand handle (launching)
   entityName: string; // display name
+  isBrand: boolean;   // true if entity is a tracked brand (not an organic consumer)
   image: string;      // display image (proxied)
   url: string;        // link to the post / product
   weight: number;     // engagement (wearing) or representativeness (launching)
@@ -40,10 +42,12 @@ export interface WearShift {
   heroImage: string;
   heroUrl: string;
   people: number;        // distinct accounts wearing it this period
+  organicPeople: number; // distinct REAL consumers (non-brand) wearing it
   priorPeople: number;
   growth: number;
   isNew: boolean;
   posts: number;
+  confidence: Confidence;
   examples: FrameExample[];
 }
 
@@ -54,6 +58,8 @@ export interface LaunchShift {
   heroUrl: string;
   brands: number;
   products: number;
+  alsoWorn: boolean;     // consumers are wearing this exact frame too
+  confidence: Confidence;
   examples: FrameExample[];
 }
 
@@ -105,6 +111,9 @@ export function buildWearShifts(
     const priorPeople = priorByRep.get(c.repId)?.size ?? 0;
     const growth = people - priorPeople;
     const isNew = priorPeople === 0;
+    const organicPeople = members.filter(m => !m.isBrand).length;
+    // engagement = sum across every post in the cluster (consumer interest volume)
+    const engagement = c.memberIds.reduce((s, id) => s + (byId.get(id)?.weight || 0), 0);
 
     shifts.push({
       id: c.repId,
@@ -112,17 +121,19 @@ export function buildWearShifts(
       heroImage: hero.image,
       heroUrl: hero.url,
       people,
+      organicPeople,
       priorPeople,
       growth,
       isNew,
       posts: c.memberIds.length,
+      confidence: wearConfidence({ organicPeople, totalPeople: people, growth, isNew, engagement }),
       examples: members.slice(0, 6).map(toExample),
     });
   }
 
-  // Lead with the most-worn, then the fastest-growing.
+  // Lead with the highest-confidence frames (what to actually pursue).
   return shifts
-    .sort((a, b) => b.people - a.people || b.growth - a.growth)
+    .sort((a, b) => b.confidence.score - a.confidence.score || b.people - a.people)
     .slice(0, topN);
 }
 
@@ -132,6 +143,10 @@ export interface LaunchOptions {
   minBrands?: number;
   topN?: number;
   labels?: Map<string, string>;
+  /** repIds whose frame consumers are also wearing (demand validation). */
+  alsoWornReps?: Set<string>;
+  /** repId -> how many people wear it, for the reason line. */
+  wornByRep?: Map<string, number>;
 }
 
 export function buildLaunchShifts(
@@ -151,6 +166,7 @@ export function buildLaunchShifts(
     const hero = byId.get(c.repId) || members[0];
     if (!hero) continue;
 
+    const alsoWorn = opts.alsoWornReps?.has(c.repId) ?? false;
     shifts.push({
       id: c.repId,
       label: opts.labels?.get(c.repId) || '',
@@ -158,11 +174,17 @@ export function buildLaunchShifts(
       heroUrl: hero.url,
       brands,
       products: c.memberIds.length,
+      alsoWorn,
+      confidence: launchConfidence({
+        brands, recentBrands: 0, products: c.memberIds.length,
+        alsoWorn, wornBy: opts.wornByRep?.get(c.repId),
+      }),
       examples: members.slice(0, 6).map(toExample),
     });
   }
 
-  return shifts.sort((a, b) => b.brands - a.brands || b.products - a.products).slice(0, topN);
+  // Lead with highest confidence (frames consumers validate), then breadth.
+  return shifts.sort((a, b) => b.confidence.score - a.confidence.score || b.brands - a.brands).slice(0, topN);
 }
 
 function toExample(i: FrameInstance): FrameExample {
