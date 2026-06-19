@@ -7,6 +7,7 @@ import { CommandPalette } from './CommandPalette';
 
 const NAV_ITEMS = [
   { k: 'feed',         label: 'Feed',         icon: '⧉' },
+  { k: 'shifts',       label: 'Shifts',       icon: '✦' },
   { k: 'brands',       label: 'Brands',       icon: '◉' },
   { k: 'products',     label: 'Products',     icon: '◘' },
   { k: 'people',       label: 'People',       icon: '●' },
